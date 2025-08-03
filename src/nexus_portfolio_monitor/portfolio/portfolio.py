@@ -176,7 +176,12 @@ class Portfolio:
         assets_count = len(self.stocks) + len(self.currencies)
         stocks_repr = ", ".join(asset.ticker for asset in self.stocks)
         currencies_repr = ", ".join(asset.ticker for asset in self.currencies)
-        return f"Portfolio '{self.name}' with {assets_count} assets\n  Stocks: {stocks_repr}\n  Currencies: {currencies_repr}"
+        total_value = ""
+        if self.total_value:
+            total_value = f"  Value: ${format_number(self.total_value)}"
+        elif self.total_cost_basis:
+            total_value = f"  Cost Basis: ${format_number(self.total_cost_basis)}"
+        return f"Portfolio '{self.name}' with {assets_count} assets{total_value}\n  Stocks: {stocks_repr}\n  Currencies: {currencies_repr}"
     
     def __repr__(self) -> str:
         """Return a detailed representation of this portfolio."""
@@ -188,3 +193,8 @@ def parse_number(value: Any) -> Decimal:
     """Parse a number from a string."""
     str_value = str(value)
     return Decimal(str_value.replace(",", ""))
+
+def format_number(value: Decimal) -> str:
+    """Format a number as a string with commas."""
+    return f"{value:,f}"
+    
