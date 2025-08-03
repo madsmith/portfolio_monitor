@@ -61,6 +61,7 @@ class MonitorService:
         logger.info("Monitor stopped")
         
     async def _run(self) -> None:
+        await self.stop()
         return
         """Internal run loop"""
         try:
@@ -136,8 +137,8 @@ async def run_service():
     try:
         await service.start()
         # Keep the service running
-        while True:
-            await asyncio.sleep(1)
+        if service._task:
+            await asyncio.wait_for(service._task, timeout=None)
     except asyncio.CancelledError:
         pass
     except KeyboardInterrupt:
