@@ -2,11 +2,10 @@
 Currency module for Nexus Portfolio Monitor.
 """
 
-import warnings
 from decimal import Decimal, getcontext, Context, ROUND_HALF_UP
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import ClassVar, Dict, Any, List, cast
+from typing import ClassVar, Dict, Any
 
 
 class CurrencyType(Enum):
@@ -124,13 +123,8 @@ class Currency:
                 self.currency_type = currency_type
         else:
             # Store the value as a Decimal
-            # If value is a float, convert it to string first to avoid precision issues
             if isinstance(value, float):
-                warnings.warn(
-                    f"Float passed: {value!r}. This may introduce precision errors. Use str or Decimal.",
-                    category=RuntimeWarning,
-                    stacklevel=2,
-                )
+                # Convert float to string to avoid precision issues
                 self._value = Decimal(str(value), context)
             else:
                 self._value = Decimal(value, context)
