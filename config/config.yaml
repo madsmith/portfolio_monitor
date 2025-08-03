@@ -1,16 +1,4 @@
 nexus:
-  portfolios:
-    - name: "Personal"
-      stocks:
-        - ticker: "AAPL"
-          lots:
-            - amount: 10
-              price: 150.00
-
-    - name: "Crypto"
-      currencies:
-        - ticker: "X:XRPUSD"
-          lots: []
-
+  portfolio_path: "config/portfolios"
 polygon:
   api-key: "${private.polygon.api-key}"

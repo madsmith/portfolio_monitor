@@ -1,0 +1,20 @@
+name: "Tech Portfolio"
+stocks:
+  - ticker: "AAPL"
+    lots:
+      - amount: 10
+        price: 150.00
+      - amount: 5
+        price: 170.00
+  - ticker: "MSFT"
+    lots:
+      - amount: 8
+        price: 280.00
+  - ticker: "GOOGL"
+    lots: []  # Monitoring only
+
+currencies:
+  - ticker: "X:BTCUSD"
+    lots:
+      - amount: 0.5
+        price: 40000.00

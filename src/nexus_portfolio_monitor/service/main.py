@@ -1,5 +1,8 @@
 import asyncio
 import logging
+from pathlib import Path
+
+from nexus_portfolio_monitor.portfolio.loader import load_portfolios
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.exceptions import BadResponse
 import time
@@ -113,6 +116,15 @@ async def run_service():
     """Run the monitor service until interrupted"""
 
     config = load_config()
+    portfolio_path = config.get("nexus.portfolio_path")
+    if not portfolio_path:
+        raise ValueError("Portfolio path not configured")
+    path = Path(portfolio_path)
+
+    portfolios = load_portfolios(path)
+    for portfolio in portfolios:
+        print(portfolio)
+    return
 
     service = MonitorService(config)
     
