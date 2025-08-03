@@ -1,17 +1,15 @@
 # Nexus Portfolio Monitor
 
-A Python application for monitoring investment portfolios.
+A Python application for monitoring investment portfolios using financial market data from Polygon.io.
 
 ## Description
 
-Nexus Portfolio Monitor is a tool designed to help users track their investment portfolios across various assets including stocks, cryptocurrencies, and more.
+Nexus Portfolio Monitor is a tool designed to track and monitor investment portfolios across various assets. It leverages the Polygon.io API to fetch real-time and historical market data for stocks and cryptocurrencies.
 
 ## Features
 
-- Portfolio tracking
-- Performance analytics
-- Asset allocation visualization
-- Historical data tracking
+- Financial data integration via Polygon.io API
+- Portfolio tracking from configuration files
 
 ## Installation
 
@@ -22,24 +20,38 @@ git clone https://github.com/yourusername/nexus-portfolio-monitor.git
 # Navigate to the project directory
 cd nexus-portfolio-monitor
 
-# Install the package
+# Install the package in development mode
 pip install -e .
+```
+
+## Configuration
+
+The application uses YAML configuration files:
+
+1. `config.yaml` - Main configuration file
+2. `config_private.yaml` - Private configuration file with API keys
+
+Example configuration:
+
+```yaml
+nexus:
+  portfolios:
+    - name: "Personal"
+      assets:
+        - ticker: "AAPL"
+          lots:
+            - amount: 10
+              price: 150.00
+
+polygon:
+  api-key: "${private.polygon.api-key}"
 ```
 
 ## Usage
 
-```python
-from nexus_portfolio_monitor import Portfolio
-
-# Create a new portfolio
-portfolio = Portfolio("My Portfolio")
-
-# Add assets
-portfolio.add_asset("AAPL", amount=10, price=150.00)
-portfolio.add_asset("MSFT", amount=5, price=300.00)
-
-# View portfolio summary
-portfolio.summary()
+```bash
+# Run the portfolio monitor service
+portfolio-monitor
 ```
 
 ## Development
