@@ -1,14 +1,14 @@
 nexus:
   portfolios:
     - name: "Personal"
-      assets:
+      stocks:
         - ticker: "AAPL"
           lots:
             - amount: 10
               price: 150.00
 
     - name: "Crypto"
-      assets:
+      currencies:
         - ticker: "X:XRPUSD"
           lots: []
 

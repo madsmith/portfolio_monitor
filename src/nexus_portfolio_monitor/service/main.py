@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from polygon import RESTClient as PolygonRESTClient
+from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.exceptions import BadResponse
 import time
 
@@ -23,6 +23,7 @@ class MonitorService:
         """
         self.config = config
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.get("polygon.api-key"))
+        self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(config.get("polygon.api-key"))
 
         self.running = False
         self._task: asyncio.Task | None = None
@@ -57,6 +58,9 @@ class MonitorService:
     async def _run(self) -> None:
         """Internal run loop"""
         try:
+            # self._polygon_websocket_client.run(handle_msg=lambda msg: logger.info(msg))
+            # self._polygon_websocket_client.connect(processor=lambda msg: logger.info(msg))
+
             last_update = 0
             update_interval = 60
             while self.running:
@@ -104,8 +108,6 @@ class MonitorService:
         quotes = self._polygon_client.list_quotes(ticker=ticker)
         for quote in quotes:
             print(quote)
-            
-
 
 async def run_service():
     """Run the monitor service until interrupted"""
