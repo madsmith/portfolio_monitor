@@ -52,6 +52,7 @@ dependencies = [
     { name = "asyncio" },
     { name = "omegaconf" },
     { name = "polygon-api-client" },
+    { name = "pytest" },
 ]
 
 [package.optional-dependencies]
@@ -64,6 +65,7 @@ requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "omegaconf", specifier = ">=2.3.0" },
     { name = "polygon-api-client", specifier = ">=1.15.3" },
+    { name = "pytest", specifier = ">=8.4.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=6.0" },
 ]
 provides-extras = ["dev"]

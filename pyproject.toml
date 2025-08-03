@@ -25,7 +25,7 @@ portfolio-monitor = "nexus_portfolio_monitor.service.main:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=6.0"
+    "pytest>=8.4.1"
 ]
 
 [build-system]
