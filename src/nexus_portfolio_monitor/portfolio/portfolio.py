@@ -100,11 +100,9 @@ class Asset:
     
     @property
     def profit_loss(self) -> Currency | None:
-        """Return the profit/loss of this asset."""
         if self.current_price is None or not self.lots:
-            # No need for .value as Currency constructor can handle Currency
-            return Currency(-self.cost_basis, self.cost_basis.currency_type)
-        # Use subtraction directly
+            return None # Can't compute PL without lots and a price
+        
         return self.current_value - self.cost_basis
     
     @property
@@ -112,7 +110,7 @@ class Asset:
         """Return the profit/loss percentage of this asset."""
         if self.profit_loss is None or self.cost_basis == 0:
             return None
-        
+
         # Need to use ._value here as we want a raw Decimal percentage
         return (self.profit_loss._value / self.cost_basis._value) * 100
     

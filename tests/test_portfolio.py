@@ -166,9 +166,7 @@ class TestAsset:
         # No current price
         pl = asset.profit_loss
 
-        assert pl is not None
-
-        assert pl._value == Decimal("-2950")  # Negative cost basis
+        assert pl is None
         
         # With current price
         asset.current_price = Currency(150, CurrencyType.USD)
@@ -182,7 +180,7 @@ class TestAsset:
     def test_profit_loss_percentage(self, sample_lots):
         """Test Asset.profit_loss_percentage property."""
         asset = Asset(ticker="AAPL", lots=sample_lots)
-        
+
         # No current price
         assert asset.profit_loss_percentage is None
         
