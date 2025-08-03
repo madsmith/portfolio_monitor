@@ -126,8 +126,8 @@ class Asset:
 
     def __str__(self) -> str:
         """Return a string representation of this asset."""
-        lots_info = f"{len(self.lots)} lots" if self.lots else "monitoring only"
-        price_info = f" at {self.current_price}" if self.current_price else ""
+        lots_info = f"{len(self.lots)} lots {self.total_quantity} units" if self.lots else "monitoring only"
+        price_info = f" at {self.current_price}" if self.current_price else f" Cost: {self.cost_basis}"
         return f"{self.ticker} ({lots_info}{price_info})"
     
     def __repr__(self) -> str:
@@ -205,38 +205,28 @@ class Portfolio:
             
         return portfolio
         
-    def __str__(self, with_basis=False) -> str:
+    def __str__(self) -> str:
         """Return a string representation of this portfolio."""
         assets_count = len(self.stocks) + len(self.currencies)
         result = [f"Portfolio '{self.name}' with {assets_count} assets"]
         
         # Add total value or cost basis if available
-        if self.total_value:
+        if self.total_value > 0:
             result.append(f"Total Value: {self.total_value}")
-        if with_basis:
-            result.append(f"Total Cost Basis: {self.total_cost_basis}")
+        # elif self.total_cost_basis > 0:
+        #     result.append(f"Total Cost Basis: {self.total_cost_basis}")
         
         # Add stocks
         if self.stocks:
             result.append("Stocks:")
             for asset in self.stocks:
-                value_str = ""
-                if asset.current_value is not None:
-                    value_str = f" - Value: {asset.current_value}"
-                elif asset.cost_basis:
-                    value_str = f" - Cost Basis: {asset.cost_basis}"
-                result.append(f"  {asset.ticker}{value_str}")
+                result.append(f"  {asset}")
         
         # Add currencies
         if self.currencies:
             result.append("Currencies:")
             for asset in self.currencies:
-                value_str = ""
-                if asset.current_value:
-                    value_str = f" - Value: {asset.current_value}"
-                elif asset.cost_basis:
-                    value_str = f" - Cost Basis: {asset.cost_basis}"
-                result.append(f"  {asset.ticker}{value_str}")
+                result.append(f"  {asset}")
                 
         return "\n".join(result)
     
