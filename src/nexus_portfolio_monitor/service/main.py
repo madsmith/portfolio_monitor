@@ -1,6 +1,10 @@
 import asyncio
 import logging
-from typing import Optional
+from polygon import RESTClient as PolygonRESTClient
+from polygon.exceptions import BadResponse
+import time
+
+from nexus_portfolio_monitor.core.config import NexusConfig, load_config
 
 # Configure logging
 logging.basicConfig(
@@ -13,12 +17,15 @@ logger = logging.getLogger(__name__)
 class MonitorService:
     """Monitor service that runs in an asyncio event loop"""
     
-    def __init__(self):
+    def __init__(self, config: NexusConfig):
         """
         Initialize the monitor service
         """
+        self.config = config
+        self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.get("polygon.api-key"))
+
         self.running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         
     async def start(self) -> None:
         """Start the monitoring service"""
@@ -50,21 +57,62 @@ class MonitorService:
     async def _run(self) -> None:
         """Internal run loop"""
         try:
+            last_update = 0
+            update_interval = 60
             while self.running:
-                # Currently just an idle loop
-                # Future implementation will perform monitoring actions
-                await asyncio.sleep(1)
+                try:
+                    self._dump_symbol("AAPL")
+                except BadResponse as e:
+                    logger.error(f"Error dumping symbol AAPL: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+                last_update = time.monotonic()
+                next_update = last_update + update_interval
+                await asyncio.sleep(next_update - last_update)
         except asyncio.CancelledError:
             logger.debug("Monitor loop cancelled")
             raise
         except Exception as e:
             logger.exception(f"Error in monitor loop: {e}")
+            import traceback
+            traceback.print_exc()
             self.running = False
+
+    def _dump_symbol(self, ticker: str):
+        """Dump all available data for a symbol"""
+        # List Aggregates (Bars)
+        aggs = []
+        for a in self._polygon_client.list_aggs(ticker=ticker, multiplier=1, timespan="minute", from_="2025-06-01", to="2025-07-01", limit=50000):
+            aggs.append(a)
+        print(aggs)
+
+        # Get Last Trade
+        trade = self._polygon_client.get_last_trade(ticker=ticker)
+        print(trade)
+
+        # List Trades
+        trades = self._polygon_client.list_trades(ticker=ticker)
+        for trade in trades:
+            print(trade)
+
+        # Get Last Quote
+        quote = self._polygon_client.get_last_quote(ticker=ticker)
+        print(quote)
+
+        # List Quotes
+        quotes = self._polygon_client.list_quotes(ticker=ticker)
+        for quote in quotes:
+            print(quote)
+            
 
 
 async def run_service():
     """Run the monitor service until interrupted"""
-    service = MonitorService()
+
+    config = load_config()
+
+    service = MonitorService(config)
     
     try:
         await service.start()

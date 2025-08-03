@@ -1,0 +1,16 @@
+nexus:
+  portfolios:
+    - name: "Personal"
+      assets:
+        - ticker: "AAPL"
+          lots:
+            - amount: 10
+              price: 150.00
+
+    - name: "Crypto"
+      assets:
+        - ticker: "X:XRPUSD"
+          lots: []
+
+polygon:
+  api-key: "${private.polygon.api-key}"

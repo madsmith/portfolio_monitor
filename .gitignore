@@ -3,3 +3,6 @@ __pycache__/*
 *.pyc
 *.egg-info
 TODO.md
+
+# Ignore private config
+config_private.yaml
