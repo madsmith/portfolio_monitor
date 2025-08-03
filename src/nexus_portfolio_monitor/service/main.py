@@ -1,13 +1,14 @@
 import asyncio
 import logging
 from pathlib import Path
-
-from nexus_portfolio_monitor.portfolio.loader import load_portfolios
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.exceptions import BadResponse
 import time
+from typing import List
 
 from nexus_portfolio_monitor.core.config import NexusConfig, load_config
+from nexus_portfolio_monitor.portfolio.loader import load_portfolios
+from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
 
 # Configure logging
 logging.basicConfig(
@@ -20,11 +21,12 @@ logger = logging.getLogger(__name__)
 class MonitorService:
     """Monitor service that runs in an asyncio event loop"""
     
-    def __init__(self, config: NexusConfig):
+    def __init__(self, config: NexusConfig, portfolios: List[Portfolio]):
         """
         Initialize the monitor service
         """
         self.config = config
+        self.portfolios = portfolios
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.get("polygon.api-key"))
         self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(config.get("polygon.api-key"))
 
@@ -59,6 +61,7 @@ class MonitorService:
         logger.info("Monitor stopped")
         
     async def _run(self) -> None:
+        return
         """Internal run loop"""
         try:
             # self._polygon_websocket_client.run(handle_msg=lambda msg: logger.info(msg))
@@ -122,11 +125,13 @@ async def run_service():
     path = Path(portfolio_path)
 
     portfolios = load_portfolios(path)
+
+    print("=== Portfolios ===")
     for portfolio in portfolios:
         print(portfolio)
-    return
+    print("=== End Portfolios ===")
 
-    service = MonitorService(config)
+    service = MonitorService(config, portfolios)
     
     try:
         await service.start()

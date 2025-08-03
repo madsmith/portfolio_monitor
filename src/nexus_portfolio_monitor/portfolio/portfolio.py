@@ -13,13 +13,6 @@ class Lot:
     """
     Represents a lot of an asset with amount and purchase price.
     """
-    def __str__(self) -> str:
-        """Return a string representation of this lot."""
-        return f"{self.amount} @ ${self.price}"
-    
-    def __repr__(self) -> str:
-        """Return a detailed representation of this lot."""
-        return f"Lot(amount={self.amount}, price=${self.price})"
     amount: Decimal
     price: Decimal
     
@@ -32,9 +25,17 @@ class Lot:
     def from_dict(cls, data: Dict[str, Any]) -> 'Lot':
         """Create a Lot from a dictionary."""
         return cls(
-            amount=Decimal(str(data.get('amount', 0))),
-            price=Decimal(str(data.get('price', 0)))
+            amount=Decimal(parse_number(data.get('amount', 0))),
+            price=Decimal(parse_number(data.get('price', 0)))
         )
+
+    def __str__(self) -> str:
+        """Return a string representation of this lot."""
+        return f"{self.amount} @ ${self.price}"
+    
+    def __repr__(self) -> str:
+        """Return a detailed representation of this lot."""
+        return f"Lot(amount={self.amount}, price=${self.price})"
 
 
 @dataclass
@@ -43,15 +44,6 @@ class Asset:
     Represents an asset in a portfolio.
     An asset can be a stock or cryptocurrency with one or more lots.
     """
-    def __str__(self) -> str:
-        """Return a string representation of this asset."""
-        lots_info = f"{len(self.lots)} lots" if self.lots else "monitoring only"
-        price_info = f" at ${self.current_price}" if self.current_price else ""
-        return f"{self.ticker} ({lots_info}{price_info})"
-    
-    def __repr__(self) -> str:
-        """Return a detailed representation of this asset."""
-        return f"Asset(ticker='{self.ticker}', lots={len(self.lots)}, asset_type='{self.asset_type}')"
     ticker: str
     lots: List[Lot] = field(default_factory=list)
     current_price: Decimal | None = None
@@ -105,6 +97,16 @@ class Asset:
             lots=lots,
             asset_type=asset_type
         )
+
+    def __str__(self) -> str:
+        """Return a string representation of this asset."""
+        lots_info = f"{len(self.lots)} lots" if self.lots else "monitoring only"
+        price_info = f" at ${self.current_price}" if self.current_price else ""
+        return f"{self.ticker} ({lots_info}{price_info})"
+    
+    def __repr__(self) -> str:
+        """Return a detailed representation of this asset."""
+        return f"Asset(ticker='{self.ticker}', lots={len(self.lots)}, asset_type='{self.asset_type}')"
 
 
 @dataclass
@@ -181,3 +183,8 @@ class Portfolio:
         stocks_repr = ", ".join(asset.ticker for asset in self.stocks)
         currencies_repr = ", ".join(asset.ticker for asset in self.currencies)
         return f"Portfolio(name='{self.name}', stocks=[{stocks_repr}], currencies=[{currencies_repr}])"
+
+def parse_number(value: Any) -> Decimal:
+    """Parse a number from a string."""
+    str_value = str(value)
+    return Decimal(str_value.replace(",", ""))

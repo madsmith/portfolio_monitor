@@ -53,5 +53,7 @@ def load_portfolios(portfolio_path: Path) -> List[Portfolio]:
             
         except Exception as e:
             logger.error(f"Error loading portfolio from {yaml_file}: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     return portfolios
