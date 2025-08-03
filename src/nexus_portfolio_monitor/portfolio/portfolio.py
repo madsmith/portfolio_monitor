@@ -4,89 +4,117 @@ Contains classes for portfolios, assets and lots.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Literal
+from datetime import datetime
 from decimal import Decimal
+from typing import List, Dict, Any, Literal
+from nexus_portfolio_monitor.core.currency import Currency
 
 
 @dataclass
 class Lot:
     """
-    Represents a lot of an asset with amount and purchase price.
+    Represents a lot of an asset purchased at a specific price.
     """
-    amount: Decimal
-    price: Decimal
+    quantity: Decimal  # The number of units/shares (not a Currency)
+    price: Currency    # Price per unit
+    date: datetime | None = None
     
-    @property
-    def cost_basis(self) -> Decimal:
-        """Return the cost basis of this lot."""
-        return self.amount * self.price
+    def value(self) -> Currency:
+        """Return the value of this lot at the purchase price."""
+        return self.quantity * self.price
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Lot':
         """Create a Lot from a dictionary."""
+        # Parse quantity as a Decimal, not a Currency
+        quantity_str = str(data.get('quantity', data.get('amount', 0)))
+        quantity = Decimal(quantity_str.replace(',', ''))
+        
         return cls(
-            amount=Decimal(parse_number(data.get('amount', 0))),
-            price=Decimal(parse_number(data.get('price', 0)))
+            quantity=quantity,
+            price=Currency.parse_number(data.get('price', 0)),
+            date=datetime.strptime(data.get('date', ''), '%Y-%m-%d') if data.get('date', '') else None
         )
 
     def __str__(self) -> str:
         """Return a string representation of this lot."""
-        return f"{self.amount} @ ${self.price}"
+        return f"{self.quantity} @ {self.price}"
     
     def __repr__(self) -> str:
         """Return a detailed representation of this lot."""
-        return f"Lot(amount={self.amount}, price=${self.price})"
+        return f"Lot(quantity={self.quantity}, price={self.price})"
 
 
 @dataclass
 class Asset:
     """
-    Represents an asset in a portfolio.
-    An asset can be a stock or cryptocurrency with one or more lots.
+    Represents a financial asset with lots.
     """
     ticker: str
     lots: List[Lot] = field(default_factory=list)
-    current_price: Decimal | None = None
+    current_price: Currency | None = None
     asset_type: Literal["stock", "currency"] = "stock"
     
     @property
-    def total_amount(self) -> Decimal:
-        """Return the total amount of this asset."""
-        return Decimal(sum(lot.amount for lot in self.lots))
+    def total_quantity(self) -> Decimal:
+        """Return the total quantity of this asset across all lots."""
+        # Sum up all quantities directly (Decimal, not Currency)
+        return Decimal(sum(lot.quantity for lot in self.lots))
     
     @property
-    def cost_basis(self) -> Decimal:
-        """Return the total cost basis of this asset."""
-        return Decimal(sum(lot.cost_basis for lot in self.lots))
+    def cost_basis(self) -> Currency:
+        """
+        Return the total cost basis of this asset.
+        
+        If no lots are present, returns a Currency with value 0. Otherwise cost basis is computed in
+        the currency of the first lot's price.  All lots must by priced at the same currency.
+        """
+        if not self.lots:
+            return Currency(0)
+        
+        # Use the currency type of the first lot's price for consistency
+        currency_type = self.lots[0].price.currency_type
+        # Sum up all lot values directly
+        result = Currency(0, currency_type)
+        for lot in self.lots:
+            assert lot.value().currency_type == currency_type, f"Currency type mismatch: {lot.value().currency_type} != {currency_type}"
+            result += lot.value()
+        return result
     
     @property
-    def average_price(self) -> Decimal:
-        """Return the average purchase price of this asset."""
-        total_amount = self.total_amount
-        if total_amount == 0:
-            return Decimal(0)
-        return self.cost_basis / total_amount
+    def average_cost(self) -> Currency:
+        """Return the average cost basis of this asset."""
+        total_quantity = self.total_quantity
+        if not total_quantity or total_quantity == 0:
+            return Currency(0)
+        
+        return self.cost_basis / total_quantity
     
     @property
-    def current_value(self) -> Decimal:
-        """Return the current value of this asset."""
-        if self.current_price is None or not self.lots:
-            return Decimal(0)
-        return self.total_amount * self.current_price
+    def current_value(self) -> Currency | None:
+        """Return the current value of this asset, or None if no current price is available."""
+        if self.current_price is None:
+            return None
+        # Calculate value by multiplying quantity by price
+        return self.total_quantity * self.current_price
     
     @property
-    def profit_loss(self) -> Decimal:
+    def profit_loss(self) -> Currency | None:
         """Return the profit/loss of this asset."""
         if self.current_price is None or not self.lots:
-            return - self.cost_basis
+            # No need for .value as Currency constructor can handle Currency
+            return Currency(-self.cost_basis, self.cost_basis.currency_type)
+        # Use subtraction directly
         return self.current_value - self.cost_basis
     
     @property
     def profit_loss_percentage(self) -> Decimal | None:
         """Return the profit/loss percentage of this asset."""
-        if self.cost_basis == 0 or self.current_price is None or not self.lots:
+        if self.profit_loss is None or self.cost_basis == 0:
             return None
-        return (self.profit_loss / self.cost_basis) * 100
+        
+        # Need to use ._value here as we want a raw Decimal percentage
+        return (self.profit_loss._value / self.cost_basis._value) * 100
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any], asset_type: Literal["stock", "currency"] = "stock") -> 'Asset':
@@ -101,7 +129,7 @@ class Asset:
     def __str__(self) -> str:
         """Return a string representation of this asset."""
         lots_info = f"{len(self.lots)} lots" if self.lots else "monitoring only"
-        price_info = f" at ${self.current_price}" if self.current_price else ""
+        price_info = f" at {self.current_price}" if self.current_price else ""
         return f"{self.ticker} ({lots_info}{price_info})"
     
     def __repr__(self) -> str:
@@ -123,36 +151,44 @@ class Portfolio:
         """Return all assets in this portfolio."""
         return self.stocks + self.currencies
     
-    def update_prices(self, price_data: Dict[str, Decimal]) -> None:
+    def update_prices(self, price_data: Dict[str, Currency]) -> None:
         """Update the prices of all assets in this portfolio."""
         for asset in self.all_assets():
             if asset.ticker in price_data:
-                asset.current_price = price_data[asset.ticker]
+                price = price_data[asset.ticker]
+                assert isinstance(price, Currency)
+                asset.current_price = price
     
     @property
-    def total_value(self) -> Decimal:
+    def total_value(self) -> Currency:
         """Return the total value of this portfolio."""
-        return Decimal(sum(
-            (asset.current_value or Decimal(0)) 
-            for asset in self.all_assets()
-        ))
+        total = Currency(0)
+        for asset in self.all_assets():
+            if asset.current_value:
+                total += asset.current_value
+        return total
     
     @property
-    def total_cost_basis(self) -> Decimal:
+    def total_cost_basis(self) -> Currency:
         """Return the total cost basis of this portfolio."""
-        return Decimal(sum(asset.cost_basis for asset in self.all_assets()))
+        total = Currency(0)
+        for asset in self.all_assets():
+            total += asset.cost_basis
+        return total
     
     @property
-    def total_profit_loss(self) -> Decimal:
+    def total_profit_loss(self) -> Currency:
         """Return the total profit/loss of this portfolio."""
+        # Use subtraction directly
         return self.total_value - self.total_cost_basis
     
     @property
-    def profit_loss_percentage(self) -> Decimal:
+    def profit_loss_percentage(self) -> Decimal | None:
         """Return the profit/loss percentage of this portfolio."""
-        if self.total_cost_basis == 0:
-            return Decimal(0)
-        return (self.total_profit_loss / self.total_cost_basis) * 100
+        if not self.total_cost_basis or self.total_cost_basis._value == 0:
+            return None
+        # Need to use ._value here as we want a raw Decimal percentage
+        return (self.total_profit_loss._value / self.total_cost_basis._value) * 100
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Portfolio':
@@ -171,17 +207,40 @@ class Portfolio:
             
         return portfolio
         
-    def __str__(self) -> str:
+    def __str__(self, with_basis=False) -> str:
         """Return a string representation of this portfolio."""
         assets_count = len(self.stocks) + len(self.currencies)
-        stocks_repr = ", ".join(asset.ticker for asset in self.stocks)
-        currencies_repr = ", ".join(asset.ticker for asset in self.currencies)
-        total_value = ""
+        result = [f"Portfolio '{self.name}' with {assets_count} assets"]
+        
+        # Add total value or cost basis if available
         if self.total_value:
-            total_value = f"  Value: ${format_number(self.total_value)}"
-        elif self.total_cost_basis:
-            total_value = f"  Cost Basis: ${format_number(self.total_cost_basis)}"
-        return f"Portfolio '{self.name}' with {assets_count} assets{total_value}\n  Stocks: {stocks_repr}\n  Currencies: {currencies_repr}"
+            result.append(f"Total Value: {self.total_value}")
+        if with_basis:
+            result.append(f"Total Cost Basis: {self.total_cost_basis}")
+        
+        # Add stocks
+        if self.stocks:
+            result.append("Stocks:")
+            for asset in self.stocks:
+                value_str = ""
+                if asset.current_value is not None:
+                    value_str = f" - Value: {asset.current_value}"
+                elif asset.cost_basis:
+                    value_str = f" - Cost Basis: {asset.cost_basis}"
+                result.append(f"  {asset.ticker}{value_str}")
+        
+        # Add currencies
+        if self.currencies:
+            result.append("Currencies:")
+            for asset in self.currencies:
+                value_str = ""
+                if asset.current_value:
+                    value_str = f" - Value: {asset.current_value}"
+                elif asset.cost_basis:
+                    value_str = f" - Cost Basis: {asset.cost_basis}"
+                result.append(f"  {asset.ticker}{value_str}")
+                
+        return "\n".join(result)
     
     def __repr__(self) -> str:
         """Return a detailed representation of this portfolio."""
@@ -189,12 +248,55 @@ class Portfolio:
         currencies_repr = ", ".join(asset.ticker for asset in self.currencies)
         return f"Portfolio(name='{self.name}', stocks=[{stocks_repr}], currencies=[{currencies_repr}])"
 
-def parse_number(value: Any) -> Decimal:
-    """Parse a number from a string."""
-    str_value = str(value)
-    return Decimal(str_value.replace(",", ""))
+def parse_number(value: Any) -> Currency:
+    """Parse a number from a string, optionally with currency type.
+    
+    Examples:
+        "123.45" -> Currency(123.45, USD)
+        "123.45 USD" -> Currency(123.45, USD)
+        "123.45 BTC" -> Currency(123.45, BTC)
+    
+    Note: This is for parsing currency values, not quantities (units/shares).
+    """
+    from ..core.currency import Currency, CurrencyType
+    
+    str_value = str(value).strip()
+    
+    # Check if there's a currency code at the end
+    parts = str_value.split()
+    
+    # Default to USD if no currency specified
+    currency_type = CurrencyType.USD
+    
+    # If format is "number CURRENCY", extract the currency type
+    if len(parts) >= 2:
+        try:
+            # Try to get currency from the last part
+            currency_code = parts[-1].upper()
+            currency_type = CurrencyType[currency_code]
+            # Remove the currency part for number parsing
+            str_value = ' '.join(parts[:-1])
+        except (KeyError, ValueError):
+            # If the currency code isn't valid, assume it's part of the number or description
+            pass
+    
+    # Parse the numerical value
+    number_value = Decimal(str_value.replace(",", ""))
+    
+    # Create and return a Currency object
+    return Currency(number_value, currency_type)
 
-def format_number(value: Decimal) -> str:
-    """Format a number as a string with commas."""
-    return f"{value:,f}"
+def format_number(value: Any) -> str:
+    """Format a number as a string with commas.
+    
+    Can handle both Decimal and Currency objects.
+    """
+    from ..core.currency import Currency
+    
+    if isinstance(value, Currency):
+        # Use the Currency's own formatting if it's a Currency object
+        return str(value)
+    else:
+        # Handle Decimal or other numeric types
+        return f"{value:,f}"
     
