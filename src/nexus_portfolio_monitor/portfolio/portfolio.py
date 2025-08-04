@@ -163,18 +163,21 @@ class Asset:
         """Return a string representation of this asset."""
         lots_info = f" ({len(self.lots)} lot{len(self.lots) == 1 and '' or 's'})" if self.lots else ""
 
+        profile_loss_info = ""
         if self.lots:
             price_info = f"{format_number(self.total_quantity)}"
             if self.current_price:
                 price_info += f" @ {self.current_price} = {self.current_value}"
             else:
                 price_info += f" Cost: {self.cost_basis}"
+            if self.profit_loss:
+                profile_loss_info += f" {self.profit_loss}"
         elif self.current_price:
             price_info = f"{self.current_price}"
         else:
             price_info = ""
 
-        return f"{self.ticker} {price_info}{lots_info}"
+        return f"{self.ticker:<7} {price_info:<40}{lots_info}{profile_loss_info:>25}"
     
     def __repr__(self) -> str:
         """Return a detailed representation of this asset."""
