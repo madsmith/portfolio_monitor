@@ -75,7 +75,7 @@ def main():
         print(f"  Total Cost Basis: ${portfolio.total_cost_basis:.2f}")
         print(f"  Profit/Loss: ${portfolio.total_profit_loss:.2f} ({portfolio.profit_loss_percentage:.2f}%)")
         
-        for asset in portfolio.all_assets():
+        for asset in portfolio.assets():
             if asset.lots:  # Only show P/L for assets with lots
                 current = asset.current_price or Decimal("0")
                 print(f"  {asset.ticker}: ${current} (P/L: ${asset.profit_loss:.2f}, {asset.profit_loss_percentage:.2f}%)")

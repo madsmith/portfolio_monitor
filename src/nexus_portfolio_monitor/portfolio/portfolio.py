@@ -53,7 +53,7 @@ class Asset:
     ticker: str
     lots: List[Lot] = field(default_factory=list)
     current_price: Currency | None = None
-    asset_type: Literal["stock", "currency"] = "stock"
+    asset_type: Literal["stock", "currency", "crypto"] = "stock"
     
     @property
     def total_quantity(self) -> Decimal:
@@ -115,7 +115,7 @@ class Asset:
         return (self.profit_loss._value / self.cost_basis._value) * 100
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], asset_type: Literal["stock", "currency"] = "stock") -> 'Asset':
+    def from_dict(cls, data: Dict[str, Any], asset_type: Literal["stock", "currency", "crypto"] = "stock") -> 'Asset':
         """Create an Asset from a dictionary."""
         lots = [Lot.from_dict(lot_data) for lot_data in data.get('lots', [])]
         return cls(
@@ -127,7 +127,11 @@ class Asset:
     def __str__(self) -> str:
         """Return a string representation of this asset."""
         lots_info = f"{len(self.lots)} lots {self.total_quantity} units" if self.lots else "monitoring only"
-        price_info = f" at {self.current_price}" if self.current_price else f" Cost: {self.cost_basis}"
+        price_info = ""
+        if self.current_price:
+            price_info = f" at {self.current_price} = {self.profit_loss}"
+        elif self.cost_basis:
+            price_info = f" Cost: {self.cost_basis}"
         return f"{self.ticker} ({lots_info}{price_info})"
     
     def __repr__(self) -> str:
@@ -144,14 +148,15 @@ class Portfolio:
     name: str
     stocks: List[Asset] = field(default_factory=list)
     currencies: List[Asset] = field(default_factory=list)
+    crypto: List[Asset] = field(default_factory=list)
     
-    def all_assets(self) -> List[Asset]:
+    def assets(self) -> List[Asset]:
         """Return all assets in this portfolio."""
-        return self.stocks + self.currencies
+        return self.stocks + self.currencies + self.crypto
     
     def update_prices(self, price_data: Dict[str, Currency]) -> None:
         """Update the prices of all assets in this portfolio."""
-        for asset in self.all_assets():
+        for asset in self.assets():
             if asset.ticker in price_data:
                 price = price_data[asset.ticker]
                 assert isinstance(price, Currency)
@@ -161,7 +166,7 @@ class Portfolio:
     def total_value(self) -> Currency:
         """Return the total value of this portfolio."""
         total = Currency(0)
-        for asset in self.all_assets():
+        for asset in self.assets():
             if asset.current_value:
                 total += asset.current_value
         return total
@@ -170,7 +175,7 @@ class Portfolio:
     def total_cost_basis(self) -> Currency:
         """Return the total cost basis of this portfolio."""
         total = Currency(0)
-        for asset in self.all_assets():
+        for asset in self.assets():
             total += asset.cost_basis
         return total
     
@@ -193,21 +198,31 @@ class Portfolio:
         """Create a Portfolio from a dictionary."""
         portfolio = cls(name=data['name'])
         
-        # Load stocks
-        stocks_data = data.get('stocks', [])
-        for stock_data in stocks_data:
-            portfolio.stocks.append(Asset.from_dict(stock_data, "stock"))
-            
-        # Load currencies
-        currencies_data = data.get('currencies', [])
-        for currency_data in currencies_data:
-            portfolio.currencies.append(Asset.from_dict(currency_data, "currency"))
+        # Map asset types to their corresponding attribute names in Portfolio
+        asset_type_map = (
+            ("stock", "stocks"),
+            ("currency", "currencies"),
+            ("crypto", "crypto")
+        )
+
+        # Process each asset type
+        for asset_type, asset_type_key in asset_type_map:
+            source_assets = data.get(asset_type_key, [])
+            if source_assets:
+                # Get the correct list attribute from portfolio
+                asset_list: List[Asset] = getattr(portfolio, asset_type_key)
+                
+                # Add each asset to the appropriate list
+                for asset_data in source_assets:
+                    assert asset_type in ("stock", "currency", "crypto")
+                    asset = Asset.from_dict(asset_data, asset_type)
+                    asset_list.append(asset)
             
         return portfolio
         
     def __str__(self) -> str:
         """Return a string representation of this portfolio."""
-        assets_count = len(self.stocks) + len(self.currencies)
+        assets_count = len(self.stocks) + len(self.currencies) + len(self.crypto)
         result = [f"Portfolio '{self.name}' with {assets_count} assets"]
         
         # Add total value or cost basis if available
@@ -226,6 +241,12 @@ class Portfolio:
         if self.currencies:
             result.append("Currencies:")
             for asset in self.currencies:
+                result.append(f"  {asset}")
+                
+        # Add crypto
+        if self.crypto:
+            result.append("Crypto:")
+            for asset in self.crypto:
                 result.append(f"  {asset}")
                 
         return "\n".join(result)

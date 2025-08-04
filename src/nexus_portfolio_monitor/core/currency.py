@@ -73,6 +73,13 @@ CURRENCY_CONFIGS: Dict[CurrencyType, CurrencyConfig] = {
     CurrencyType.LTC: CurrencyConfig("LTC", "Litecoin", 8),
 }
 
+# Define equivalent currencies for arithmetic operations
+# Each entry is a set of currencies that can be used interchangeably
+EQUIVALENT_CURRENCIES = {
+    # USD and stable coins are treated as equivalent
+    frozenset({CurrencyType.USD, CurrencyType.USDT, CurrencyType.USDC}),
+}
+
 
 class Currency:
     """
@@ -81,6 +88,19 @@ class Currency:
     This class uses composition with Decimal for value representation and 
     adds currency-specific functionality.
     """
+    
+    @staticmethod
+    def are_equivalent_currencies(currency_type1: CurrencyType, currency_type2: CurrencyType) -> bool:
+        """Check if two currency types are equivalent for arithmetic operations."""
+        if currency_type1 == currency_type2:
+            return True
+            
+        # Check if they're in any equivalent currency set
+        for equivalent_set in EQUIVALENT_CURRENCIES:
+            if currency_type1 in equivalent_set and currency_type2 in equivalent_set:
+                return True
+                
+        return False
     
     # Default currency settings
     DEFAULT_PRECISION: ClassVar[int] = 4
@@ -229,8 +249,9 @@ class Currency:
     def __add__(self, other) -> 'Currency':
         """Add two Currency objects or a Currency and a number."""
         if isinstance(other, Currency):
-            if other.currency_type != self.currency_type:
+            if not self.are_equivalent_currencies(self.currency_type, other.currency_type):
                 raise ValueError(f"Cannot add currencies of different types: {self.currency_type.name} and {other.currency_type.name}")
+            # Keep the calling currency's type when doing math between equivalent currencies
             return Currency(self._value + other._value, self.currency_type)
         # Adding with a number or Decimal
         return Currency(self._value + other, self.currency_type)
@@ -238,8 +259,9 @@ class Currency:
     def __sub__(self, other) -> 'Currency':
         """Subtract two Currency objects or a Currency and a number."""
         if isinstance(other, Currency):
-            if other.currency_type != self.currency_type:
+            if not self.are_equivalent_currencies(self.currency_type, other.currency_type):
                 raise ValueError(f"Cannot subtract currencies of different types: {self.currency_type.name} and {other.currency_type.name}")
+            # Keep the calling currency's type when doing math between equivalent currencies
             return Currency(self._value - other._value, self.currency_type)
         # Subtracting a number or Decimal
         return Currency(self._value - other, self.currency_type)
@@ -290,31 +312,31 @@ class Currency:
             return (self.currency_type == other.currency_type and
                     self._value == other._value)
         return self._value == other
-    
+
     def __lt__(self, other) -> bool:
         if isinstance(other, Currency):
-            if self.currency_type != other.currency_type:
+            if not self.are_equivalent_currencies(self.currency_type, other.currency_type):
                 raise ValueError(f"Cannot compare currencies of different types: {self.currency_type.name} and {other.currency_type.name}")
             return self._value < other._value
         return self._value < other
     
     def __le__(self, other) -> bool:
         if isinstance(other, Currency):
-            if self.currency_type != other.currency_type:
+            if not self.are_equivalent_currencies(self.currency_type, other.currency_type):
                 raise ValueError(f"Cannot compare currencies of different types: {self.currency_type.name} and {other.currency_type.name}")
             return self._value <= other._value
         return self._value <= other
     
     def __gt__(self, other) -> bool:
         if isinstance(other, Currency):
-            if self.currency_type != other.currency_type:
+            if not self.are_equivalent_currencies(self.currency_type, other.currency_type):
                 raise ValueError(f"Cannot compare currencies of different types: {self.currency_type.name} and {other.currency_type.name}")
             return self._value > other._value
         return self._value > other
     
     def __ge__(self, other) -> bool:
         if isinstance(other, Currency):
-            if self.currency_type != other.currency_type:
+            if not self.are_equivalent_currencies(self.currency_type, other.currency_type):
                 raise ValueError(f"Cannot compare currencies of different types: {self.currency_type.name} and {other.currency_type.name}")
             return self._value >= other._value
         return self._value >= other

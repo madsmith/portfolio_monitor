@@ -9,6 +9,9 @@ from typing import List
 from nexus_portfolio_monitor.core.config import NexusConfig, load_config
 from nexus_portfolio_monitor.portfolio.loader import load_portfolios
 from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
+from nexus_portfolio_monitor.core.currency import Currency
+
+from polygon.rest.models.trades import CryptoTrade
 
 # Configure logging
 logging.basicConfig(
@@ -25,8 +28,8 @@ class MonitorService:
         """
         Initialize the monitor service
         """
-        self.config = config
-        self.portfolios = portfolios
+        self.config: NexusConfig = config
+        self.portfolios: List[Portfolio] = portfolios
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.get("polygon.api-key"))
         self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(config.get("polygon.api-key"))
 
@@ -61,7 +64,23 @@ class MonitorService:
         logger.info("Monitor stopped")
         
     async def _run(self) -> None:
-        await self.stop()
+
+        for portfolio in self.portfolios:
+            for asset in portfolio.assets():
+                if asset.asset_type == "crypto":
+                    trade = self._polygon_client.get_last_crypto_trade(
+                        from_=asset.ticker,
+                        to=Currency.DEFAULT_CURRENCY_TYPE.name
+                    )
+                    if isinstance(trade, CryptoTrade):
+                        asset.current_price = Currency(trade.price, Currency.DEFAULT_CURRENCY_TYPE)
+                    else:
+                        logger.warning(f"Unknown trade type: {type(trade)} {trade}")
+
+        # Print all assets
+        for portfolio in self.portfolios:
+            print(portfolio)
+            
         return
         """Internal run loop"""
         try:
@@ -144,7 +163,8 @@ async def run_service():
     except KeyboardInterrupt:
         pass
     finally:
-        await service.stop()
+        if service.running:
+            await service.stop()
 
 
 def main():

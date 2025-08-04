@@ -272,7 +272,7 @@ class TestPortfolio:
             stocks=sample_assets["stocks"],
             currencies=sample_assets["currencies"]
         )
-        all_assets = portfolio.all_assets()
+        all_assets = portfolio.assets()
         assert len(all_assets) == 2
         assert all_assets[0].ticker == "AAPL"
         assert all_assets[1].ticker == "BTC"
