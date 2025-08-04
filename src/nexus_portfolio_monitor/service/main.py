@@ -1,17 +1,22 @@
 import asyncio
+from dataclasses import dataclass
+from datetime import datetime, time as dtime
 import logging
 from pathlib import Path
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.exceptions import BadResponse
+from polygon.rest.models import LastTrade
+from polygon.rest.models.trades import CryptoTrade
 import time
 from typing import List
+from zoneinfo import ZoneInfo
 
 from nexus_portfolio_monitor.core.config import NexusConfig, load_config
 from nexus_portfolio_monitor.portfolio.loader import load_portfolios
 from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
 from nexus_portfolio_monitor.core.currency import Currency
 
-from polygon.rest.models.trades import CryptoTrade
+
 
 # Configure logging
 logging.basicConfig(
@@ -20,6 +25,12 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class AssetUpdateRecord:
+    ticker: str
+    price: Currency | None = None
+    time_updated: datetime | None = None
 
 class MonitorService:
     """Monitor service that runs in an asyncio event loop"""
@@ -64,42 +75,95 @@ class MonitorService:
         logger.info("Monitor stopped")
         
     async def _run(self) -> None:
+        """Internal run loop"""
+        update_interval = 60
+        
+        stocks: dict[str, AssetUpdateRecord] = {}
+        currencies: dict[str, AssetUpdateRecord] = {}
+        crypto: dict[str, AssetUpdateRecord] = {}
 
+        # Initialize update records for all assets
         for portfolio in self.portfolios:
             for asset in portfolio.assets():
-                if asset.asset_type == "crypto":
-                    trade = self._polygon_client.get_last_crypto_trade(
-                        from_=asset.ticker,
-                        to=Currency.DEFAULT_CURRENCY_TYPE.name
-                    )
-                    if isinstance(trade, CryptoTrade):
-                        asset.current_price = Currency(trade.price, Currency.DEFAULT_CURRENCY_TYPE)
+                if asset.asset_type == "stock":
+                    stocks[asset.ticker] = AssetUpdateRecord(asset.ticker)
+                elif asset.asset_type == "currency":
+                    currencies[asset.ticker] = AssetUpdateRecord(asset.ticker)
+                elif asset.asset_type == "crypto":
+                    crypto[asset.ticker] = AssetUpdateRecord(asset.ticker)
+
+        # print(f"Stocks: {len(stocks)}")
+        # for ticker, record in stocks.items():
+        #     print(f"  {ticker}: {record}")
+        # print(f"Currencies: {len(currencies)}")
+        # for ticker, record in currencies.items():
+        #     print(f"  {ticker}: {record}")
+        # print(f"Crypto: {len(crypto)}")
+        # for ticker, record in crypto.items():
+        #     print(f"  {ticker}: {record}")
+
+        try:
+            while self.running:
+                
+                # Update all assets
+                for stock_ticker, record in stocks.items():
+                    if not self.is_market_open():
+                        continue
+
+                    now = datetime.now()
+
+                    if record.time_updated and (now - record.time_updated).total_seconds() < update_interval:
+                        continue
+
+                    # logger.info(f"Updating stock {stock_ticker}")
+                    trade = self._polygon_client.get_last_trade(ticker=stock_ticker)
+                    if isinstance(trade, LastTrade):
+                        record.price = Currency(trade.price, Currency.DEFAULT_CURRENCY_TYPE)
+                        record.time_updated = datetime.now()
                     else:
                         logger.warning(f"Unknown trade type: {type(trade)} {trade}")
+                        await asyncio.sleep(60)
+                
+                for crypto_ticker, record in crypto.items():
+                    now = datetime.now()
 
-        # Print all assets
-        for portfolio in self.portfolios:
-            print(portfolio)
-            
-        return
-        """Internal run loop"""
-        try:
-            # self._polygon_websocket_client.run(handle_msg=lambda msg: logger.info(msg))
-            # self._polygon_websocket_client.connect(processor=lambda msg: logger.info(msg))
+                    if record.time_updated and (now - record.time_updated).total_seconds() < update_interval:
+                        continue
 
-            last_update = 0
-            update_interval = 60
-            while self.running:
-                try:
-                    self._dump_symbol("AAPL")
-                except BadResponse as e:
-                    logger.error(f"Error dumping symbol AAPL: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    # logger.info(f"Updating crypto {crypto_ticker}")
+                    trade = self._polygon_client.get_last_crypto_trade(
+                        from_=crypto_ticker,
+                        to=Currency.DEFAULT_CURRENCY_TYPE.name
+                    )
 
-                last_update = time.monotonic()
-                next_update = last_update + update_interval
-                await asyncio.sleep(next_update - last_update)
+                    if isinstance(trade, CryptoTrade):
+                        record.price = Currency(trade.price, Currency.DEFAULT_CURRENCY_TYPE)
+                        record.time_updated = datetime.now()
+                    else:
+                        logger.warning(f"Unknown trade type: {type(trade)} {trade}")
+                        await asyncio.sleep(60)
+
+                # Update portfolios with all prices
+                price_data: dict[str, Currency] = {
+                    ticker: record.price
+                    for d in (stocks, currencies, crypto)
+                    for ticker, record in d.items()
+                    if record.price
+                }
+
+                for portfolio in self.portfolios:
+                    portfolio.update_prices(price_data)
+
+                logger.info("Portfolios updated") 
+
+
+                print("=== Portfolios     ===")
+                for portfolio in self.portfolios:
+                    print(portfolio)
+                print("=== End Portfolios ===")
+
+                await asyncio.sleep(update_interval)
+
         except asyncio.CancelledError:
             logger.debug("Monitor loop cancelled")
             raise
@@ -109,31 +173,24 @@ class MonitorService:
             traceback.print_exc()
             self.running = False
 
-    def _dump_symbol(self, ticker: str):
-        """Dump all available data for a symbol"""
-        # List Aggregates (Bars)
-        aggs = []
-        for a in self._polygon_client.list_aggs(ticker=ticker, multiplier=1, timespan="minute", from_="2025-06-01", to="2025-07-01", limit=50000):
-            aggs.append(a)
-        print(aggs)
+    def is_market_open(self, extended: bool = False) -> bool:
+        """Return True if the U.S. stock market is open now (Eastern Time).
 
-        # Get Last Trade
-        trade = self._polygon_client.get_last_trade(ticker=ticker)
-        print(trade)
+        Args:
+            extended: If True, includes pre-market (4–9:30) and after-hours (16–20).
+        """
+        eastern = ZoneInfo("America/New_York")
+        now = datetime.now(tz=eastern)
 
-        # List Trades
-        trades = self._polygon_client.list_trades(ticker=ticker)
-        for trade in trades:
-            print(trade)
+        if now.weekday() >= 5:  # Saturday or Sunday
+            return False
 
-        # Get Last Quote
-        quote = self._polygon_client.get_last_quote(ticker=ticker)
-        print(quote)
+        t = now.time()
 
-        # List Quotes
-        quotes = self._polygon_client.list_quotes(ticker=ticker)
-        for quote in quotes:
-            print(quote)
+        if extended:
+            return dtime(4, 0) <= t <= dtime(20, 0)
+        else:
+            return dtime(9, 30) <= t <= dtime(16, 0)
 
 async def run_service():
     """Run the monitor service until interrupted"""
@@ -146,7 +203,7 @@ async def run_service():
 
     portfolios = load_portfolios(path)
 
-    print("=== Portfolios ===")
+    print("=== Portfolios     ===")
     for portfolio in portfolios:
         print(portfolio)
     print("=== End Portfolios ===")
