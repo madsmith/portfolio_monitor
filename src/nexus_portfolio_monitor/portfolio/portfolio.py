@@ -63,7 +63,7 @@ class Lot:
 
     def __str__(self) -> str:
         """Return a string representation of this lot."""
-        base = f"{self.quantity} @ {self.price}"
+        base = f"{format_number(self.quantity)} @ {self.price}"
         if self.fees or self.rebates:
             extras = []
             if self.fees:
@@ -161,13 +161,20 @@ class Asset:
 
     def __str__(self) -> str:
         """Return a string representation of this asset."""
-        lots_info = f"{len(self.lots)} lots {self.total_quantity} units" if self.lots else "monitoring only"
-        price_info = ""
-        if self.current_price:
-            price_info = f" at {self.current_price} = {self.profit_loss}"
-        elif self.cost_basis:
-            price_info = f" Cost: {self.cost_basis}"
-        return f"{self.ticker} ({lots_info}{price_info})"
+        lots_info = f" ({len(self.lots)} lot{len(self.lots) == 1 and '' or 's'})" if self.lots else ""
+
+        if self.lots:
+            price_info = f"{format_number(self.total_quantity)}"
+            if self.current_price:
+                price_info += f" @ {self.current_price} = {self.current_value}"
+            else:
+                price_info += f" Cost: {self.cost_basis}"
+        elif self.current_price:
+            price_info = f"{self.current_price}"
+        else:
+            price_info = ""
+
+        return f"{self.ticker} {price_info}{lots_info}"
     
     def __repr__(self) -> str:
         """Return a detailed representation of this asset."""
