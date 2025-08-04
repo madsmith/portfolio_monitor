@@ -15,13 +15,27 @@ class Lot:
     """
     Represents a lot of an asset purchased at a specific price.
     """
-    quantity: Decimal  # The number of units/shares (not a Currency)
-    price: Currency    # Price per unit
+    quantity: Decimal                # The number of units/shares (not a Currency)
+    price: Currency                  # Price per unit
     date: datetime | None = None
+    fees: Currency | None = None     # Fees associated with acquisition (e.g., commissions)
+    rebates: Currency | None = None  # Rebates or refunds of fees
     
     def value(self) -> Currency:
         """Return the value of this lot at the purchase price."""
         return self.quantity * self.price
+    
+    def cost_basis(self) -> Currency:
+        """Return the total cost basis including fees (minus rebates)."""
+        total_cost = self.quantity * self.price
+        
+        if self.fees:
+            total_cost += self.fees
+        
+        if self.rebates:
+            total_cost -= self.rebates
+            
+        return total_cost
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Lot':
@@ -30,19 +44,38 @@ class Lot:
         quantity_str = str(data.get('quantity', data.get('amount', 0)))
         quantity = Decimal(quantity_str.replace(',', ''))
         
+        # Parse fees and rebates if present
+        fees = None
+        if 'fees' in data:
+            fees = Currency.parse_number(data['fees'])
+            
+        rebates = None
+        if 'rebates' in data:
+            rebates = Currency.parse_number(data['rebates'])
+        
         return cls(
             quantity=quantity,
             price=Currency.parse_number(data.get('price', 0)),
-            date=datetime.strptime(data.get('date', ''), '%Y-%m-%d') if data.get('date', '') else None
+            date=datetime.strptime(data.get('date', ''), '%Y-%m-%d') if data.get('date', '') else None,
+            fees=fees,
+            rebates=rebates
         )
 
     def __str__(self) -> str:
         """Return a string representation of this lot."""
-        return f"{self.quantity} @ {self.price}"
+        base = f"{self.quantity} @ {self.price}"
+        if self.fees or self.rebates:
+            extras = []
+            if self.fees:
+                extras.append(f"fees: {self.fees}")
+            if self.rebates:
+                extras.append(f"rebates: {self.rebates}")
+            return f"{base} ({', '.join(extras)})"
+        return base
     
     def __repr__(self) -> str:
         """Return a detailed representation of this lot."""
-        return f"Lot(quantity={self.quantity}, price={self.price})"
+        return f"Lot(quantity={self.quantity}, price={self.price}, fees={self.fees}, rebates={self.rebates})"
 
 
 @dataclass
@@ -68,17 +101,19 @@ class Asset:
         
         If no lots are present, returns a Currency with value 0. Otherwise cost basis is computed in
         the currency of the first lot's price.  All lots must by priced at the same currency.
+        Cost basis includes the purchase price plus any fees minus any rebates.
         """
         if not self.lots:
             return Currency(0)
         
         # Use the currency type of the first lot's price for consistency
         currency_type = self.lots[0].price.currency_type
-        # Sum up all lot values directly
+        # Sum up all lot cost bases
         result = Currency(0, currency_type)
         for lot in self.lots:
-            assert lot.value().currency_type == currency_type, f"Currency type mismatch: {lot.value().currency_type} != {currency_type}"
-            result += lot.value()
+            assert lot.price.currency_type == currency_type, f"Currency type mismatch: {lot.price.currency_type} != {currency_type}"
+            # Use the new cost_basis method which factors in fees and rebates
+            result += lot.cost_basis()
         return result
     
     @property
