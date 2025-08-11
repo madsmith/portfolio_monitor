@@ -7,12 +7,14 @@ from polygon.rest.models.trades import CryptoTrade
 from polygon.websocket import CurrencyAgg, Market
 from polygon.websocket.models import Feed, WebSocketMessage
 from typing import List
+from urllib3.exceptions import RequestError
 from zoneinfo import ZoneInfo
 
 from nexus_portfolio_monitor.core.config import NexusConfig
 from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
 from nexus_portfolio_monitor.core.currency import Currency
 from nexus_portfolio_monitor.service.types import AssetUpdateRecord
+
 
 logger = logging.getLogger(__name__)
 
@@ -131,8 +133,12 @@ class MonitorService:
                     print(f"Updating stock {stock_ticker}")
                     try:
                         trade = self._polygon_client.get_previous_close_agg(ticker=stock_ticker)
+                    except RequestError as e:
+                        logger.warning(f"Error updating stock {stock_ticker}: Waiting 60 seconds")
+                        await asyncio.sleep(60)
+                        continue
                     except BaseException as e:
-                        logger.exception(f"Error updating stock {stock_ticker}: {e}")
+                        logger.exception(f"Error updating stock {stock_ticker}: {e} [{type(e)}]")
                         await asyncio.sleep(60)
                         continue
                     if isinstance(trade, list):
