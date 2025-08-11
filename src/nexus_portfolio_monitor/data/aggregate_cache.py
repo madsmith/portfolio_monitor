@@ -29,8 +29,8 @@ class Aggregate:
 class AggregateCache:
     CURRENT_SCHEMA_VERSION = 1
 
-    def __init__(self, cache_file: Path):
-        self._cache_file = cache_file
+    def __init__(self, cache_file: Path | str):
+        self._cache_file = Path(cache_file)
         self._memory_cache_age = timedelta(days=7)
 
         self._is_initialized = False
@@ -158,7 +158,7 @@ class AggregateCache:
         if not self._is_initialized:
             self.initialize()
 
-        assert self._cache_file.exists(), "Cache file does not exist"
+        assert self._cache_file.exists(), f"Cache file: {self._cache_file} does not exist"
 
         with sqlite3.connect(self._cache_file) as conn:
             cursor = conn.cursor()
