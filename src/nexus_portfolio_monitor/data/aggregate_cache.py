@@ -19,7 +19,7 @@ class Aggregate:
     high: float
     low: float
     close: float
-    volume: int
+    volume: float
 
     @property
     def timestamp_ms(self) -> int:
@@ -128,7 +128,7 @@ class AggregateCache:
                 high REAL,
                 low REAL,
                 close REAL,
-                volume INTEGER,
+                volume REAL,
                 PRIMARY KEY (symbol, date)
             )
         """)
