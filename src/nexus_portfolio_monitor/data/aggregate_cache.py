@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import logging
 from pathlib import Path
 import sqlite3
+from zoneinfo import ZoneInfo
 
 from sortedcontainers import SortedDict
 
@@ -20,6 +21,11 @@ class Aggregate:
     low: float
     close: float
     volume: float
+    
+    def __post_init__(self):
+        """Validate that the date is timezone-aware"""
+        if self.date.tzinfo is None:
+            raise ValueError(f"Aggregate date must be timezone-aware. Got: {self.date}")
 
     @property
     def timestamp_ms(self) -> int:
@@ -123,26 +129,26 @@ class AggregateCache:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS aggregates (
                 symbol TEXT,
-                date INTEGER,  -- Store as milliseconds since epoch
+                date_utc INTEGER,  -- Store as milliseconds since epoch
                 open REAL,
                 high REAL,
                 low REAL,
                 close REAL,
                 volume REAL,
-                PRIMARY KEY (symbol, date)
+                PRIMARY KEY (symbol, date_utc)
             )
         """)
             
         # Create index for efficient range queries
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_aggregates_symbol_date 
-            ON aggregates(symbol, date)
+            ON aggregates(symbol, date_utc)
         """)
         
         # Index for time-based queries across all symbols
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_aggregates_date 
-            ON aggregates(date)
+            CREATE INDEX IF NOT EXISTS idx_aggregates_date_utc 
+            ON aggregates(date_utc)
         """)
         
     async def wait_for_completion(self):
@@ -163,23 +169,23 @@ class AggregateCache:
         with sqlite3.connect(self._cache_file) as conn:
             cursor = conn.cursor()
             
-            cache_time_ms = ms_from_datetime(datetime.now() - self._memory_cache_age)
+            utc_time_ms = ms_from_datetime(datetime.now(ZoneInfo("UTC")) - self._memory_cache_age)
             cursor.execute(
-                "SELECT * FROM aggregates WHERE date >= ?",
-                (cache_time_ms,)
+                "SELECT * FROM aggregates WHERE date_utc >= ?",
+                (utc_time_ms,)
             )
 
             rows = cursor.fetchall()
             for row in rows:
                 symbol: SymbolT = row[0]
-                date_ms: int = row[1]
+                date_utc_ms: int = row[1]
                 open: float = row[2]
                 high: float = row[3]
                 low: float = row[4]
                 close: float = row[5]
                 volume: int = row[6]
 
-                date = datetime_from_ms(date_ms)
+                date = datetime_from_ms(date_utc_ms, ZoneInfo("UTC"))
                 aggregate = Aggregate(symbol, date, open, high, low, close, volume)
                 await self.add(aggregate)
         
@@ -234,7 +240,7 @@ class AggregateCache:
         with sqlite3.connect(self._cache_file) as conn:
             cursor = conn.cursor()
             cursor.executemany(
-                "INSERT OR REPLACE INTO aggregates (symbol, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO aggregates (symbol, date_utc, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
                     (agg.symbol, agg.timestamp_ms, agg.open, agg.high, agg.low, agg.close, agg.volume)
                     for agg in aggregates
@@ -247,8 +253,18 @@ class AggregateCache:
             return None
         return self._memory_cache[symbol].peekitem(-1)[1]
 
-def datetime_from_ms(ms: int) -> datetime:
-    return datetime.fromtimestamp(ms / 1000)
+def datetime_from_ms(ms: int, tz: ZoneInfo) -> datetime:
+    assert tz is not None, "Timezone must be specified"
+    return datetime.fromtimestamp(ms / 1000, tz)
 
 def ms_from_datetime(dt: datetime) -> int:
-    return int(dt.timestamp() * 1000)
+    """
+    Convert datetime to milliseconds since epoch, ensuring datetime is timezone aware
+    and converting to UTC first.
+    """
+    if dt.tzinfo is None:
+        raise ValueError(f"Datetime must be timezone-aware. Got: {dt}")
+    
+    # Convert to UTC if not already
+    utc_dt = dt.astimezone(ZoneInfo("UTC"))
+    return int(utc_dt.timestamp() * 1000)
