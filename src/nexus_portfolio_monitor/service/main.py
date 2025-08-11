@@ -4,10 +4,10 @@ from datetime import datetime, time as dtime
 import logging
 from pathlib import Path
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
-from polygon.exceptions import BadResponse
-from polygon.rest.models import LastTrade
+from polygon.rest.aggs import PreviousCloseAgg
 from polygon.rest.models.trades import CryptoTrade
-import time
+from polygon.websocket import CurrencyAgg, Market
+from polygon.websocket.models import Feed, WebSocketMessage
 from typing import List
 from zoneinfo import ZoneInfo
 
@@ -15,7 +15,6 @@ from nexus_portfolio_monitor.core.config import NexusConfig, load_config
 from nexus_portfolio_monitor.portfolio.loader import load_portfolios
 from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
 from nexus_portfolio_monitor.core.currency import Currency
-
 
 
 # Configure logging
@@ -42,7 +41,11 @@ class MonitorService:
         self.config: NexusConfig = config
         self.portfolios: List[Portfolio] = portfolios
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.get("polygon.api-key"))
-        self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(config.get("polygon.api-key"))
+        self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(
+            config.get("polygon.api-key"),
+            Feed.RealTime,
+            market = Market.Crypto
+        )
 
         self.running = False
         self._task: asyncio.Task | None = None
@@ -74,9 +77,32 @@ class MonitorService:
             self._task = None
         logger.info("Monitor stopped")
         
+    async def test_streaming(self):
+        print("Streaming test")
+        try:
+
+            self._polygon_websocket_client.subscribe("XAS.XRP-USD, XAS.BTC-USD, XAS.ETH-USD")
+            # self._polygon_websocket_client.subscribe("XAS.*")
+
+            async def handle_msg(msgs: List[WebSocketMessage]):
+                for msg in msgs:
+                    if isinstance(msg, CurrencyAgg):
+                        change_percent = (msg.close - msg.open) / msg.open
+                        if abs(change_percent) > 0.00001:
+                            print(f"  {msg.pair + ":":<10} {change_percent:<20.2%} Open: {msg.open} Close: {msg.close}")
+
+            await self._polygon_websocket_client.connect(handle_msg)
+        except Exception as e:
+            logger.exception(f"Error in streaming test: {e}")
+
+
     async def _run(self) -> None:
+
+        # return await self.test_streaming()
+
         """Internal run loop"""
         update_interval = 60
+        stock_update_interval = 24 * 60 * 60
         
         stocks: dict[str, AssetUpdateRecord] = {}
         currencies: dict[str, AssetUpdateRecord] = {}
@@ -107,18 +133,28 @@ class MonitorService:
                 
                 # Update all assets
                 for stock_ticker, record in stocks.items():
-                    if not self.is_market_open():
-                        continue
+                    # if not self.is_market_open():
+                    #     continue
 
                     now = datetime.now()
 
-                    if record.time_updated and (now - record.time_updated).total_seconds() < update_interval:
+                    if record.time_updated and (now - record.time_updated).total_seconds() < stock_update_interval:
                         continue
 
                     # logger.info(f"Updating stock {stock_ticker}")
-                    trade = self._polygon_client.get_last_trade(ticker=stock_ticker)
-                    if isinstance(trade, LastTrade):
-                        record.price = Currency(trade.price, Currency.DEFAULT_CURRENCY_TYPE)
+                    # trade = self._polygon_client.get_last_trade(ticker=stock_ticker)
+                    print(f"Updating stock {stock_ticker}")
+                    try:
+                        trade = self._polygon_client.get_previous_close_agg(ticker=stock_ticker)
+                    except BaseException as e:
+                        logger.exception(f"Error updating stock {stock_ticker}: {e}")
+                        await asyncio.sleep(60)
+                        continue
+                    if isinstance(trade, list):
+                        trade = trade[0]
+                    if isinstance(trade, PreviousCloseAgg):
+                        print(f"  {stock_ticker}: {trade}")
+                        record.price = Currency(trade.close, Currency.DEFAULT_CURRENCY_TYPE)
                         record.time_updated = datetime.now()
                     else:
                         logger.warning(f"Unknown trade type: {type(trade)} {trade}")

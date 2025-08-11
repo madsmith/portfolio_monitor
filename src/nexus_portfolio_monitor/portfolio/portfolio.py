@@ -6,9 +6,13 @@ Contains classes for portfolios, assets and lots.
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+import logging
+import re
 from typing import List, Dict, Any, Literal
-from nexus_portfolio_monitor.core.currency import Currency
 
+from nexus_portfolio_monitor.core.currency import Currency, CurrencyType
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Lot:
@@ -56,7 +60,7 @@ class Lot:
         return cls(
             quantity=quantity,
             price=Currency.parse_number(data.get('price', 0)),
-            date=datetime.strptime(data.get('date', ''), '%Y-%m-%d') if data.get('date', '') else None,
+            date=parse_date(data.get('date', '')),
             fees=fees,
             rebates=rebates
         )
@@ -303,7 +307,8 @@ class Portfolio:
         return f"Portfolio(name='{self.name}', stocks=[{stocks_repr}], currencies=[{currencies_repr}])"
 
 def parse_number(value: Any) -> Currency:
-    """Parse a number from a string, optionally with currency type.
+    """
+    Parse a number from a string, optionally with currency type.
     
     Examples:
         "123.45" -> Currency(123.45, USD)
@@ -312,7 +317,6 @@ def parse_number(value: Any) -> Currency:
     
     Note: This is for parsing currency values, not quantities (units/shares).
     """
-    from ..core.currency import Currency, CurrencyType
     
     str_value = str(value).strip()
     
@@ -341,11 +345,11 @@ def parse_number(value: Any) -> Currency:
     return Currency(number_value, currency_type)
 
 def format_number(value: Any) -> str:
-    """Format a number as a string with commas.
+    """
+    Format a number as a string with commas.
     
     Can handle both Decimal and Currency objects.
     """
-    from ..core.currency import Currency
     
     if isinstance(value, Currency):
         # Use the Currency's own formatting if it's a Currency object
@@ -353,4 +357,54 @@ def format_number(value: Any) -> str:
     else:
         # Handle Decimal or other numeric types
         return f"{value:,f}"
+
+def parse_date(date_string: str) -> datetime | None:
+    """Parse a date string by first matching its pattern, then applying the correct format.
     
+    Args:
+        date_string: The date string to parse
+        
+    Returns:
+        Parsed datetime object or None if parsing fails
+    """
+    
+    if not date_string or not isinstance(date_string, str):
+        return None
+    
+    # Remove any leading/trailing whitespace
+    date_string = date_string.strip()
+    
+    # Define patterns and their corresponding formats
+    patterns = [
+        # YYYY-MM-DD
+        (r'^\d{4}-\d{1,2}-\d{1,2}$', '%Y-%m-%d'),
+        # YYYY/MM/DD
+        (r'^\d{4}/\d{1,2}/\d{1,2}$', '%Y/%m/%d'),
+        # YYYY.MM.DD
+        (r'^\d{4}\.\d{1,2}\.\d{1,2}$', '%Y.%m.%d'),
+        # MM/DD/YYYY - Attempt US variant format first
+        (r'^\d{1,2}/\d{1,2}/\d{4}$', '%m/%d/%Y'),
+        # DD/MM/YYYY
+        (r'^\d{1,2}/\d{1,2}/\d{4}$', '%d/%m/%Y'),
+        # MM-DD-YYYY - Attempt US variant format first
+        (r'^\d{1,2}-\d{1,2}-\d{4}$', '%m-%d-%Y'),
+        # DD-MM-YYYY
+        (r'^\d{1,2}-\d{1,2}-\d{4}$', '%d-%m-%Y'),
+        # MM.DD.YYYY - Attempt US variant format first
+        (r'^\d{1,2}\.\d{1,2}\.\d{4}$', '%m.%d.%Y'),
+        # DD.MM.YYYY
+        (r'^\d{1,2}\.\d{1,2}\.\d{4}$', '%d.%m.%Y'),
+    ]
+    
+    # Try patterns in order, taking first matching pattern
+    for pattern, fmt in patterns:
+        if re.match(pattern, date_string):
+            try:
+                return datetime.strptime(date_string, fmt)
+            except ValueError:
+                # If parsing fails, it might be an invalid date like Feb 30
+                continue
+    
+    # If we get here, none of the patterns or formats worked
+    logger.warning(f"Could not parse date '{date_string}' with any known format")
+    return None
