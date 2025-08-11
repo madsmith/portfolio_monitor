@@ -260,13 +260,19 @@ def polygon_timestamp_to_datetime(timestamp: int | float) -> datetime:
 
 def get_previous_close_datetime() -> datetime:
     """
-    Returns the datetime of the previous market close (4:00 PM Eastern)
-    Handles weekends but does not account for holidays
+    Returns the datetime of the most recent market close (4:00 PM Eastern)
+    If it's after 4:00 PM today, returns today's close time.
+    Handles weekends but does not account for holidays.
     """
     eastern = ZoneInfo("America/New_York")
     now = datetime.now(tz=eastern)
+    market_close_time = dtime(16, 0)  # 4:00 PM Eastern
     
-    # Start with the base date (before we adjust for weekends)
+    # If it's after market close today (and a weekday), use today's date
+    if now.weekday() < 5 and now.time() >= market_close_time:  # Weekday after 4:00 PM
+        return datetime.combine(now.date(), market_close_time, tzinfo=eastern)
+    
+    # Otherwise, find the previous market day
     if now.weekday() == 0:  # Monday
         base_date = now.date() - timedelta(days=3)  # Previous Friday
     elif now.weekday() == 6:  # Sunday
@@ -277,7 +283,7 @@ def get_previous_close_datetime() -> datetime:
     # Create a datetime at 4:00 PM on the determined date (market close time)
     market_close = datetime.combine(
         base_date,
-        dtime(16, 0),  # 4:00 PM Eastern
+        market_close_time,
         tzinfo=eastern
     )
     
