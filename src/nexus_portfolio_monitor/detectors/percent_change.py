@@ -1,0 +1,30 @@
+
+from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
+from nexus_portfolio_monitor.detectors.base import Alert, Detector
+
+
+class PercentChangeFromPreviousCloseDetector(Detector):
+    def __init__(self, threshold_pct: float = 0.03):
+        """Detector for significant percentage changes from previous close price
+        
+        Args:
+            threshold_pct: Percent change threshold that triggers an alert (default: 0.03 for 3%)
+        """
+        self.threshold_pct = threshold_pct
+        self.previous_closes: dict[str, float] = {}
+
+    def update(self, ticker: str, aggregate: Aggregate) -> Alert | None:
+        if ticker not in self.previous_closes:
+            self.previous_closes[ticker] = aggregate.close
+            return None
+        
+        prev_close = self.previous_closes[ticker]
+        pct = (aggregate.close - prev_close) / prev_close
+        
+        # Update previous close for next time
+        self.previous_closes[ticker] = aggregate.close
+        
+        if abs(pct) >= self.threshold_pct:
+            msg = f"{ticker}: {pct*100:.2f}% vs prev close ({prev_close:.4f})"
+            return Alert(ticker, "percent_change", abs(pct), msg, aggregate.date)
+        return None
