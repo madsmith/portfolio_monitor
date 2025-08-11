@@ -8,3 +8,4 @@ build/
 # Ignore private config
 config_private.yaml
 config/portfolios
+config/aggregate_cache.db
