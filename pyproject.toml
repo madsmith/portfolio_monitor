@@ -18,6 +18,7 @@ dependencies = [
     "asyncio>=3.4.3",
     "omegaconf>=2.3.0",
     "polygon-api-client>=1.15.3",
+    "sortedcontainers>=2.4.0",
 ]
 
 [project.scripts]
