@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 import logging
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.rest.aggs import PreviousCloseAgg
@@ -11,6 +11,7 @@ from urllib3.exceptions import RequestError
 from zoneinfo import ZoneInfo
 
 from nexus_portfolio_monitor.core.config import NexusConfig
+from nexus_portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
 from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
 from nexus_portfolio_monitor.core.currency import Currency
 from nexus_portfolio_monitor.service.types import AssetUpdateRecord
@@ -21,12 +22,13 @@ logger = logging.getLogger(__name__)
 class MonitorService:
     """Monitor service that runs in an asyncio event loop"""
     
-    def __init__(self, config: NexusConfig, portfolios: List[Portfolio]):
+    def __init__(self, config: NexusConfig, portfolios: List[Portfolio], aggregate_cache: AggregateCache):
         """
         Initialize the monitor service
         """
         self.config: NexusConfig = config
         self.portfolios: List[Portfolio] = portfolios
+        self.aggregate_cache: AggregateCache = aggregate_cache
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.get("polygon.api-key"))
         self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(
             config.get("polygon.api-key"),
@@ -49,6 +51,8 @@ class MonitorService:
         
     async def stop(self) -> None:
         """Stop the monitoring service"""
+        await self.aggregate_cache.wait_for_completion()
+
         if not self.running:
             logger.warning("Monitor service is not running")
             return
@@ -98,16 +102,21 @@ class MonitorService:
         # Initialize update records for all assets
         for portfolio in self.portfolios:
             for asset in portfolio.assets():
+                record = AssetUpdateRecord(asset.ticker)
+                aggregate = self.aggregate_cache.get_current(asset.ticker)
+                if aggregate:
+                    record.price = Currency(aggregate.close, Currency.DEFAULT_CURRENCY_TYPE)
+                    record.time_updated = aggregate.date
                 if asset.asset_type == "stock":
-                    stocks[asset.ticker] = AssetUpdateRecord(asset.ticker)
+                    stocks[asset.ticker] = record
                 elif asset.asset_type == "currency":
-                    currencies[asset.ticker] = AssetUpdateRecord(asset.ticker)
+                    currencies[asset.ticker] = record
                 elif asset.asset_type == "crypto":
-                    crypto[asset.ticker] = AssetUpdateRecord(asset.ticker)
+                    crypto[asset.ticker] = record
 
-        # print(f"Stocks: {len(stocks)}")
-        # for ticker, record in stocks.items():
-        #     print(f"  {ticker}: {record}")
+        print(f"Stocks: {len(stocks)}")
+        for ticker, record in stocks.items():
+            print(f"  {ticker}: {record}")
         # print(f"Currencies: {len(currencies)}")
         # for ticker, record in currencies.items():
         #     print(f"  {ticker}: {record}")
@@ -123,9 +132,13 @@ class MonitorService:
                     # if not self.is_market_open():
                     #     continue
 
-                    now = datetime.now()
+                    previous_close = get_previous_close_datetime()
 
-                    if record.time_updated and (now - record.time_updated).total_seconds() < stock_update_interval:
+                    if (
+                        record.time_updated 
+                        and (previous_close - record.time_updated).total_seconds() < stock_update_interval
+                    ):
+                        print(f"Skipping update for {stock_ticker} - too soon since previous close")
                         continue
 
                     # logger.info(f"Updating stock {stock_ticker}")
@@ -146,13 +159,36 @@ class MonitorService:
                     if isinstance(trade, PreviousCloseAgg):
                         print(f"  {stock_ticker}: {trade}")
                         record.price = Currency(trade.close, Currency.DEFAULT_CURRENCY_TYPE)
-                        record.time_updated = datetime.now()
+                        record.time_updated = datetime.now(ZoneInfo("UTC"))
+
+                        if (
+                            trade.timestamp is None 
+                            or trade.open is None 
+                            or trade.high is None 
+                            or trade.low is None 
+                            or trade.close is None 
+                            or trade.volume is None
+                        ):
+                            logger.warning(f"Invalid trade data for {stock_ticker}: {trade}")
+                            continue
+                        
+                        record_date = polygon_timestamp_to_datetime(trade.timestamp)
+                        aggregate = Aggregate(
+                            stock_ticker,
+                            record_date,
+                            trade.open,
+                            trade.high,
+                            trade.low,
+                            trade.close,
+                            trade.volume
+                        )
+                        await self.aggregate_cache.add(aggregate)
                     else:
                         logger.warning(f"Unknown trade type: {type(trade)} {trade}")
                         await asyncio.sleep(60)
                 
                 for crypto_ticker, record in crypto.items():
-                    now = datetime.now()
+                    now = datetime.now(ZoneInfo("UTC"))
 
                     if record.time_updated and (now - record.time_updated).total_seconds() < update_interval:
                         continue
@@ -165,7 +201,7 @@ class MonitorService:
 
                     if isinstance(trade, CryptoTrade):
                         record.price = Currency(trade.price, Currency.DEFAULT_CURRENCY_TYPE)
-                        record.time_updated = datetime.now()
+                        record.time_updated = datetime.now(ZoneInfo("UTC"))
                     else:
                         logger.warning(f"Unknown trade type: {type(trade)} {trade}")
                         await asyncio.sleep(60)
@@ -218,3 +254,31 @@ class MonitorService:
             return dtime(4, 0) <= t <= dtime(20, 0)
         else:
             return dtime(9, 30) <= t <= dtime(16, 0)
+
+def polygon_timestamp_to_datetime(timestamp: int | float) -> datetime:
+    return datetime.fromtimestamp(timestamp / 1000, ZoneInfo("UTC"))
+
+def get_previous_close_datetime() -> datetime:
+    """
+    Returns the datetime of the previous market close (4:00 PM Eastern)
+    Handles weekends but does not account for holidays
+    """
+    eastern = ZoneInfo("America/New_York")
+    now = datetime.now(tz=eastern)
+    
+    # Start with the base date (before we adjust for weekends)
+    if now.weekday() == 0:  # Monday
+        base_date = now.date() - timedelta(days=3)  # Previous Friday
+    elif now.weekday() == 6:  # Sunday
+        base_date = now.date() - timedelta(days=2)  # Previous Friday
+    else:
+        base_date = now.date() - timedelta(days=1)  # Previous day
+    
+    # Create a datetime at 4:00 PM on the determined date (market close time)
+    market_close = datetime.combine(
+        base_date,
+        dtime(16, 0),  # 4:00 PM Eastern
+        tzinfo=eastern
+    )
+    
+    return market_close

@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 from nexus_portfolio_monitor.core.config import load_config
+from nexus_portfolio_monitor.data.aggregate_cache import AggregateCache
 from nexus_portfolio_monitor.portfolio.loader import load_portfolios
 
 from nexus_portfolio_monitor.service.monitor import MonitorService
@@ -20,6 +21,8 @@ async def run_service():
 
     config = load_config()
     portfolio_path = config.get("nexus.portfolio_path")
+    aggregate_cache_path = config.get("nexus.aggregate_cache_path")
+    
     if not portfolio_path:
         raise ValueError("Portfolio path not configured")
     path = Path(portfolio_path)
@@ -31,7 +34,11 @@ async def run_service():
         print(portfolio)
     print("=== End Portfolios ===")
 
-    service = MonitorService(config, portfolios)
+    aggregate_cache = AggregateCache(aggregate_cache_path)
+    aggregate_cache.initialize()
+    await aggregate_cache.load()
+
+    service = MonitorService(config, portfolios, aggregate_cache)
     
     try:
         await service.start()

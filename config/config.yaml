@@ -1,4 +1,5 @@
 nexus:
   portfolio_path: "config/portfolios"
+  aggregate_cache_path: "config/aggregate_cache.db"
 polygon:
   api-key: "${private.polygon.api-key}"
