@@ -53,11 +53,11 @@ class MonitorService:
 
         self._detection_engine: DeviationEngine = DeviationEngine(
             detectors = [
-                PercentChangeFromPreviousCloseDetector(0.002),
-                VolumeSpikeDetector(lookback_period=60, threshold_mult=2.0),
-                MovingAverageDeviationDetector(period=60, threshold_pct=0.001),
+                PercentChangeFromPreviousCloseDetector(),
+                VolumeSpikeDetector(),
+                MovingAverageDeviationDetector(),
                 AverageTrueRangeMoveDetector(),
-                ZScoreReturnDetector(lookback_period=60, zscore_threshold=1.5)
+                ZScoreReturnDetector()
             ]
         )
 
