@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from nexus_portfolio_monitor.core.config import load_config
 from nexus_portfolio_monitor.portfolio import load_portfolios, Portfolio
+from nexus_portfolio_monitor.core.currency import Currency
 
 # Configure logging
 logging.basicConfig(
@@ -47,7 +48,7 @@ def main():
                 lots_info = f"{len(asset.lots)} lots" if asset.lots else "monitoring only"
                 print(f"    - {asset.symbol}: {lots_info}")
                 for i, lot in enumerate(asset.lots):
-                    print(f"      Lot {i+1}: {lot.amount} @ ${lot.price}")
+                    print(f"      Lot {i+1}: {lot.quantity} @ ${lot.price}")
         
         # Print currencies
         if portfolio.currencies:
@@ -56,15 +57,15 @@ def main():
                 lots_info = f"{len(asset.lots)} lots" if asset.lots else "monitoring only"
                 print(f"    - {asset.symbol}: {lots_info}")
                 for i, lot in enumerate(asset.lots):
-                    print(f"      Lot {i+1}: {lot.amount} @ ${lot.price}")
+                    print(f"      Lot {i+1}: {lot.quantity} @ ${lot.price}")
     
     # Simulate price updates
     print("\nSimulating price updates...")
     price_data = {
-        "AAPL": Decimal("175.50"),
-        "MSFT": Decimal("310.25"),
-        "GOOGL": Decimal("140.75"),
-        "X:BTCUSD": Decimal("45000.00"),
+        "AAPL": Currency("175.50"),
+        "MSFT": Currency("310.25"),
+        "GOOGL": Currency("140.75"),
+        "X:BTCUSD": Currency("45000.00"),
     }
     
     for portfolio in portfolios:
