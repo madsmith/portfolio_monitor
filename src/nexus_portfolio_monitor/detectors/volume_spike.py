@@ -8,6 +8,10 @@ from nexus_portfolio_monitor.detectors.base import Alert, Detector
 class VolumeSpikeDetector(Detector):
     """Detector for unusual spikes in trading volume"""
     
+    @property
+    def name(self) -> str:
+        return "volume_spike"
+    
     def __init__(self, lookback_period: int = 60, threshold_mult: float = 2.0):
         """
         Args:
@@ -43,6 +47,6 @@ class VolumeSpikeDetector(Detector):
             msg = f"{ticker}: Volume spike of {pct_increase:.2f}% over {self.lookback_period-1} sample avg"
             severity = aggregate.volume / avg_volume
             
-            return Alert(ticker, "volume_spike", severity, msg, aggregate.date)
+            return Alert(ticker, self.name, severity, msg, aggregate.date, aggregate)
             
         return None

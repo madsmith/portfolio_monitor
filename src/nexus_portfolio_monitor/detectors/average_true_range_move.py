@@ -7,6 +7,10 @@ from nexus_portfolio_monitor.detectors.base import Alert, Detector
 class AverageTrueRangeMoveDetector(Detector):
     """Detector for price moves that exceed a multiple of Average True Range"""
     
+    @property
+    def name(self) -> str:
+        return "average_true_range_move"
+    
     def __init__(self, period: int = 30, threshold_mult: float = 2.0):
         """
         Args:
@@ -68,6 +72,6 @@ class AverageTrueRangeMoveDetector(Detector):
             atr_multiple = current_range / atr
             msg = f"{ticker}: Range of {current_range:.2f} is {atr_multiple:.2f}x Average True Range ({self.period}-sample)"
             
-            return Alert(ticker, "average_true_range_move", atr_multiple, msg, aggregate.date)
+            return Alert(ticker, self.name, atr_multiple, msg, aggregate.date, aggregate)
             
         return None

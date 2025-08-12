@@ -8,6 +8,10 @@ from nexus_portfolio_monitor.detectors.base import Alert, Detector
 class ZScoreReturnDetector(Detector):
     """Detector for returns that deviate significantly from historical distribution"""
     
+    @property
+    def name(self) -> str:
+        return "zscore_return"
+    
     def __init__(self, lookback_period: int = 60, zscore_threshold: float = 2.0):
         """
         Args:
@@ -71,6 +75,6 @@ class ZScoreReturnDetector(Detector):
             direction = "positive" if zscore > 0 else "negative"
             msg = f"{ticker}: {direction} return with z-score of {zscore:.2f} (±{self.zscore_threshold} threshold)"
             
-            return Alert(ticker, "zscore_return", abs(zscore), msg, aggregate.date)
+            return Alert(ticker, self.name, abs(zscore), msg, aggregate.date, aggregate)
             
         return None

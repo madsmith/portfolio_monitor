@@ -4,6 +4,10 @@ from nexus_portfolio_monitor.detectors.base import Alert, Detector
 
 
 class PercentChangeFromPreviousCloseDetector(Detector):
+    @property
+    def name(self) -> str:
+        return "percent_change"
+        
     def __init__(self, threshold_pct: float = 0.03):
         """Detector for significant percentage changes from previous close price
         
@@ -26,5 +30,5 @@ class PercentChangeFromPreviousCloseDetector(Detector):
         
         if abs(pct) >= self.threshold_pct:
             msg = f"{ticker}: {pct*100:.2f}% vs prev close ({prev_close:.4f})"
-            return Alert(ticker, "percent_change", abs(pct), msg, aggregate.date)
+            return Alert(ticker, self.name, abs(pct), msg, aggregate.date, aggregate)
         return None

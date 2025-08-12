@@ -8,6 +8,10 @@ from nexus_portfolio_monitor.detectors.base import Alert, Detector
 class MovingAverageDeviationDetector(Detector):
     """Detector for price deviations from moving average"""
     
+    @property
+    def name(self) -> str:
+        return "moving_average_deviation"
+    
     def __init__(self, period: int = 60, threshold_pct: float = 0.05):
         """
         Args:
@@ -41,6 +45,6 @@ class MovingAverageDeviationDetector(Detector):
             direction = "above" if deviation_pct > 0 else "below"
             msg = f"{ticker}: Price {direction} {self.period}-sample moving average by {abs(deviation_pct)*100:.2f}%"
             
-            return Alert(ticker, "moving_average_deviation", abs(deviation_pct), msg, aggregate.date)
+            return Alert(ticker, self.name, abs(deviation_pct), msg, aggregate.date, aggregate)
             
         return None
