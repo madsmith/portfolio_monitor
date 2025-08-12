@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, time as dtime, timedelta
 import logging
+
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.rest.aggs import PreviousCloseAgg
 from polygon.rest.models.trades import CryptoTrade
@@ -15,6 +16,14 @@ from nexus_portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCac
 from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
 from nexus_portfolio_monitor.core.currency import Currency
 from nexus_portfolio_monitor.service.types import AssetUpdateRecord
+from nexus_portfolio_monitor.detectors import (
+    DeviationEngine,
+    AverageTrueRangeMoveDetector,
+    MovingAverageDeviationDetector,
+    PercentChangeFromPreviousCloseDetector,
+    VolumeSpikeDetector,
+    ZScoreReturnDetector
+)
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +43,16 @@ class MonitorService:
             config.get("polygon.api-key"),
             Feed.RealTime,
             market = Market.Crypto
+        )
+
+        self._detection_engine: DeviationEngine = DeviationEngine(
+            detectors = [
+                PercentChangeFromPreviousCloseDetector(),
+                VolumeSpikeDetector(),
+                MovingAverageDeviationDetector(),
+                AverageTrueRangeMoveDetector(),
+                ZScoreReturnDetector()
+            ]
         )
 
         self.running = False
@@ -114,9 +133,9 @@ class MonitorService:
                 elif asset.asset_type == "crypto":
                     crypto[asset.ticker] = record
 
-        print(f"Stocks: {len(stocks)}")
-        for ticker, record in stocks.items():
-            print(f"  {ticker}: {record}")
+        # print(f"Stocks: {len(stocks)}")
+        # for ticker, record in stocks.items():
+        #     print(f"  {ticker}: {record}")
         # print(f"Currencies: {len(currencies)}")
         # for ticker, record in currencies.items():
         #     print(f"  {ticker}: {record}")
@@ -133,6 +152,9 @@ class MonitorService:
                     #     continue
 
                     previous_close = get_previous_close_datetime()
+
+                    print(f"Previous close: {previous_close} vs {record.time_updated}")
+                    continue
 
                     if (
                         record.time_updated 
@@ -193,18 +215,72 @@ class MonitorService:
                     if record.time_updated and (now - record.time_updated).total_seconds() < update_interval:
                         continue
 
-                    # logger.info(f"Updating crypto {crypto_ticker}")
-                    trade = self._polygon_client.get_last_crypto_trade(
-                        from_=crypto_ticker,
-                        to=Currency.DEFAULT_CURRENCY_TYPE.name
-                    )
+                    crypto_conversion_symbol = f"X:{crypto_ticker}USD"
+                    logger.info(f"Updating crypto {crypto_conversion_symbol}")
 
-                    if isinstance(trade, CryptoTrade):
-                        record.price = Currency(trade.price, Currency.DEFAULT_CURRENCY_TYPE)
-                        record.time_updated = datetime.now(ZoneInfo("UTC"))
-                    else:
-                        logger.warning(f"Unknown trade type: {type(trade)} {trade}")
+                    try:
+                        agg_windows = self._polygon_client.get_aggs(
+                            crypto_conversion_symbol,
+                            multiplier=1,
+                            timespan="minute",
+                            from_=now - timedelta(minutes=1),
+                            to=now
+                        )
+                    except RequestError as e:
+                        logger.warning(f"Error updating crypto {crypto_ticker}: Waiting 60 seconds")
                         await asyncio.sleep(60)
+                        continue
+                    except BaseException as e:
+                        logger.exception(f"Error updating crypto {crypto_ticker}: {e} [{type(e)}]")
+                        await asyncio.sleep(60)
+                        continue
+
+                    if isinstance(agg_windows, list):
+                        if len(agg_windows) == 0:
+                            logger.warning("No aggregate windows found for {crypto_ticker}")
+                            continue
+                        elif len(agg_windows) > 1:
+                            logger.warning("Multiple aggregate windows found for {crypto_ticker}")
+                        
+                        trade = agg_windows[0]
+
+                        if (
+                            trade.timestamp is None 
+                            or trade.open is None 
+                            or trade.high is None 
+                            or trade.low is None 
+                            or trade.close is None 
+                            or trade.volume is None
+                        ):
+                            logger.warning(f"Invalid trade data for {crypto_ticker}: {trade}")
+                            continue
+
+                        record_date = polygon_timestamp_to_datetime(trade.timestamp)
+
+                        # Update pricing data for display
+                        record.price = Currency(trade.close, Currency.DEFAULT_CURRENCY_TYPE)
+                        record.time_updated = record_date
+                        
+                        # Update aggregate cache
+                        aggregate = Aggregate(
+                            crypto_ticker,
+                            record_date,
+                            trade.open,
+                            trade.high,
+                            trade.low,
+                            trade.close,
+                            trade.volume
+                        )
+                        await self.aggregate_cache.add(aggregate)
+
+                        # Run detection engine
+                        alerts = self._detection_engine.detect(aggregate)
+                        if alerts:
+                            logger.info(f"Alerts for {crypto_ticker}:")
+                            for alert in alerts:
+                                logger.warning(f"    {alert}")
+                    else:
+                        logger.warning(f"Unknown aggregate for {crypto_ticker}: {agg_windows}")
 
                 # Update portfolios with all prices
                 price_data: dict[str, Currency] = {
