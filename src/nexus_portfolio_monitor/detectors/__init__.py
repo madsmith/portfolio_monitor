@@ -1,5 +1,7 @@
 from nexus_portfolio_monitor.detectors.base import Alert, Detector
 
+from nexus_portfolio_monitor.detectors.engine import DeviationEngine
+
 from nexus_portfolio_monitor.detectors.percent_change import PercentChangeFromPreviousCloseDetector
 from nexus_portfolio_monitor.detectors.volume_spike import VolumeSpikeDetector
 from nexus_portfolio_monitor.detectors.moving_average_deviation import MovingAverageDeviationDetector

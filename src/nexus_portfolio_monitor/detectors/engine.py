@@ -16,7 +16,10 @@ class DeviationEngine:
         self.extended_hours = extended_hours
         self.last_alert_at: dict[tuple[str, str], datetime] = {}
 
-    def process(self, ticker: str, aggregate: Aggregate) -> list[Alert] | None:
+    def detect(self, aggregate: Aggregate) -> list[Alert] | None:
+
+        ticker = aggregate.symbol
+
         alerts: list[Alert] = []
         for det in self.detectors:
             alert = det.update(ticker, aggregate)
