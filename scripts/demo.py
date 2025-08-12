@@ -45,7 +45,7 @@ def main():
             print("  Stocks:")
             for asset in portfolio.stocks:
                 lots_info = f"{len(asset.lots)} lots" if asset.lots else "monitoring only"
-                print(f"    - {asset.ticker}: {lots_info}")
+                print(f"    - {asset.symbol}: {lots_info}")
                 for i, lot in enumerate(asset.lots):
                     print(f"      Lot {i+1}: {lot.amount} @ ${lot.price}")
         
@@ -54,7 +54,7 @@ def main():
             print("  Cryptocurrencies:")
             for asset in portfolio.currencies:
                 lots_info = f"{len(asset.lots)} lots" if asset.lots else "monitoring only"
-                print(f"    - {asset.ticker}: {lots_info}")
+                print(f"    - {asset.symbol}: {lots_info}")
                 for i, lot in enumerate(asset.lots):
                     print(f"      Lot {i+1}: {lot.amount} @ ${lot.price}")
     
@@ -78,7 +78,7 @@ def main():
         for asset in portfolio.assets():
             if asset.lots:  # Only show P/L for assets with lots
                 current = asset.current_price or Decimal("0")
-                print(f"  {asset.ticker}: ${current} (P/L: ${asset.profit_loss:.2f}, {asset.profit_loss_percentage:.2f}%)")
+                print(f"  {asset.symbol}: ${current} (P/L: ${asset.profit_loss:.2f}, {asset.profit_loss_percentage:.2f}%)")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 from pathlib import Path
@@ -16,8 +17,13 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-async def run_service():
+async def run_service(args: argparse.Namespace):
     """Run the monitor service until interrupted"""
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logging.getLogger("urllib3").setLevel(logging.DEBUG)
+        logging.getLogger("urllib3.connectionpool").setLevel(logging.DEBUG)
 
     config = load_config()
     portfolio_path = config.get("nexus.portfolio_path")
@@ -56,7 +62,19 @@ async def run_service():
 
 def main():
     """Entry point for the monitor service"""
-    asyncio.run(run_service())
+    parser = argparse.ArgumentParser(description="Nexus Portfolio Monitor Service")
+    parser.add_argument(
+        "-d", "--debug", 
+        action="store_true", 
+        help="Enable debug logging")
+    
+    args = parser.parse_args()
+    
+    # Set log level based on debug flag
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(level=log_level, format=logging.BASIC_FORMAT)
+    
+    asyncio.run(run_service(args))
 
 
 if __name__ == "__main__":

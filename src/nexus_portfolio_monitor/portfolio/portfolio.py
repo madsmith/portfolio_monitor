@@ -11,6 +11,7 @@ import re
 from typing import List, Dict, Any, Literal
 
 from nexus_portfolio_monitor.core.currency import Currency, CurrencyType
+from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class Asset:
     """
     Represents a financial asset with lots.
     """
-    ticker: str
+    symbol: AssetSymbol
     lots: List[Lot] = field(default_factory=list)
     current_price: Currency | None = None
     asset_type: Literal["stock", "currency", "crypto"] = "stock"
@@ -158,7 +159,7 @@ class Asset:
         """Create an Asset from a dictionary."""
         lots = [Lot.from_dict(lot_data) for lot_data in data.get('lots', [])]
         return cls(
-            ticker=data['ticker'],
+            symbol=AssetSymbol(data['ticker'], AssetTypes(asset_type)),
             lots=lots,
             asset_type=asset_type
         )
@@ -181,11 +182,11 @@ class Asset:
         else:
             price_info = ""
 
-        return f"{self.ticker:<7} {price_info:<40}{lots_info}{profile_loss_info:>25}"
+        return f"{str(self.symbol):<7} {price_info:<40}{lots_info}{profile_loss_info:>25}"
     
     def __repr__(self) -> str:
         """Return a detailed representation of this asset."""
-        return f"Asset(ticker='{self.ticker}', lots={len(self.lots)}, asset_type='{self.asset_type}')"
+        return f"Asset(ticker='{self.symbol}', lots={len(self.lots)}, asset_type='{self.asset_type}')"
 
 
 @dataclass
@@ -206,8 +207,8 @@ class Portfolio:
     def update_prices(self, price_data: Dict[str, Currency]) -> None:
         """Update the prices of all assets in this portfolio."""
         for asset in self.assets():
-            if asset.ticker in price_data:
-                price = price_data[asset.ticker]
+            if asset.symbol.ticker in price_data:
+                price = price_data[asset.symbol.ticker]
                 assert isinstance(price, Currency)
                 asset.current_price = price
     
@@ -302,8 +303,8 @@ class Portfolio:
     
     def __repr__(self) -> str:
         """Return a detailed representation of this portfolio."""
-        stocks_repr = ", ".join(asset.ticker for asset in self.stocks)
-        currencies_repr = ", ".join(asset.ticker for asset in self.currencies)
+        stocks_repr = ", ".join(str(asset.symbol) for asset in self.stocks)
+        currencies_repr = ", ".join(str(asset.symbol) for asset in self.currencies)
         return f"Portfolio(name='{self.name}', stocks=[{stocks_repr}], currencies=[{currencies_repr}])"
 
 def parse_number(value: Any) -> Currency:
@@ -394,6 +395,10 @@ def parse_date(date_string: str) -> datetime | None:
         (r'^\d{1,2}\.\d{1,2}\.\d{4}$', '%m.%d.%Y'),
         # DD.MM.YYYY
         (r'^\d{1,2}\.\d{1,2}\.\d{4}$', '%d.%m.%Y'),
+        # MM/DD/YY HH:MM:SS
+        (r'^\d{1,2}/\d{1,2}/\d{2} \d{2}:\d{2}:\d{2}$', '%m/%d/%y %H:%M:%S'),
+        # MM/DD/YYYY HH:MM:SS
+        (r'^\d{1,2}/\d{1,2}/\d{4} \d{2}:\d{2}:\d{2}$', '%m/%d/%Y %H:%M:%S'),
     ]
     
     # Try patterns in order, taking first matching pattern

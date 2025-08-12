@@ -216,40 +216,40 @@ class TestAsset:
 
     def test_initialization(self, sample_lots):
         """Test Asset initialization."""
-        asset = Asset(ticker="AAPL", lots=sample_lots)
-        assert asset.ticker == "AAPL"
+        asset = Asset(symbol="AAPL", lots=sample_lots)
+        assert asset.symbol == "AAPL"
         assert len(asset.lots) == 3
         assert asset.current_price is None
         assert asset.asset_type == "stock"
         
         # Test with different asset_type
-        crypto_asset = Asset(ticker="BTC", lots=sample_lots, asset_type="currency")
+        crypto_asset = Asset(symbol="BTC", lots=sample_lots, asset_type="currency")
         assert crypto_asset.asset_type == "currency"
 
     def test_total_quantity(self, sample_lots):
         """Test Asset.total_quantity property."""
-        asset = Asset(ticker="AAPL", lots=sample_lots)
+        asset = Asset(symbol="AAPL", lots=sample_lots)
         assert asset.total_quantity == Decimal("30")  # 10 + 5 + 15
 
         # Empty asset
-        empty_asset = Asset(ticker="AAPL", lots=[])
+        empty_asset = Asset(symbol="AAPL", lots=[])
         assert empty_asset.total_quantity == Decimal("0")
 
     def test_cost_basis(self, sample_lots, sample_lots_with_fees_rebates):
         """Test Asset.cost_basis property."""
         # Test with regular lots (no fees/rebates)
-        asset = Asset(ticker="AAPL", lots=sample_lots)
+        asset = Asset(symbol="AAPL", lots=sample_lots)
         
         # 10*100 + 5*120 + 15*90 = 1000 + 600 + 1350 = 2950
         assert asset.cost_basis == Decimal("2950")
         assert asset.cost_basis.currency_type == CurrencyType.USD
         
         # Empty asset
-        empty_asset = Asset(ticker="EMPTY", lots=[])
+        empty_asset = Asset(symbol="EMPTY", lots=[])
         assert empty_asset.cost_basis == Decimal("0")
         
         # Test with lots that have fees and rebates
-        asset_with_fees = Asset(ticker="AAPL", lots=sample_lots_with_fees_rebates)
+        asset_with_fees = Asset(symbol="AAPL", lots=sample_lots_with_fees_rebates)
         
         # Lot 1: 10*100 + 20 = 1020
         # Lot 2: 5*120 - 10 = 590
@@ -260,18 +260,18 @@ class TestAsset:
 
     def test_average_cost(self, sample_lots):
         """Test Asset.average_cost property."""
-        asset = Asset(ticker="AAPL", lots=sample_lots)
+        asset = Asset(symbol="AAPL", lots=sample_lots)
         # Total cost: 2950, Total quantity: 30, Average cost: 2950/30 = 98.33...
         assert asset.average_cost == Decimal("2950") / Decimal("30")
         assert asset.average_cost.currency_type == CurrencyType.USD
 
         # Empty asset
-        empty_asset = Asset(ticker="AAPL", lots=[])
+        empty_asset = Asset(symbol="AAPL", lots=[])
         assert empty_asset.average_cost == Decimal("0")
 
     def test_current_value(self, sample_lots):
         """Test Asset.current_value property."""
-        asset = Asset(ticker="AAPL", lots=sample_lots)
+        asset = Asset(symbol="AAPL", lots=sample_lots)
         
         # No current price
         assert asset.current_value is None
@@ -288,7 +288,7 @@ class TestAsset:
     def test_profit_loss(self, sample_lots, sample_lots_with_fees_rebates):
         """Test Asset.profit_loss property."""
         # Test with regular lots (no fees/rebates)
-        asset = Asset(ticker="AAPL", lots=sample_lots)
+        asset = Asset(symbol="AAPL", lots=sample_lots)
         
         # No current price
         assert asset.profit_loss is None
@@ -309,7 +309,7 @@ class TestAsset:
         assert asset.profit_loss == Decimal("-250")
         
         # Test with lots that have fees and rebates
-        asset_with_fees = Asset(ticker="AAPL", lots=sample_lots_with_fees_rebates)
+        asset_with_fees = Asset(symbol="AAPL", lots=sample_lots_with_fees_rebates)
         
         # Set current price
         asset_with_fees.current_price = Currency(110, CurrencyType.USD)
@@ -329,7 +329,7 @@ class TestAsset:
     def test_profit_loss_percentage(self, sample_lots, sample_lots_with_fees_rebates):
         """Test Asset.profit_loss_percentage property."""
         # Test with regular lots
-        asset = Asset(ticker="AAPL", lots=sample_lots)
+        asset = Asset(symbol="AAPL", lots=sample_lots)
         
         # No current price
         assert asset.profit_loss_percentage is None
@@ -343,7 +343,7 @@ class TestAsset:
         assert asset.profit_loss_percentage == expected_percentage
         
         # Test with lots that have fees and rebates
-        asset_with_fees = Asset(ticker="AAPL", lots=sample_lots_with_fees_rebates)
+        asset_with_fees = Asset(symbol="AAPL", lots=sample_lots_with_fees_rebates)
         
         # Set current price
         asset_with_fees.current_price = Currency(110, CurrencyType.USD)
@@ -372,7 +372,7 @@ class TestAsset:
         }
         
         asset = Asset.from_dict(data)
-        assert asset.ticker == "AAPL"
+        assert asset.symbol == "AAPL"
         assert len(asset.lots) == 2
         assert asset.lots[0].quantity == Decimal("10")
         assert asset.lots[0].price == Decimal("100")
@@ -393,7 +393,7 @@ class TestAsset:
         }
         
         currency_asset = Asset.from_dict(currency_data, asset_type="currency")
-        assert currency_asset.ticker == "BTC"
+        assert currency_asset.symbol == "BTC"
         assert currency_asset.asset_type == "currency"
         
         # Test with lots that have fees and rebates
@@ -420,7 +420,7 @@ class TestAsset:
         }
         
         asset_with_fees = Asset.from_dict(data_with_fees)
-        assert asset_with_fees.ticker == "AAPL"
+        assert asset_with_fees.symbol == "AAPL"
         assert len(asset_with_fees.lots) == 3
         assert asset_with_fees.lots[0].fees == Decimal("5")
         assert asset_with_fees.lots[0].rebates is None
@@ -444,8 +444,8 @@ class TestPortfolio:
             Lot(quantity=Decimal("2"), price=Currency(30000, CurrencyType.USD))
         ]
         
-        apple = Asset(ticker="AAPL", lots=apple_lots)
-        btc = Asset(ticker="BTC", lots=btc_lots, asset_type="currency")
+        apple = Asset(symbol="AAPL", lots=apple_lots)
+        btc = Asset(symbol="BTC", lots=btc_lots, asset_type="currency")
         
         return {"stocks": [apple], "currencies": [btc]}
 
@@ -459,8 +459,8 @@ class TestPortfolio:
         assert portfolio.name == "Test Portfolio"
         assert len(portfolio.stocks) == 1
         assert len(portfolio.currencies) == 1
-        assert portfolio.stocks[0].ticker == "AAPL"
-        assert portfolio.currencies[0].ticker == "BTC"
+        assert portfolio.stocks[0].symbol == "AAPL"
+        assert portfolio.currencies[0].symbol == "BTC"
 
     def test_all_assets(self, sample_assets):
         """Test Portfolio.all_assets method."""
@@ -471,8 +471,8 @@ class TestPortfolio:
         )
         all_assets = portfolio.assets()
         assert len(all_assets) == 2
-        assert all_assets[0].ticker == "AAPL"
-        assert all_assets[1].ticker == "BTC"
+        assert all_assets[0].symbol == "AAPL"
+        assert all_assets[1].symbol == "BTC"
 
     def test_update_prices(self, sample_assets):
         """Test Portfolio.update_prices method."""
@@ -596,6 +596,6 @@ class TestPortfolio:
         portfolio = Portfolio.from_dict(data)
         assert portfolio.name == "Test Portfolio"
         assert len(portfolio.stocks) == 1
-        assert portfolio.stocks[0].ticker == "AAPL"
+        assert portfolio.stocks[0].symbol == "AAPL"
         assert len(portfolio.currencies) == 1
-        assert portfolio.currencies[0].ticker == "BTC"
+        assert portfolio.currencies[0].symbol == "BTC"

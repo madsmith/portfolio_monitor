@@ -7,8 +7,9 @@ import sqlite3
 from zoneinfo import ZoneInfo
 
 from sortedcontainers import SortedDict
+from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
-SymbolT = str
+SymbolT = AssetSymbol
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ class AggregateCache:
         # Dictionary of migration functions keyed by target version
         migrations = {
             1: self._migrate_to_v1,
+            2: self._migrate_to_v2,
         }
         
         # Apply migrations in version order
@@ -150,6 +152,16 @@ class AggregateCache:
             CREATE INDEX IF NOT EXISTS idx_aggregates_date_utc 
             ON aggregates(date_utc)
         """)
+
+    def _migrate_to_v2(self, conn: sqlite3.Connection):
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS symbols (
+                symbol TEXT PRIMARY KEY,
+                asset_type TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
     async def wait_for_completion(self):
         """Wait for all pending updates to be written to database"""
@@ -171,21 +183,25 @@ class AggregateCache:
             
             utc_time_ms = ms_from_datetime(datetime.now(ZoneInfo("UTC")) - self._memory_cache_age)
             cursor.execute(
-                "SELECT * FROM aggregates WHERE date_utc >= ?",
+                """SELECT aggregates.*, symbols.asset_type 
+                FROM aggregates JOIN symbols ON aggregates.symbol = symbols.symbol 
+                WHERE aggregates.date_utc >= ?""",
                 (utc_time_ms,)
             )
 
             rows = cursor.fetchall()
             for row in rows:
-                symbol: SymbolT = row[0]
+                ticker: str = row[0]
                 date_utc_ms: int = row[1]
                 open: float = row[2]
                 high: float = row[3]
                 low: float = row[4]
                 close: float = row[5]
                 volume: int = row[6]
+                asset_type: str = row[7]
 
                 date = datetime_from_ms(date_utc_ms, ZoneInfo("UTC"))
+                symbol = AssetSymbol(ticker, AssetTypes(asset_type))
                 aggregate = Aggregate(symbol, date, open, high, low, close, volume)
                 await self.add(aggregate)
         
@@ -242,7 +258,14 @@ class AggregateCache:
             cursor.executemany(
                 "INSERT OR REPLACE INTO aggregates (symbol, date_utc, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (agg.symbol, agg.timestamp_ms, agg.open, agg.high, agg.low, agg.close, agg.volume)
+                    (agg.symbol.ticker, agg.timestamp_ms, agg.open, agg.high, agg.low, agg.close, agg.volume)
+                    for agg in aggregates
+                ]
+            )
+            cursor.executemany(
+                "INSERT OR REPLACE INTO symbols (symbol, asset_type) VALUES (?, ?)",
+                [
+                    (agg.symbol.ticker, agg.symbol.asset_type.value)
                     for agg in aggregates
                 ]
             )
