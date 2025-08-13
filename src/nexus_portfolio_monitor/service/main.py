@@ -26,8 +26,8 @@ async def run_service(args: argparse.Namespace):
         logging.getLogger("urllib3.connectionpool").setLevel(logging.DEBUG)
 
     config = load_config()
-    portfolio_path = config.get("nexus.portfolio_path")
-    aggregate_cache_path = config.get("nexus.aggregate_cache_path")
+    portfolio_path = config.get("nexus.portfolio-monitor.portfolio_path")
+    aggregate_cache_path = config.get("nexus.portfolio-monitor.aggregate_cache_path")
     
     if not portfolio_path:
         raise ValueError("Portfolio path not configured")

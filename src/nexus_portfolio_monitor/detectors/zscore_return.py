@@ -18,7 +18,7 @@ class ZScoreReturnDetector(Detector):
         """
         Args:
             lookback_period: Number of samples to establish the return distribution (default: 60 samples)
-            hreshold: Z-score threshold that triggers an alert
+            threshold: Z-score threshold that triggers an alert
         """
         self.lookback_period = lookback_period
         self.threshold = threshold

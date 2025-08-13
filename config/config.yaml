@@ -1,5 +1,10 @@
 nexus:
-  portfolio_path: "config/portfolios"
-  aggregate_cache_path: "config/aggregate_cache.db"
+  portfolio-monitor:
+    portfolio_path: "config/portfolios"
+    aggregate_cache_path: "config/aggregate_cache.db"
+
+    monitors:
+      default:
+        
 polygon:
   api-key: "${private.polygon.api-key}"

@@ -9,7 +9,7 @@ from polygon.rest.aggs import PreviousCloseAgg
 from polygon.rest.models.trades import CryptoTrade
 from polygon.websocket import CurrencyAgg, Market
 from polygon.websocket.models import Feed, WebSocketMessage
-from typing import List
+from typing import Any, List
 from urllib3.exceptions import RequestError
 from zoneinfo import ZoneInfo
 
@@ -51,15 +51,24 @@ class MonitorService:
 
         self._data_provider = DataProvider(config, aggregate_cache)
 
+        default_detectors_config = config.get("nexus.portfolio-monitor.monitors.default", {}) or {}
+        default_detectors = [
+            { "name": name, "args": args }
+            for name, args in default_detectors_config.items()
+        ] 
+
         self._detection_engine: DeviationEngine = DeviationEngine(
-            default_detectors = [
-                PercentChangeFromPreviousCloseDetector(),
-                VolumeSpikeDetector(),
-                MovingAverageDeviationDetector(),
-                AverageTrueRangeMoveDetector(),
-                ZScoreReturnDetector()
-            ]
+            default_detectors = default_detectors
         )
+
+        monitors_config: dict[str, dict[str, dict[str, Any]]] = config.get("nexus.portfolio-monitor.monitors", {}) or {}
+        for ticker, detector_configs in monitors_config.items():
+            if ticker == "default":
+                continue
+            for name, args in detector_configs.items():
+                detector_config = { "name": name, "args": args }
+                symbol = self._get_symbol(ticker)
+                self._detection_engine.add_detector(symbol, detector_config)
 
         self.running = False
         self._task: asyncio.Task | None = None
@@ -158,7 +167,6 @@ class MonitorService:
                 return None
             break
 
-
     async def _run(self) -> None:
         """Internal run loop"""
 
@@ -191,12 +199,14 @@ class MonitorService:
         start = datetime.now(ZoneInfo("UTC")) - timedelta(hours=3)
         end = datetime.now(ZoneInfo("UTC"))
         
+        logger.info("Fetching historical aggregates...")
         for asset_record in list(stocks.values()) + list(currencies.values()) + list(crypto.values()):
             aggs = await self._data_provider.get_range(asset_record.symbol, start, end)
             for agg in aggs:
                 self._detection_engine.detect(agg)
 
         self._detection_engine.clear_cooldowns()
+        logger.info("Detection engine primed")
 
         # print(f"Stocks: {len(stocks)}")
         # for ticker, record in stocks.items():
@@ -395,6 +405,13 @@ class MonitorService:
         else:
             return dtime(9, 30) <= t <= dtime(16, 0)
 
+    def _get_symbol(self, ticker: str) -> AssetSymbol:
+        for portfolio in self.portfolios:
+            for asset in portfolio.assets():
+                if asset.symbol.ticker == ticker:
+                    return asset.symbol
+        raise ValueError(f"Ticker {ticker} not found")
+    
 def polygon_timestamp_to_datetime(timestamp: int | float) -> datetime:
     return datetime.fromtimestamp(timestamp / 1000, ZoneInfo("UTC"))
 

@@ -13,14 +13,14 @@ class AverageTrueRangeMoveDetector(Detector):
     def name(self) -> str:
         return "average_true_range_move"
     
-    def __init__(self, period: int = 30, threshold_multiple: float = 2.0):
+    def __init__(self, period: int = 30, threshold: float = 2.0):
         """
         Args:
             period: Number of samples to calculate ATR (default: 30 samples)
-            threshold_multiple: Multiple of ATR that triggers an alert
+            threshold: Multiple of ATR that triggers an alert
         """
         self.period = period
-        self.threshold_multiple = threshold_multiple
+        self.threshold_multiple = threshold
         # Dictionary of price histories per ticker: [high, low, close]
         self.price_histories: dict[AssetSymbol, deque[tuple[float, float, float]]] = {}
         

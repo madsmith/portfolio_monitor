@@ -14,14 +14,14 @@ class VolumeSpikeDetector(Detector):
     def name(self) -> str:
         return "volume_spike"
     
-    def __init__(self, lookback_period: int = 60, threshold_mult: float = 2.0):
+    def __init__(self, lookback_period: int = 60, threshold: float = 2.0):
         """
         Args:
             lookback_period: Number of samples to use for calculating average volume (default: 60 samples)
-            threshold_mult: Multiple of average volume that triggers an alert
+            threshold: Multiple of average volume that triggers an alert
         """
         self.lookback_period = lookback_period
-        self.threshold_mult = threshold_mult
+        self.threshold_mult = threshold
         self.volume_histories: dict[AssetSymbol, deque[float]] = {}
         
     def update(self, aggregate: Aggregate) -> Alert | None:

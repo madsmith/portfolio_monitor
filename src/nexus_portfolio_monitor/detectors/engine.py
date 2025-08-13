@@ -1,11 +1,15 @@
-
+import logging
 
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Sequence
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
 from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
 from nexus_portfolio_monitor.service.types import AssetSymbol
+
+DetectorSpec = Detector | dict[str, Any]
+
+logger = logging.getLogger(__name__)
 
 class DeviationEngine:
     """
@@ -15,7 +19,7 @@ class DeviationEngine:
 
     def __init__(
         self,
-        default_detectors: list[Detector] | None = None,
+        default_detectors: Sequence[DetectorSpec] | None = None,
         cooldown: timedelta = timedelta(minutes=15)
     ):
         """
@@ -27,10 +31,23 @@ class DeviationEngine:
         """
         self.cooldown = cooldown
         self.last_alert_at: dict[tuple[AssetSymbol, str], datetime] = {}
-        self.default_detectors: list[Detector] = default_detectors or []
+        self.default_detectors: list[Detector] = []
+        if default_detectors:
+            for detector in default_detectors:
+                if isinstance(detector, Detector):
+                    self.default_detectors.append(detector)
+                elif isinstance(detector, dict):
+                    d = DetectorRegistry.create_detector(detector["name"], detector.get("args"))
+                    if d is not None:
+                        self.default_detectors.append(d)
+                    else:
+                        raise ValueError(f"Invalid detector: {detector}")
+                else:
+                    raise ValueError(f"Type {type(detector)} is not a valid detector")
+        
         self.asset_detectors: dict[AssetSymbol, list[Detector]] = {}
         
-    def add_detector(self, symbol: AssetSymbol, detector: Detector) -> None:
+    def add_detector(self, symbol: AssetSymbol, detector: DetectorSpec) -> None:
         """
         Add a detector for a specific asset symbol.
         
@@ -40,7 +57,18 @@ class DeviationEngine:
         """
         if symbol not in self.asset_detectors:
             self.asset_detectors[symbol] = []
-        self.asset_detectors[symbol].append(detector)
+        
+
+        if isinstance(detector, Detector):
+            self.asset_detectors[symbol].append(detector)
+        elif isinstance(detector, dict):
+            d = DetectorRegistry.create_detector(detector["name"], detector.get("args"))
+            if d is not None:
+                self.asset_detectors[symbol].append(d)
+            else:
+                raise ValueError(f"Invalid detector: {detector}")
+        else:
+            raise ValueError(f"Type {type(detector)} is not a valid detector")
     
     def get_available_detector_kinds(self) -> list[str]:
         """

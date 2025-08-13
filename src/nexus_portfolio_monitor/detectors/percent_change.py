@@ -13,7 +13,7 @@ class PercentChangeFromPreviousCloseDetector(Detector):
         """Detector for significant percentage changes from previous close price
         
         Args:
-            threshold_pct: Percent change threshold that triggers an alert (default: 0.03 for 3%)
+            threshold: Percent change threshold that triggers an alert (default: 0.03 for 3%)
         """
         self.threshold = threshold
         self.previous_closes: dict[AssetSymbol, float] = {}

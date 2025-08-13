@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 import logging
-from typing import Protocol, Type, Any
+from typing import Protocol, Type, Any, runtime_checkable
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
 from nexus_portfolio_monitor.service.types import AssetSymbol
@@ -17,6 +17,7 @@ class Alert:
     at: datetime
     aggregate: Aggregate  # The price aggregate that triggered the alert
 
+@runtime_checkable
 class Detector(Protocol):
     @property
     def name(self) -> str:
