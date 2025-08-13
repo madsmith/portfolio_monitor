@@ -3,6 +3,14 @@ nexus:
     portfolio_path: "config/portfolios"
     aggregate_cache_path: "config/aggregate_cache.db"
 
+    # Define the common set of detectors and give it an anchor
+    all_detectors:
+      percent_change: {}
+      zscore_return: {}
+      average_true_range_move: {}
+      volume_spike: {}
+      moving_average_deviation: {}
+
     monitors:
       default:
         

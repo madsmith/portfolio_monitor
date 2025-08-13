@@ -62,14 +62,17 @@ class MonitorService:
         )
 
         monitors_config: dict[str, dict[str, dict[str, Any]]] = config.get("nexus.portfolio-monitor.monitors", {}) or {}
+
         for ticker, detector_configs in monitors_config.items():
             if ticker == "default":
                 continue
             for name, args in detector_configs.items():
                 detector_config = { "name": name, "args": args }
                 symbol = self._get_symbol(ticker)
+                logger.debug(f"Adding detector {name} for {symbol}")
                 self._detection_engine.add_detector(symbol, detector_config)
 
+        # print(self._detection_engine.asset_detectors)
         self.running = False
         self._task: asyncio.Task | None = None
         
