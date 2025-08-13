@@ -9,13 +9,11 @@ from zoneinfo import ZoneInfo
 from sortedcontainers import SortedDict
 from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
-SymbolT = AssetSymbol
-
 logger = logging.getLogger(__name__)
 
 @dataclass
 class Aggregate:
-    symbol: SymbolT
+    symbol: AssetSymbol
     date: datetime
     open: float
     high: float
@@ -41,7 +39,7 @@ class AggregateCache:
         self._memory_cache_age = timedelta(days=7)
 
         self._is_initialized = False
-        self._memory_cache: dict[SymbolT, SortedDict] = {}
+        self._memory_cache: dict[AssetSymbol, SortedDict] = {}
 
         self._spawn_lock = asyncio.Lock()    # Guards task spawning logic
         self._process_lock = asyncio.Lock()  # Ensures _process_updates runs exclusively
@@ -271,7 +269,7 @@ class AggregateCache:
             )
             conn.commit()
 
-    def get_current(self, symbol: SymbolT) -> Aggregate | None:
+    def get_current(self, symbol: AssetSymbol) -> Aggregate | None:
         if symbol not in self._memory_cache:
             return None
         return self._memory_cache[symbol].peekitem(-1)[1]

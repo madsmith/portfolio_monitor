@@ -1,9 +1,11 @@
 from collections import deque
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, Detector
+from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
+from nexus_portfolio_monitor.service.types import AssetSymbol
 
 
+@DetectorRegistry.register
 class AverageTrueRangeMoveDetector(Detector):
     """Detector for price moves that exceed a multiple of Average True Range"""
     
@@ -20,7 +22,7 @@ class AverageTrueRangeMoveDetector(Detector):
         self.period = period
         self.threshold_mult = threshold_mult
         # Dictionary of price histories per ticker: [high, low, close]
-        self.price_histories: dict[str, deque[tuple[float, float, float]]] = {}
+        self.price_histories: dict[AssetSymbol, deque[tuple[float, float, float]]] = {}
         
     def _calculate_atr(self, price_history: deque[tuple[float, float, float]]) -> float:
         """Calculate the Average True Range"""
@@ -47,7 +49,8 @@ class AverageTrueRangeMoveDetector(Detector):
         # Simple average of true ranges
         return sum(true_ranges) / len(true_ranges)
         
-    def update(self, ticker: str, aggregate: Aggregate) -> Alert | None:
+    def update(self, aggregate: Aggregate) -> Alert | None:
+        ticker = aggregate.symbol
         # Initialize history for this ticker if it doesn't exist
         if ticker not in self.price_histories:
             self.price_histories[ticker] = deque(maxlen=self.period+1)  # +1 to calculate TR
@@ -55,7 +58,7 @@ class AverageTrueRangeMoveDetector(Detector):
         # Add current candle data to history
         self.price_histories[ticker].append((aggregate.high, aggregate.low, aggregate.close))
         
-        # Need at least atr_period + 1 candles to calculate meaningful ATR
+        # Need at least atr_period candles to calculate meaningful ATR
         if len(self.price_histories[ticker]) <= self.period:
             return None
             

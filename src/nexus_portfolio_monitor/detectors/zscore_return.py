@@ -2,9 +2,11 @@ from collections import deque
 from statistics import mean, stdev
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, Detector
+from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
+from nexus_portfolio_monitor.service.types import AssetSymbol
 
 
+@DetectorRegistry.register
 class ZScoreReturnDetector(Detector):
     """Detector for returns that deviate significantly from historical distribution"""
     
@@ -12,16 +14,16 @@ class ZScoreReturnDetector(Detector):
     def name(self) -> str:
         return "zscore_return"
     
-    def __init__(self, lookback_period: int = 60, zscore_threshold: float = 2.0):
+    def __init__(self, lookback_period: int = 60, threshold: float = 2.0):
         """
         Args:
             lookback_period: Number of samples to establish the return distribution (default: 60 samples)
-            zscore_threshold: Z-score threshold that triggers an alert
+            hreshold: Z-score threshold that triggers an alert
         """
         self.lookback_period = lookback_period
-        self.zscore_threshold = zscore_threshold
+        self.threshold = threshold
         # Dictionary of price history per ticker
-        self.close_histories: dict[str, deque[float]] = {}
+        self.close_histories: dict[AssetSymbol, deque[float]] = {}
         
     def _calculate_returns(self, close_history: deque[float]) -> list[float]:
         """Calculate percentage returns from price history"""
@@ -37,7 +39,8 @@ class ZScoreReturnDetector(Detector):
             
         return returns
         
-    def update(self, ticker: str, aggregate: Aggregate) -> Alert | None:
+    def update(self, aggregate: Aggregate) -> Alert | None:
+        ticker = aggregate.symbol
         # Initialize history for this ticker if it doesn't exist
         if ticker not in self.close_histories:
             self.close_histories[ticker] = deque(maxlen=self.lookback_period + 1)  # +1 to calculate returns
@@ -71,9 +74,9 @@ class ZScoreReturnDetector(Detector):
         zscore = (today_return - avg_return) / std_return
         
         # Check if z-score exceeds threshold
-        if abs(zscore) >= self.zscore_threshold:
+        if abs(zscore) >= self.threshold:
             direction = "positive" if zscore > 0 else "negative"
-            msg = f"{ticker}: {direction} return with z-score of {zscore:.2f} (±{self.zscore_threshold} threshold)"
+            msg = f"{ticker}: {direction} return with z-score of {zscore:.2f} (±{self.threshold} threshold)"
             
             return Alert(ticker, self.name, abs(zscore), msg, aggregate.date, aggregate)
             

@@ -1,10 +1,12 @@
 from collections import deque
-from statistics import mean, stdev
+from statistics import mean
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, Detector
+from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
+from nexus_portfolio_monitor.service.types import AssetSymbol
 
 
+@DetectorRegistry.register
 class VolumeSpikeDetector(Detector):
     """Detector for unusual spikes in trading volume"""
     
@@ -20,9 +22,10 @@ class VolumeSpikeDetector(Detector):
         """
         self.lookback_period = lookback_period
         self.threshold_mult = threshold_mult
-        self.volume_histories: dict[str, deque[float]] = {}
+        self.volume_histories: dict[AssetSymbol, deque[float]] = {}
         
-    def update(self, ticker: str, aggregate: Aggregate) -> Alert | None:
+    def update(self, aggregate: Aggregate) -> Alert | None:
+        ticker = aggregate.symbol
         # Initialize history for this ticker if it doesn't exist
         if ticker not in self.volume_histories:
             self.volume_histories[ticker] = deque(maxlen=self.lookback_period)
@@ -30,7 +33,7 @@ class VolumeSpikeDetector(Detector):
         # Add current volume to history
         self.volume_histories[ticker].append(aggregate.volume)
         
-        # Need enough history before making judgments
+        # Need enough history to calculate baseline
         if len(self.volume_histories[ticker]) < self.lookback_period:
             return None
             

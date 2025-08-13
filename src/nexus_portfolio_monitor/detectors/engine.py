@@ -1,37 +1,103 @@
 
 
-from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, Detector
 from datetime import datetime, timedelta
+from typing import Any
+
+from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
+from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
+from nexus_portfolio_monitor.service.types import AssetSymbol
 
 class DeviationEngine:
+    """
+    Engine that manages multiple detectors and processes aggregates through them
+    to generate alerts based on detected price deviations.
+    """
 
     def __init__(
-        self, detectors: list[Detector],
-        cooldown: timedelta = timedelta(minutes=15),
-        extended_hours: bool = False
+        self,
+        default_detectors: list[Detector] | None = None,
+        cooldown: timedelta = timedelta(minutes=15)
     ):
-        self.detectors = detectors
+        """
+        Initialize the deviation engine.
+        
+        Args:
+            default_detectors: List of detector instances that apply to all assets
+            cooldown: Time to wait before generating another alert of same type for a ticker
+        """
         self.cooldown = cooldown
-        self.extended_hours = extended_hours
-        self.last_alert_at: dict[tuple[str, str], datetime] = {}
+        self.last_alert_at: dict[tuple[AssetSymbol, str], datetime] = {}
+        self.default_detectors: list[Detector] = default_detectors or []
+        self.asset_detectors: dict[AssetSymbol, list[Detector]] = {}
+        
+    def add_detector(self, symbol: AssetSymbol, detector: Detector) -> None:
+        """
+        Add a detector for a specific asset symbol.
+        
+        Args:
+            symbol: Asset symbol the detector should apply to
+            detector: Detector instance
+        """
+        if symbol not in self.asset_detectors:
+            self.asset_detectors[symbol] = []
+        self.asset_detectors[symbol].append(detector)
+    
+    def get_available_detector_kinds(self) -> list[str]:
+        """
+        Get a list of all registered detector kinds that can be created.
+        
+        Returns:
+            List of detector kind strings
+        """
+        return DetectorRegistry.list_available_detectors()
 
-    def detect(self, aggregate: Aggregate) -> list[Alert] | None:
-
+    def detect(self, aggregate: Aggregate) -> list[Alert]:
+        """
+        Process an aggregate through all applicable detectors and return any alerts.
+        
+        Args:
+            aggregate: Price aggregate to process
+            
+        Returns:
+            List of alerts generated (empty if no alerts)
+        """
         ticker = aggregate.symbol
-
         alerts: list[Alert] = []
-        for det in self.detectors:
-            alert = det.update(ticker, aggregate)
-            if not alert:
-                continue
-
-            # Check alert for cooldown
-            key = (alert.ticker, alert.kind)
-            last = self.last_alert_at.get(key, None)
-            if last and (alert.at - last) < self.cooldown:
-                continue
-            self.last_alert_at[key] = alert.at
-
-            alerts.append(alert)
+        
+        # Process through default detectors (apply to all assets)
+        for detector in self.default_detectors:
+            alert = detector.update(aggregate)
+            if alert and self._check_cooldown(alert):
+                alerts.append(alert)
+        
+        # Process through asset-specific detectors if any
+        if ticker in self.asset_detectors:
+            for detector in self.asset_detectors[ticker]:
+                alert = detector.update(aggregate)
+                if alert and self._check_cooldown(alert):
+                    alerts.append(alert)
+                    
         return alerts
+    
+    def clear_cooldowns(self):
+        self.last_alert_at.clear()
+    
+    def _check_cooldown(self, alert: Alert) -> bool:
+        """
+        Check if the alert is within cooldown period.
+        
+        Args:
+            alert: Alert to check
+            
+        Returns:
+            True if alert should be processed (not in cooldown), False otherwise
+        """
+        key = (alert.ticker, alert.kind)
+        last = self.last_alert_at.get(key)
+        
+        if last and (alert.at - last) < self.cooldown:
+            return False  # In cooldown period, skip this alert
+            
+        # Update last alert time and allow this alert
+        self.last_alert_at[key] = alert.at
+        return True

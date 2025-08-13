@@ -2,9 +2,11 @@ from collections import deque
 from statistics import mean
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, Detector
+from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
+from nexus_portfolio_monitor.service.types import AssetSymbol
 
 
+@DetectorRegistry.register
 class MovingAverageDeviationDetector(Detector):
     """Detector for price deviations from moving average"""
     
@@ -20,9 +22,10 @@ class MovingAverageDeviationDetector(Detector):
         """
         self.period = period
         self.threshold_pct = threshold_pct
-        self.price_histories: dict[str, deque[float]] = {}
+        self.price_histories: dict[AssetSymbol, deque[float]] = {}
         
-    def update(self, ticker: str, aggregate: Aggregate) -> Alert | None:
+    def update(self, aggregate: Aggregate) -> Alert | None:
+        ticker = aggregate.symbol
         # Initialize history for this ticker if it doesn't exist
         if ticker not in self.price_histories:
             self.price_histories[ticker] = deque(maxlen=self.period)

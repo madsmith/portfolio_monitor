@@ -52,7 +52,7 @@ class MonitorService:
         self._data_provider = DataProvider(config, aggregate_cache)
 
         self._detection_engine: DeviationEngine = DeviationEngine(
-            detectors = [
+            default_detectors = [
                 PercentChangeFromPreviousCloseDetector(),
                 VolumeSpikeDetector(),
                 MovingAverageDeviationDetector(),
@@ -195,6 +195,8 @@ class MonitorService:
             aggs = await self._data_provider.get_range(asset_record.symbol, start, end)
             for agg in aggs:
                 self._detection_engine.detect(agg)
+
+        self._detection_engine.clear_cooldowns()
 
         # print(f"Stocks: {len(stocks)}")
         # for ticker, record in stocks.items():

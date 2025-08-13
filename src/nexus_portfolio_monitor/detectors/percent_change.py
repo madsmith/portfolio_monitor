@@ -1,8 +1,9 @@
-
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, Detector
+from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
+from nexus_portfolio_monitor.service.types import AssetSymbol
 
 
+@DetectorRegistry.register
 class PercentChangeFromPreviousCloseDetector(Detector):
     @property
     def name(self) -> str:
@@ -15,9 +16,10 @@ class PercentChangeFromPreviousCloseDetector(Detector):
             threshold_pct: Percent change threshold that triggers an alert (default: 0.03 for 3%)
         """
         self.threshold_pct = threshold_pct
-        self.previous_closes: dict[str, float] = {}
+        self.previous_closes: dict[AssetSymbol, float] = {}
 
-    def update(self, ticker: str, aggregate: Aggregate) -> Alert | None:
+    def update(self, aggregate: Aggregate) -> Alert | None:
+        ticker = aggregate.symbol
         if ticker not in self.previous_closes:
             self.previous_closes[ticker] = aggregate.close
             return None
