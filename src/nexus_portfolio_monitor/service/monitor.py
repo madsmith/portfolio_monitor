@@ -3,6 +3,7 @@ from datetime import datetime, time as dtime, timedelta
 import logging
 
 from nexus_portfolio_monitor.data.provider import DataProvider
+from nexus_portfolio_monitor.detectors.base import Alert
 
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.rest.aggs import PreviousCloseAgg
@@ -354,6 +355,7 @@ class MonitorService:
                             logger.info(f"Alerts for {symbol}:")
                             for alert in alerts:
                                 logger.warning(f"    {alert}")
+                                self._send_alert(alert)
                     else:
                         logger.warning(f"Unknown aggregate for {symbol}: {agg_windows}")
 
@@ -407,6 +409,11 @@ class MonitorService:
             return dtime(4, 0) <= t <= dtime(20, 0)
         else:
             return dtime(9, 30) <= t <= dtime(16, 0)
+
+    def _send_alert(self, alert: Alert) -> None:
+        print(f"!! Alert !! {alert.ticker} - {alert.kind}")
+        print(f"  {alert.message}")
+        print(f"  {alert.aggregate.close:,.2f} (Volume {alert.aggregate.volume:,})")
 
     def _get_symbol(self, ticker: str) -> AssetSymbol:
         for portfolio in self.portfolios:
