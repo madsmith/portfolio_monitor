@@ -5,11 +5,11 @@ nexus:
 
     # Define the common set of detectors and give it an anchor
     all_detectors:
-      percent_change: {}
-      zscore_return: {}
       average_true_range_move: {}
-      volume_spike: {}
       moving_average_deviation: {}
+      percent_change_previous_close: {}
+      volume_spike: {}
+      zscore_return: {}
 
     monitors:
       default:

@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
 from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
 from nexus_portfolio_monitor.service.types import AssetSymbol
@@ -7,7 +9,7 @@ from nexus_portfolio_monitor.service.types import AssetSymbol
 class PercentChangeFromPreviousCloseDetector(Detector):
     @property
     def name(self) -> str:
-        return "percent_change"
+        return "percent_change_previous_close"
         
     def __init__(self, threshold: float = 0.03):
         """Detector for significant percentage changes from previous close price
@@ -34,3 +36,122 @@ class PercentChangeFromPreviousCloseDetector(Detector):
             msg = f"{ticker}: {pct*100:.2f}% vs prev close ({prev_close:.4f})"
             return Alert(ticker, self.name, abs(pct), msg, aggregate.date, aggregate)
         return None
+
+@dataclass
+class PreviousClose:
+    date: datetime
+    close: float
+
+@DetectorRegistry.register
+class PercentChangeDetector(Detector):
+    @property
+    def name(self) -> str:
+        return "percent_change"
+
+    def __init__(self, threshold: float = 0.03, period: str = "1d"):
+        """Detector for significant percentage changes from previous close price
+        
+        Args:
+            threshold: Percent change threshold that triggers an alert (default: 0.03 for 3%)
+            period: Period to calculate the percentage change (default: "1d")
+        """
+        self.threshold = threshold
+        self.period = period
+
+        self._price_history: dict[AssetSymbol, list[PreviousClose]] = {}
+        
+    def update(self, aggregate: Aggregate) -> Alert | None:
+        symbol = aggregate.symbol
+        self._append_price_history(aggregate)
+        prev_close = self._get_reference_close(aggregate)
+        if prev_close is None:
+            return None
+
+        pct = (aggregate.close - prev_close) / prev_close
+        if abs(pct) >= self.threshold:
+            msg = f"{symbol}: {pct*100:.2f}% vs prev close ({prev_close:.4f}) [{self.period} ago]"
+            return Alert(symbol, self.name, abs(pct), msg, aggregate.date, aggregate)
+        return None
+        
+    def _append_price_history(self, aggregate: Aggregate) -> None:
+        """
+        Append the previous close price for the set period to the list of previous closes.
+        Any prices older than the set period are removed.
+        """
+        symbol = aggregate.symbol
+        if symbol not in self._price_history:
+            self._price_history[symbol] = []
+        
+        self._price_history[symbol].append(PreviousClose(aggregate.date, aggregate.close))
+
+        self._cleanup_price_history(symbol)
+
+    def _cleanup_price_history(self, symbol: AssetSymbol) -> None:
+        """
+        Remove any prices older than the set period.
+        """
+        if len(self._price_history[symbol]) <= 1:
+            return
+
+    
+        current_close = self._price_history[symbol][-1]
+        period_timedelta = self._parse_period(self.period)
+        cutoff_date = current_close.date - period_timedelta
+
+        prune_idx = -1
+
+        # Walk through each item advancing prune idx if
+        # 1) data is older than the cutoff date
+        # 2) remaining period would not be less than the set period
+        for i in range(len(self._price_history[symbol]) - 1):
+            pc = self._price_history[symbol][i]
+            next_pc = self._price_history[symbol][i+1]
+
+            # Is this price eligible? If not, done
+            if pc.date > cutoff_date:
+                break
+            
+            # Ensure remaining period is at least the set period
+            pruned_period = current_close.date - next_pc.date
+            if pruned_period < period_timedelta:
+                break # Can't prune, not enought remaining period
+
+            prune_idx = i
+            
+        # Validate prune idx
+        if prune_idx == -1:
+            return
+        
+        # Prune the price history
+        self._price_history[symbol] = self._price_history[symbol][prune_idx:]
+
+    def _get_reference_close(self, aggregate: Aggregate) -> float | None:
+        """
+        For the given ticker, return the previous close price for the set period.
+        """
+        symbol = aggregate.symbol
+        if symbol not in self._price_history:
+            return None
+        
+        # Need at least 2 prices to calculate a percentage change
+        if len(self._price_history[symbol]) < 2:
+            return None
+        
+        oldest_close = self._price_history[symbol][0]
+        return oldest_close.close
+        
+    def _parse_period(self, period: str) -> timedelta:
+        """
+        Parse the period string into a timedelta.
+        """
+        if period.endswith("d"):
+            return timedelta(days=int(period[:-1]))
+        elif period.endswith("h"):
+            return timedelta(hours=int(period[:-1]))
+        elif period.endswith("m"):
+            return timedelta(minutes=int(period[:-1]))
+        elif period.endswith("s"):
+            return timedelta(seconds=int(period[:-1]))
+        else:
+            raise ValueError(f"Invalid period: {period}")
+        
