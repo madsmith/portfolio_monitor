@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Protocol, Type, Any, runtime_checkable
 
@@ -26,6 +26,18 @@ class Detector(Protocol):
     
     def update(self, aggregate: Aggregate) -> Alert | None:
         """Update the detector with the latest aggregate and return an alert if triggered"""
+        ...
+        
+    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+        """Return the earliest timestamp required for the detector to function correctly.
+        
+        Args:
+            current_time: The current time or end time for data collection
+            sample_interval: The typical interval between data samples (e.g., 1 minute)
+            
+        Returns:
+            The earliest datetime needed for detector initialization, or None if no historical data needed
+        """
         ...
 
 

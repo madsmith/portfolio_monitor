@@ -1,4 +1,5 @@
 from collections import deque
+from datetime import datetime, timedelta
 from statistics import mean, stdev
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
@@ -81,3 +82,19 @@ class ZScoreReturnDetector(Detector):
             return Alert(symbol, self.name, abs(zscore), msg, aggregate.date, aggregate)
             
         return None
+        
+    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+        """
+        The ZScoreReturnDetector needs lookback_period + 1 samples to function effectively.
+        """
+        # Need lookback_period + 1 samples to have meaningful statistics
+        required_samples = self.lookback_period + 1
+        
+        # Add a few more samples as buffer for statistical stability
+        buffer_samples = 5
+        
+        # Calculate total time needed
+        total_samples_needed = required_samples + buffer_samples
+        total_time_needed = sample_interval * total_samples_needed
+        
+        return current_time - total_time_needed

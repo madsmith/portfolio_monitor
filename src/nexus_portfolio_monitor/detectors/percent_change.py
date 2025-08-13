@@ -36,6 +36,13 @@ class PercentChangeFromPreviousCloseDetector(Detector):
             msg = f"{ticker}: {pct*100:.2f}% vs prev close ({prev_close:.4f})"
             return Alert(ticker, self.name, abs(pct), msg, aggregate.date, aggregate)
         return None
+        
+    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+        """
+        This detector only needs one previous data point to function.
+        """
+        # Need one previous data point
+        return current_time - sample_interval
 
 @dataclass
 class PreviousClose:
@@ -93,7 +100,6 @@ class PercentChangeDetector(Detector):
         if len(self._price_history[symbol]) <= 1:
             return
 
-    
         current_close = self._price_history[symbol][-1]
         period_timedelta = self._parse_period(self.period)
         cutoff_date = current_close.date - period_timedelta
@@ -155,3 +161,14 @@ class PercentChangeDetector(Detector):
         else:
             raise ValueError(f"Invalid period: {period}")
         
+    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+        """
+        This detector needs data going back to the specified period.
+        """
+        # Need data as old as the period
+        period_td = self._parse_period(self.period)
+        
+        # Add a buffer of one sample interval to ensure we have data beyond the period
+        buffer = sample_interval
+        
+        return current_time - period_td - buffer

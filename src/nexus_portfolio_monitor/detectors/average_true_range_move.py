@@ -1,4 +1,5 @@
 from collections import deque
+from datetime import datetime, timedelta
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
 from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
@@ -78,3 +79,19 @@ class AverageTrueRangeMoveDetector(Detector):
             return Alert(symbol, self.name, atr_multiple, msg, aggregate.date, aggregate)
             
         return None
+
+    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+        """
+        The ATR detector needs period+1 samples to calculate the ATR.
+        """
+        # ATR needs period+1 samples (period for the ATR calculation + 1 for previous close)
+        required_samples = self.period + 1
+        
+        # Add buffer for statistical stability
+        buffer_samples = 5
+        
+        # Calculate total time needed
+        total_samples_needed = required_samples + buffer_samples
+        total_time_needed = sample_interval * total_samples_needed
+        
+        return current_time - total_time_needed

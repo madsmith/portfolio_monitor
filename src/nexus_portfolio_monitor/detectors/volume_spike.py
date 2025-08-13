@@ -1,5 +1,6 @@
 from collections import deque
 from statistics import mean
+from datetime import datetime, timedelta
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
 from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
@@ -53,3 +54,15 @@ class VolumeSpikeDetector(Detector):
             return Alert(symbol, self.name, severity, msg, aggregate.date, aggregate)
             
         return None
+        
+    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+        """
+        The VolumeSpikeDetector needs lookback_period samples to calculate average volume.
+        """
+        # Need lookback_period samples for the volume history
+        required_samples = self.lookback_period
+        
+        # Calculate total time needed
+        total_time_needed = sample_interval * required_samples
+        
+        return current_time - total_time_needed

@@ -180,9 +180,9 @@ class MonitorService:
         update_interval = 60
         stock_update_interval = 24 * 60 * 60
         
-        stocks: dict[str, AssetUpdateRecord] = {}
-        currencies: dict[str, AssetUpdateRecord] = {}
-        crypto: dict[str, AssetUpdateRecord] = {}
+        stocks: dict[AssetSymbol, AssetUpdateRecord] = {}
+        currencies: dict[AssetSymbol, AssetUpdateRecord] = {}
+        crypto: dict[AssetSymbol, AssetUpdateRecord] = {}
 
         # Initialize update records for all assets
         for portfolio in self.portfolios:
@@ -193,24 +193,29 @@ class MonitorService:
                     record.price = Currency(aggregate.close, Currency.DEFAULT_CURRENCY_TYPE)
                     record.time_updated = aggregate.date
                 if asset.asset_type == "stock":
-                    stocks[asset.symbol.ticker] = record
+                    stocks[asset.symbol] = record
                 elif asset.asset_type == "currency":
-                    currencies[asset.symbol.ticker] = record
+                    currencies[asset.symbol] = record
                 elif asset.asset_type == "crypto":
-                    crypto[asset.symbol.ticker] = record
+                    crypto[asset.symbol] = record
 
         # Fetch historical aggregates for all asset, priming the detector
-        start = datetime.now(ZoneInfo("UTC")) - timedelta(hours=3)
         end = datetime.now(ZoneInfo("UTC"))
-        
-        logger.info("Fetching historical aggregates...")
-        for asset_record in list(stocks.values()) + list(currencies.values()) + list(crypto.values()):
-            aggs = await self._data_provider.get_range(asset_record.symbol, start, end)
-            for agg in aggs:
-                self._detection_engine.detect(agg)
 
-        self._detection_engine.clear_cooldowns()
-        logger.info("Detection engine primed")
+        assets = list(stocks.values()) + list(currencies.values()) + list(crypto.values())
+    
+        start = self._detection_engine.preload_data_age(end, timedelta(minutes=1))
+
+        if start is not None:
+            logger.info(f"Fetching historical aggregates... {start} to {end}")
+            for asset_record in assets:
+                logger.debug(f"Fetching historical aggregates for {asset_record.symbol}")
+                aggs = await self._data_provider.get_range(asset_record.symbol, start, end)
+                for agg in aggs:
+                    self._detection_engine.detect(agg)
+
+            self._detection_engine.clear_cooldowns()
+            logger.info("Detection engine primed")
 
         # print(f"Stocks: {len(stocks)}")
         # for ticker, record in stocks.items():
@@ -360,10 +365,10 @@ class MonitorService:
                         logger.warning(f"Unknown aggregate for {symbol}: {agg_windows}")
 
                 # Update portfolios with all prices
-                price_data: dict[str, Currency] = {
-                    ticker: record.price
+                price_data: dict[AssetSymbol, Currency] = {
+                    symbol: record.price
                     for d in (stocks, currencies, crypto)
-                    for ticker, record in d.items()
+                    for symbol, record in d.items()
                     if record.price
                 }
 
@@ -371,7 +376,6 @@ class MonitorService:
                     portfolio.update_prices(price_data)
 
                 logger.debug("Portfolios updated") 
-
 
                 if (datetime.now() - last_portfolio_dump_time) > timedelta(minutes=15):
                     last_portfolio_dump_time = datetime.now()

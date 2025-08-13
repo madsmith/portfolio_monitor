@@ -204,11 +204,11 @@ class Portfolio:
         """Return all assets in this portfolio."""
         return self.stocks + self.currencies + self.crypto
     
-    def update_prices(self, price_data: Dict[str, Currency]) -> None:
+    def update_prices(self, price_data: Dict[AssetSymbol, Currency]) -> None:
         """Update the prices of all assets in this portfolio."""
         for asset in self.assets():
-            if asset.symbol.ticker in price_data:
-                price = price_data[asset.symbol.ticker]
+            if asset.symbol in price_data:
+                price = price_data[asset.symbol]
                 assert isinstance(price, Currency)
                 asset.current_price = price
     

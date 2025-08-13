@@ -129,3 +129,27 @@ class DeviationEngine:
         # Update last alert time and allow this alert
         self.last_alert_at[key] = alert.at
         return True
+
+    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+        """
+        Calculate the age of the data needed to prime the detection engine.
+        """
+        min_age: datetime | None = None
+        for detector in self.default_detectors:
+            age = detector.preload_data_age(current_time, sample_interval)
+            if age is not None:
+                if min_age is None:
+                    min_age = age
+                else:
+                    min_age = min(min_age, age)
+
+        for _, detectors in self.asset_detectors.items():
+            for detector in detectors:
+                age = detector.preload_data_age(current_time, sample_interval)
+                if age is not None:
+                    if min_age is None:
+                        min_age = age
+                    else:
+                        min_age = min(min_age, age)
+        return min_age
+        

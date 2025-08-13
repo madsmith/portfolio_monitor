@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from nexus_portfolio_monitor.core.config import load_config
 from nexus_portfolio_monitor.portfolio import load_portfolios, Portfolio
 from nexus_portfolio_monitor.core.currency import Currency
+from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 # Configure logging
 logging.basicConfig(
@@ -62,10 +63,10 @@ def main():
     # Simulate price updates
     print("\nSimulating price updates...")
     price_data = {
-        "AAPL": Currency("175.50"),
-        "MSFT": Currency("310.25"),
-        "GOOGL": Currency("140.75"),
-        "X:BTCUSD": Currency("45000.00"),
+        AssetSymbol("AAPL", AssetTypes.Stock): Currency("175.50"),
+        AssetSymbol("MSFT", AssetTypes.Stock): Currency("310.25"),
+        AssetSymbol("GOOGL", AssetTypes.Stock): Currency("140.75"),
+        AssetSymbol("X:BTCUSD", AssetTypes.Crypto): Currency("45000.00"),
     }
     
     for portfolio in portfolios:

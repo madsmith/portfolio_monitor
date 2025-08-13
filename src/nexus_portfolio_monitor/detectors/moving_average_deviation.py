@@ -1,5 +1,6 @@
 from collections import deque
 from statistics import mean
+from datetime import datetime, timedelta
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
 from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
@@ -51,3 +52,15 @@ class MovingAverageDeviationDetector(Detector):
             return Alert(symbol, self.name, abs(deviation_pct), msg, aggregate.date, aggregate)
             
         return None
+        
+    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+        """
+        The MovingAverageDeviationDetector needs period samples to calculate the moving average.
+        """
+        # Need period samples for the moving average
+        required_samples = self.period
+        
+        # Calculate total time needed
+        total_time_needed = sample_interval * required_samples
+        
+        return current_time - total_time_needed
