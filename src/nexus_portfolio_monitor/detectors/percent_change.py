@@ -9,13 +9,13 @@ class PercentChangeFromPreviousCloseDetector(Detector):
     def name(self) -> str:
         return "percent_change"
         
-    def __init__(self, threshold_pct: float = 0.03):
+    def __init__(self, threshold: float = 0.03):
         """Detector for significant percentage changes from previous close price
         
         Args:
             threshold_pct: Percent change threshold that triggers an alert (default: 0.03 for 3%)
         """
-        self.threshold_pct = threshold_pct
+        self.threshold = threshold
         self.previous_closes: dict[AssetSymbol, float] = {}
 
     def update(self, aggregate: Aggregate) -> Alert | None:
@@ -30,7 +30,7 @@ class PercentChangeFromPreviousCloseDetector(Detector):
         # Update previous close for next time
         self.previous_closes[ticker] = aggregate.close
         
-        if abs(pct) >= self.threshold_pct:
+        if abs(pct) >= self.threshold:
             msg = f"{ticker}: {pct*100:.2f}% vs prev close ({prev_close:.4f})"
             return Alert(ticker, self.name, abs(pct), msg, aggregate.date, aggregate)
         return None

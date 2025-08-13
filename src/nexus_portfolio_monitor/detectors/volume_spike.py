@@ -25,20 +25,20 @@ class VolumeSpikeDetector(Detector):
         self.volume_histories: dict[AssetSymbol, deque[float]] = {}
         
     def update(self, aggregate: Aggregate) -> Alert | None:
-        ticker = aggregate.symbol
+        symbol = aggregate.symbol
         # Initialize history for this ticker if it doesn't exist
-        if ticker not in self.volume_histories:
-            self.volume_histories[ticker] = deque(maxlen=self.lookback_period)
+        if symbol not in self.volume_histories:
+            self.volume_histories[symbol] = deque(maxlen=self.lookback_period)
             
         # Add current volume to history
-        self.volume_histories[ticker].append(aggregate.volume)
+        self.volume_histories[symbol].append(aggregate.volume)
         
         # Need enough history to calculate baseline
-        if len(self.volume_histories[ticker]) < self.lookback_period:
+        if len(self.volume_histories[symbol]) < self.lookback_period:
             return None
             
         # Calculate average volume (excluding the current volume)
-        previous_volumes = list(self.volume_histories[ticker])[:-1]
+        previous_volumes = list(self.volume_histories[symbol])[:-1]
         if not previous_volumes:
             return None
             
@@ -47,9 +47,9 @@ class VolumeSpikeDetector(Detector):
         # Check if current volume exceeds threshold
         if aggregate.volume >= (avg_volume * self.threshold_mult):
             pct_increase = ((aggregate.volume / avg_volume) - 1) * 100
-            msg = f"{ticker}: Volume spike of {pct_increase:.2f}% over {self.lookback_period-1} sample avg"
+            msg = f"{symbol}: Volume spike of {pct_increase:.2f}% over {self.lookback_period-1} sample avg"
             severity = aggregate.volume / avg_volume
             
-            return Alert(ticker, self.name, severity, msg, aggregate.date, aggregate)
+            return Alert(symbol, self.name, severity, msg, aggregate.date, aggregate)
             
         return None

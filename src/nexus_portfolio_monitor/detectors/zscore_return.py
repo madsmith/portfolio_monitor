@@ -40,26 +40,26 @@ class ZScoreReturnDetector(Detector):
         return returns
         
     def update(self, aggregate: Aggregate) -> Alert | None:
-        ticker = aggregate.symbol
+        symbol = aggregate.symbol
         # Initialize history for this ticker if it doesn't exist
-        if ticker not in self.close_histories:
-            self.close_histories[ticker] = deque(maxlen=self.lookback_period + 1)  # +1 to calculate returns
+        if symbol not in self.close_histories:
+            self.close_histories[symbol] = deque(maxlen=self.lookback_period + 1)  # +1 to calculate returns
             
         # Add current close to history
-        self.close_histories[ticker].append(aggregate.close)
+        self.close_histories[symbol].append(aggregate.close)
         
         # Need enough history to calculate meaningful statistics
-        if len(self.close_histories[ticker]) <= self.lookback_period:
+        if len(self.close_histories[symbol]) <= self.lookback_period:
             return None
             
-        returns = self._calculate_returns(self.close_histories[ticker])
+        returns = self._calculate_returns(self.close_histories[symbol])
         
         # Need at least a few returns to calculate statistics
         if len(returns) < 5:
             return None
             
         # Calculate today's return
-        yesterday_close = list(self.close_histories[ticker])[-2]
+        yesterday_close = list(self.close_histories[symbol])[-2]
         today_return = (aggregate.close - yesterday_close) / yesterday_close
         
         # Calculate z-score of today's return
@@ -76,8 +76,8 @@ class ZScoreReturnDetector(Detector):
         # Check if z-score exceeds threshold
         if abs(zscore) >= self.threshold:
             direction = "positive" if zscore > 0 else "negative"
-            msg = f"{ticker}: {direction} return with z-score of {zscore:.2f} (±{self.threshold} threshold)"
+            msg = f"{symbol}: {direction} return with z-score of {zscore:.2f} (±{self.threshold} threshold)"
             
-            return Alert(ticker, self.name, abs(zscore), msg, aggregate.date, aggregate)
+            return Alert(symbol, self.name, abs(zscore), msg, aggregate.date, aggregate)
             
         return None
