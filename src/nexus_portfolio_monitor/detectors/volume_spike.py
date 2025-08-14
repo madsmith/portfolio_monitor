@@ -48,7 +48,7 @@ class VolumeSpikeDetector(Detector):
         # Check if current volume exceeds threshold
         if aggregate.volume >= (avg_volume * self.threshold_mult):
             pct_increase = ((aggregate.volume / avg_volume) - 1) * 100
-            msg = f"{symbol}: Volume spike of {pct_increase:.2f}% over {self.lookback_period-1} sample avg"
+            msg = f"{symbol}: Volume spike of {pct_increase:.2f}% over {self.lookback_period-1} sample average"
             severity = aggregate.volume / avg_volume
             
             return Alert(symbol, self.name, severity, msg, aggregate.date, aggregate)
