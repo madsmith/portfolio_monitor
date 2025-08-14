@@ -33,7 +33,7 @@ class PercentChangeFromPreviousCloseDetector(Detector):
         self.previous_closes[ticker] = aggregate.close
         
         if abs(pct) >= self.threshold:
-            msg = f"{ticker}: {pct*100:.2f}% vs prev close ({prev_close:.4f})"
+            msg = f"{ticker}: {pct*100:.2f}% vs previous close ({prev_close:.4f})"
             return Alert(ticker, self.name, abs(pct), msg, aggregate.date, aggregate)
         return None
         
