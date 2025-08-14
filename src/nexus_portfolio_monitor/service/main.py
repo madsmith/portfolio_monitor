@@ -1,6 +1,8 @@
 import argparse
 import asyncio
 import logging
+import logfire
+from nexusvoice.core.protocol import NexusConnection
 from pathlib import Path
 
 from nexus_portfolio_monitor.core.config import load_config
@@ -44,7 +46,9 @@ async def run_service(args: argparse.Namespace):
     aggregate_cache.initialize()
     await aggregate_cache.load()
 
-    service = MonitorService(config, portfolios, aggregate_cache)
+    nexus_connection = NexusConnection(args.host, args.port)
+
+    service = MonitorService(config, nexus_connection, portfolios, aggregate_cache)
     
     try:
         await service.start()
@@ -63,10 +67,10 @@ async def run_service(args: argparse.Namespace):
 def main():
     """Entry point for the monitor service"""
     parser = argparse.ArgumentParser(description="Nexus Portfolio Monitor Service")
-    parser.add_argument(
-        "-d", "--debug", 
-        action="store_true", 
-        help="Enable debug logging")
+    
+    parser.add_argument("-H", "--host", type=str, default="localhost", help="Nexus host")
+    parser.add_argument("-p", "--port", type=int, default=8008, help="Nexus port")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
     
     args = parser.parse_args()
     
@@ -74,6 +78,7 @@ def main():
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(level=log_level, format=logging.BASIC_FORMAT)
     
+    logfire.configure(service_name="Portfolio Monitor")
     asyncio.run(run_service(args))
 
 

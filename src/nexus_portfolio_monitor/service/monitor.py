@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, time as dtime, timedelta
 import logging
+from nexusvoice.core.protocol import NexusConnection
 
 from nexus_portfolio_monitor.data.provider import DataProvider
 from nexus_portfolio_monitor.detectors.base import Alert
@@ -19,15 +20,8 @@ from nexus_portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCac
 from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
 from nexus_portfolio_monitor.core.currency import Currency
 from nexus_portfolio_monitor.service.types import AssetUpdateRecord
-from nexus_portfolio_monitor.detectors import (
-    DeviationEngine,
-    AverageTrueRangeMoveDetector,
-    MovingAverageDeviationDetector,
-    PercentChangeFromPreviousCloseDetector,
-    VolumeSpikeDetector,
-    ZScoreReturnDetector
-)
-from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
+from nexus_portfolio_monitor.detectors import DeviationEngine
+from nexus_portfolio_monitor.service.types import AssetSymbol
 
 
 logger = logging.getLogger(__name__)
@@ -36,11 +30,18 @@ logger = logging.getLogger(__name__)
 class MonitorService:
     """Monitor service that runs in an asyncio event loop"""
     
-    def __init__(self, config: NexusConfig, portfolios: List[Portfolio], aggregate_cache: AggregateCache):
+    def __init__(
+        self,
+        config: NexusConfig,
+        nexus_connection: NexusConnection,
+        portfolios: List[Portfolio],
+        aggregate_cache: AggregateCache
+    ):
         """
         Initialize the monitor service
         """
         self.config: NexusConfig = config
+        self.nexus_connection: NexusConnection = nexus_connection
         self.portfolios: List[Portfolio] = portfolios
         self.aggregate_cache: AggregateCache = aggregate_cache
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.get("polygon.api-key"))
@@ -82,6 +83,10 @@ class MonitorService:
         if self.running:
             logger.warning("Monitor service is already running")
             return
+
+        logger.info("Connecting to Nexus")
+        connected = await self.nexus_connection.connect()
+        logger.debug(f"Connected to Nexus: {connected}")
             
         self.running = True
         logger.info("Starting monitor")
@@ -227,6 +232,7 @@ class MonitorService:
         # for ticker, record in crypto.items():
         #     print(f"  {ticker}: {record}")
 
+
         last_portfolio_dump_time: datetime = datetime.min
         try:
             while self.running:
@@ -360,7 +366,7 @@ class MonitorService:
                             logger.info(f"Alerts for {symbol}:")
                             for alert in alerts:
                                 logger.warning(f"    {alert}")
-                                self._send_alert(alert)
+                                await self._send_alert(alert)
                     else:
                         logger.warning(f"Unknown aggregate for {symbol}: {agg_windows}")
 
@@ -414,7 +420,11 @@ class MonitorService:
         else:
             return dtime(9, 30) <= t <= dtime(16, 0)
 
-    def _send_alert(self, alert: Alert) -> None:
+    async def _send_alert(self, alert: Alert) -> None:
+        await self.nexus_connection.send_command("schedule_broadcast", {
+            "message" : f"Portfolio Alert: {alert.kind} {alert.message}",
+            "delay": 0
+        })
         print(f"!! Alert !! {alert.ticker} - {alert.kind}")
         print(f"  {alert.message}")
         print(f"  {alert.aggregate.close:,.2f} (Volume {alert.aggregate.volume:,})")

@@ -16,9 +16,11 @@ classifiers = [
 
 dependencies = [
     "asyncio>=3.4.3",
+    "logfire>=4.0.0",
     "omegaconf>=2.3.0",
     "polygon-api-client>=1.15.3",
     "sortedcontainers>=2.4.0",
+    "nexusvoice-core @ git+https://github.com/madsmith/NexusVoice@v0.6.3#subdirectory=nexusvoice/core"
 ]
 
 [project.scripts]
