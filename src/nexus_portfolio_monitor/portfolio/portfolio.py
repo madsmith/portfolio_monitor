@@ -116,7 +116,7 @@ class Asset:
         # Sum up all lot cost bases
         result = Currency(0, currency_type)
         for lot in self.lots:
-            assert lot.price.currency_type == currency_type, f"Currency type mismatch: {lot.price.currency_type} != {currency_type}"
+            assert Currency.are_equivalent_currencies(lot.price.currency_type, currency_type), f"Currency type mismatch: {lot.price.currency_type} != {currency_type}"
             # Use the new cost_basis method which factors in fees and rebates
             result += lot.cost_basis()
         return result
