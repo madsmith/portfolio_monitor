@@ -36,10 +36,13 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
     def _check_alert(self, aggregate: Aggregate) -> Alert | None:
         close_history = self.values(aggregate.symbol)
 
-        if len(close_history) < 2:
+        if len(close_history) < 3:
             return None
         
         return_values = self._calculate_returns(close_history)
+
+        if len(return_values) < 2:
+            return None
 
         previous_close = close_history[-2]
         current_return = (aggregate.close - previous_close) / previous_close
