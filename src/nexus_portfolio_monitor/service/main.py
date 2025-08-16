@@ -72,6 +72,8 @@ async def run_service(args: argparse.Namespace):
                 await service.stop()
         except Exception as e:
             logger.error(f"Error stopping service: {e}")
+            import traceback
+            traceback.print_exc()
             
         try:
             await aggregate_cache.close()
