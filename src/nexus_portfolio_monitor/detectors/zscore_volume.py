@@ -36,7 +36,7 @@ class ZScoreVolumeDetector(TimeRangeDetectorBase[float]):
     def _check_alert(self, aggregate: Aggregate) -> Alert | None:
         volume_history = np.array(self.values(aggregate.symbol))
         mean = np.mean(volume_history)
-        std_dev = np.std(volume_history)
+        std_dev = np.std(volume_history, ddof=1)
 
         if std_dev == 0:
             return None

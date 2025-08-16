@@ -44,7 +44,7 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
         previous_close = close_history[-2]
         current_return = (aggregate.close - previous_close) / previous_close
         mean_return = np.mean(return_values)
-        std_dev = np.std(return_values)
+        std_dev = np.std(return_values, ddof=1)
 
         if std_dev == 0:
             return None
