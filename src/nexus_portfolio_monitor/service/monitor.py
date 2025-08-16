@@ -427,7 +427,7 @@ class MonitorService:
 
     async def _send_alert(self, alert: Alert) -> None:
         await self.nexus_connection.send_command("schedule_broadcast", {
-            "message" : f"Portfolio Alert: {alert.kind} {alert.message}",
+            "message" : f"Portfolio Alert: {alert.message}",
             "delay": 0
         })
         print(f"!!!!! Alert !!!!! {alert.ticker} - {alert.kind}")
