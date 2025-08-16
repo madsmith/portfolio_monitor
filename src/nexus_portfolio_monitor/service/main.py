@@ -53,16 +53,19 @@ async def run_service(args: argparse.Namespace):
     try:
         # Start the service and wait for it to complete or be cancelled
         await service.start()
+        
+        # Wait for the task to complete if a task was created
+        service_task = service.task()
+        if service_task:
+            while not service_task.done():
+                await asyncio.sleep(0.1)
     except asyncio.CancelledError:
         # This is expected on Ctrl+C, asyncio.run() will cancel the main task
         logger.info("Main task cancelled, initiating graceful shutdown...")
-        raise  # Re-raise to propagate cancellation to asyncio.run()
     except Exception as e:
         logger.error(f"Error in service: {e}")
         raise
     finally:
-        logger.info("Shutting down resources...")
-        
         # Ensure all resources are properly closed, even on cancellation
         try:
             if service.running:
@@ -71,16 +74,9 @@ async def run_service(args: argparse.Namespace):
             logger.error(f"Error stopping service: {e}")
             
         try:
-            await nexus_connection.disconnect()
-        except Exception as e:
-            logger.error(f"Error disconnecting nexus: {e}")
-            
-        try:
             await aggregate_cache.close()
         except Exception as e:
             logger.error(f"Error closing aggregate cache: {e}")
-            
-        logger.info("All resources shut down successfully")
 
 
 def main():
@@ -98,7 +94,11 @@ def main():
     logging.basicConfig(level=log_level, format=logging.BASIC_FORMAT)
     
     logfire.configure(service_name="Portfolio Monitor")
-    asyncio.run(run_service(args))
+
+    try:
+        asyncio.run(run_service(args))
+    except KeyboardInterrupt:
+        logger.info("Shutting down [Ctrl+C]")
 
 
 if __name__ == "__main__":

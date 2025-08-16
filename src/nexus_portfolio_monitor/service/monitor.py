@@ -77,7 +77,10 @@ class MonitorService:
         # print(self._detection_engine.asset_detectors)
         self.running = False
         self._task: asyncio.Task | None = None
-        
+    
+    def task(self):
+        return self._task
+    
     async def start(self) -> None:
         """Start the monitoring service"""
         if self.running:
@@ -96,6 +99,8 @@ class MonitorService:
         """Stop the monitoring service"""
         await self.aggregate_cache.wait_for_completion()
 
+        await self.nexus_connection.disconnect()
+        
         if not self.running:
             logger.warning("Monitor service is not running")
             return

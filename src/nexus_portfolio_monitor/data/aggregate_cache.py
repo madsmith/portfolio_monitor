@@ -183,7 +183,7 @@ class AggregateCache:
 
     async def close(self):
         """Close the cache and ensure all pending updates are written"""
-        logger.info("Closing AggregateCache and ensuring all updates are written...")
+        logger.info("Closing AggregateCache...")
         
         # Wait for all pending updates to be processed
         await self.wait_for_completion()
