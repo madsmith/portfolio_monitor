@@ -1,7 +1,7 @@
 import numpy as np
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, TimeRangeDetectorBase, DetectorRegistry
+from nexus_portfolio_monitor.detectors import Alert, TimeRangeDetectorBase, DetectorRegistry
 
 @DetectorRegistry.register
 class VolumeSpikeDetector(TimeRangeDetectorBase[float]):
@@ -33,16 +33,17 @@ class VolumeSpikeDetector(TimeRangeDetectorBase[float]):
         return aggregate.volume
     
     def _check_alert(self, aggregate: Aggregate) -> Alert | None:
-        data = np.array([record.value for record in self.histories[aggregate.symbol]])
-        mean = np.mean(data)
+        volume_history = np.array(self.values(aggregate.symbol))
+        mean = np.mean(volume_history)
         
         if aggregate.volume >= (mean * self.threshold):
             pct_increase = ((aggregate.volume / mean) - 1) * 100
             msg = f"{aggregate.symbol}: Volume spike of {pct_increase:.2f}% over {self.period} average"
             extra = {
                 "current_volume": aggregate.volume,
-                "average_volume": mean,
-                "percent_increase": pct_increase,
+                "average_volume": float(mean),
+                "percent_increase": float(pct_increase),
+                "period": self.period,
             }
-            return Alert(aggregate.symbol, self.name, msg, extra, aggregate.date, aggregate)
+            return self.alert(aggregate, msg, extra)
         return None

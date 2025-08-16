@@ -1,6 +1,6 @@
 import numpy as np
 
-from nexus_portfolio_monitor.detectors.base import Alert, TimeRangeDetectorBase, DetectorRegistry
+from nexus_portfolio_monitor.detectors import Alert, TimeRangeDetectorBase, DetectorRegistry
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
 
 @DetectorRegistry.register
@@ -34,18 +34,23 @@ class ZScoreVolumeDetector(TimeRangeDetectorBase[float]):
         return aggregate.volume
     
     def _check_alert(self, aggregate: Aggregate) -> Alert | None:
-        data = np.array([record.value for record in self.histories[aggregate.symbol]])
-        mean = np.mean(data)
-        std_dev = np.std(data)
+        volume_history = np.array(self.values(aggregate.symbol))
+        mean = np.mean(volume_history)
+        std_dev = np.std(volume_history)
+
+        if std_dev == 0:
+            return None
+        
         z_score = (aggregate.volume - mean) / std_dev
 
         if z_score > self.threshold:
             msg = f"{aggregate.symbol}: Volume spike of {z_score:.2f} standard deviations over {self.period} average"
             extra = {
-                "z_score": z_score,
+                "z_score": float(z_score),
                 "current_volume": aggregate.volume,
-                "average_volume": mean,
-                "standard_deviation": std_dev,
+                "average_volume": float(mean),
+                "standard_deviation": float(std_dev),
+                "period": self.period,
             }
-            return Alert(aggregate.symbol, self.name, msg, extra, aggregate.date, aggregate)
+            return self.alert(aggregate, msg, extra)
         return None

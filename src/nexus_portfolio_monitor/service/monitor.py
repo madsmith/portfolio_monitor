@@ -4,7 +4,7 @@ import logging
 from nexusvoice.core.protocol import NexusConnection
 
 from nexus_portfolio_monitor.data.provider import DataProvider
-from nexus_portfolio_monitor.detectors.base import Alert
+from nexus_portfolio_monitor.detectors import Alert
 
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.rest.aggs import PreviousCloseAgg
@@ -433,8 +433,15 @@ class MonitorService:
         print(f"!!!!! Alert !!!!! {alert.ticker} - {alert.kind}")
         print(f"  {alert.message}")
         print(f"  {alert.aggregate.close:,.2f} (Volume {alert.aggregate.volume:,})")
-        print(f"  {alert.extra}")
+        self._print_extra(alert.extra)
 
+    def _print_extra(self, extra: dict[str, Any], indent: int = 4) -> None:
+        def json_with_prefix(data, prefix="    "):
+            import json
+            return "\n".join(prefix + line for line in json.dumps(data, indent=2).splitlines())
+            
+        print(json_with_prefix(extra, prefix=" " * indent))
+        
     def _get_symbol(self, ticker: str) -> AssetSymbol:
         for portfolio in self.portfolios:
             for asset in portfolio.assets():

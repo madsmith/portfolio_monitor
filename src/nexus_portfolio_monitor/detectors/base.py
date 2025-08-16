@@ -62,7 +62,7 @@ class HistoryRecord(Generic[T], NamedTuple):
     timestamp: datetime
     value: T
 
-class TimeRangeDetectorBase(Generic[T], DetectorBase):
+class TimeRangeDetectorBase(DetectorBase, Generic[T]):
     def __init__(self, period: str = "2h"):
         self.period = period
         self.period_delta = parse_period(period)
@@ -83,6 +83,12 @@ class TimeRangeDetectorBase(Generic[T], DetectorBase):
     @abstractmethod
     def _check_alert(self, aggregate: Aggregate) -> Alert | None:
         raise NotImplementedError
+    
+    def values(self, symbol: AssetSymbol) -> list[T]:
+        return [record.value for record in self.histories[symbol]]
+    
+    def alert(self, aggregate: Aggregate, msg: str, extra: dict[str, Any]) -> Alert:
+        return Alert(aggregate.symbol, self.name, msg, extra, aggregate.date, aggregate)
     
     def _append_history(self, timestamp: datetime, aggregate: Aggregate):
         value = self._value_from_aggregate(aggregate)

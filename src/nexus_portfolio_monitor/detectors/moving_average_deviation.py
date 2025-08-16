@@ -1,69 +1,56 @@
-from collections import deque
-from statistics import mean
-from datetime import datetime, timedelta
+import numpy as np
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
-from nexus_portfolio_monitor.service.types import AssetSymbol
+from nexus_portfolio_monitor.detectors import Alert, TimeRangeDetectorBase, DetectorRegistry
 
 
 @DetectorRegistry.register
-class MovingAverageDeviationDetector(Detector):
-    """Detector for price deviations from moving average"""
+class SMADeviationDetector(TimeRangeDetectorBase[float]):
+    """
+    Detector for price deviations from a Simple Moving Average (SMA).
+    
+    This detector tracks asset prices over a specified time period and calculates
+    a simple moving average of the closing prices. It generates alerts when the
+    current price deviates from this average by more than the specified threshold
+    percentage, which can indicate significant trend changes or unusual price action.
+    """
     
     @property
     def name(self) -> str:
-        return "moving_average_deviation"
+        return "SMA_deviation"
     
-    def __init__(self, period: int = 60, threshold: float = 0.05):
+    def __init__(self, period: str = "2h", threshold: float = 0.05):
         """
+        Initialize the Simple Moving Average (SMA) deviation detector with specified parameters.
+        
         Args:
-            period: Number of samples for the moving average calculation (default: 60 samples)
-            threshold: Deviation from MA that triggers an alert
+            period: Time period for the moving average calculation (e.g., "2h", "1d").
+                    Used for establishing the baseline price average.
+            threshold: Percentage deviation from the moving average that triggers an alert
+                    (e.g., 0.05 means 5% deviation will trigger an alert). This is
+                    expressed as a decimal, not a percentage.
         """
-        self.period = period
+        super().__init__(period)
         self.threshold = threshold
-        self.price_histories: dict[AssetSymbol, deque[float]] = {}
-        
-    def update(self, aggregate: Aggregate) -> Alert | None:
-        symbol = aggregate.symbol
-        # Initialize history for this ticker if it doesn't exist
-        if symbol not in self.price_histories:
-            self.price_histories[symbol] = deque(maxlen=self.period)
-            
-        # Add current close to history
-        self.price_histories[symbol].append(aggregate.close)
-        
-        # Need enough history to calculate MA
-        if len(self.price_histories[symbol]) < self.period:
-            return None
-            
-        # Calculate moving average
-        moving_avg = mean(self.price_histories[symbol])
-        
-        # Calculate percent deviation from moving average
-        deviation_pct = (aggregate.close - moving_avg) / moving_avg
-        
-        # Check if deviation exceeds threshold
-        if abs(deviation_pct) >= self.threshold:
-            direction = "above" if deviation_pct > 0 else "below"
-            msg = f"{symbol}: Price {direction} {self.period}-sample moving average by {abs(deviation_pct)*100:.2f}%"
+
+    def _value_from_aggregate(self, aggregate: Aggregate) -> float:
+        return aggregate.close
+
+    def _check_alert(self, aggregate: Aggregate) -> Alert | None:
+        close_history = np.array(self.values(aggregate.symbol))
+
+        current_price = aggregate.close
+        mean = np.mean(close_history)
+
+        deviation = abs(current_price - mean) / mean
+
+        if abs(deviation) >= self.threshold:
+            direction = "above" if deviation > 0 else "below"
+            msg = f"{aggregate.symbol}: Price {direction} {self.period} simple moving average by {abs(deviation)*100:.2f}%"
             extra = {
-                "deviation_percent": deviation_pct * 100,
+                "deviation_percent": float(deviation * 100),
+                "simple_moving_average": float(mean),
+                "period": self.period,
             }
-            
-            return Alert(symbol, self.name, msg, extra, aggregate.date, aggregate)
-            
+            return self.alert(aggregate, msg, extra)
         return None
-        
-    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
-        """
-        The MovingAverageDeviationDetector needs period samples to calculate the moving average.
-        """
-        # Need period samples for the moving average
-        required_samples = self.period
-        
-        # Calculate total time needed
-        total_time_needed = sample_interval * required_samples
-        
-        return current_time - total_time_needed

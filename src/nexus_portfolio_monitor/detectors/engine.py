@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any, Sequence
 
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
+from nexus_portfolio_monitor.detectors import Alert, Detector, DetectorRegistry
 from nexus_portfolio_monitor.service.types import AssetSymbol
 
 DetectorSpec = Detector | dict[str, Any]
