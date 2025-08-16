@@ -51,17 +51,36 @@ async def run_service(args: argparse.Namespace):
     service = MonitorService(config, nexus_connection, portfolios, aggregate_cache)
     
     try:
+        # Start the service and wait for it to complete or be cancelled
         await service.start()
-        # Keep the service running
-        if service._task:
-            await asyncio.wait_for(service._task, timeout=None)
     except asyncio.CancelledError:
-        pass
-    except KeyboardInterrupt:
-        pass
+        # This is expected on Ctrl+C, asyncio.run() will cancel the main task
+        logger.info("Main task cancelled, initiating graceful shutdown...")
+        raise  # Re-raise to propagate cancellation to asyncio.run()
+    except Exception as e:
+        logger.error(f"Error in service: {e}")
+        raise
     finally:
-        if service.running:
-            await service.stop()
+        logger.info("Shutting down resources...")
+        
+        # Ensure all resources are properly closed, even on cancellation
+        try:
+            if service.running:
+                await service.stop()
+        except Exception as e:
+            logger.error(f"Error stopping service: {e}")
+            
+        try:
+            await nexus_connection.disconnect()
+        except Exception as e:
+            logger.error(f"Error disconnecting nexus: {e}")
+            
+        try:
+            await aggregate_cache.close()
+        except Exception as e:
+            logger.error(f"Error closing aggregate cache: {e}")
+            
+        logger.info("All resources shut down successfully")
 
 
 def main():

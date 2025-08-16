@@ -45,6 +45,7 @@ class AggregateCache:
         self._process_lock = asyncio.Lock()  # Ensures _process_updates runs exclusively
         self._update_in_progress = asyncio.Event()
         self._pending_db_updates: asyncio.Queue[Aggregate] = asyncio.Queue()
+        self._background_tasks = set()  # Track background tasks for cleanup
 
     def set_memory_cache_age(self, age: timedelta):
         """
@@ -163,9 +164,43 @@ class AggregateCache:
         
     async def wait_for_completion(self):
         """Wait for all pending updates to be written to database"""
-        # Just wait until queue is empty and processing is done
+        task = None
+        # If there are pending updates and no processing is happening, start it
+        async with self._spawn_lock:
+            if not self._pending_db_updates.empty() and not self._update_in_progress.is_set():
+                task = asyncio.create_task(self._process_updates())
+                # We'll wait for it below
+        
+        # Wait until the queue is empty and processing is complete
         while not self._pending_db_updates.empty() or self._update_in_progress.is_set():
-            await asyncio.sleep(0.01)
+            try:
+                await asyncio.sleep(0.1)  # Small sleep to avoid busy waiting
+            except asyncio.CancelledError:
+                break
+
+        if task:
+            await task
+
+    async def close(self):
+        """Close the cache and ensure all pending updates are written"""
+        logger.info("Closing AggregateCache and ensuring all updates are written...")
+        
+        # Wait for all pending updates to be processed
+        await self.wait_for_completion()
+        
+        # Cancel any remaining background tasks
+        for task in self._background_tasks:
+            if not task.done():
+                logger.debug(f"Cancelling background task: {task.get_name()}")
+                task.cancel()
+        
+        # Wait for all tasks to complete
+        if self._background_tasks:
+            done, pending = await asyncio.wait(self._background_tasks, timeout=5)
+            if pending:
+                logger.warning(f"Some background tasks did not complete: {len(pending)}")
+            
+        logger.info("AggregateCache closed successfully")
     
     async def load(self):
         """
@@ -173,9 +208,10 @@ class AggregateCache:
         """
         if not self._is_initialized:
             self.initialize()
-
+            
         assert self._cache_file.exists(), f"Cache file: {self._cache_file} does not exist"
-
+            
+        logger.info(f"Loading aggregates from {self._cache_file}") 
         with sqlite3.connect(self._cache_file) as conn:
             cursor = conn.cursor()
             
@@ -223,11 +259,18 @@ class AggregateCache:
                             break
                     
                     if batch:
-                        await asyncio.to_thread(self._add_batch_to_db, batch)
+                        try:
+                            await asyncio.to_thread(self._add_batch_to_db, batch)
+                        except asyncio.CancelledError:
+                            logger.warning("Processing was cancelled, committing current batch before exit")
+                            raise
                     
                     # Always yield after each batch for responsiveness
                     await asyncio.sleep(0)
                     
+            except Exception as e:
+                logger.error(f"Error processing updates: {e}")
+                raise
             finally:
                 self._update_in_progress.clear()
 
@@ -239,7 +282,17 @@ class AggregateCache:
         # Spawn a task to process updates if needed
         async with self._spawn_lock:  # Use spawn_lock to guard task creation
             if not self._update_in_progress.is_set():
-                asyncio.create_task(self._process_updates())
+                task = asyncio.create_task(self._process_updates())
+                # Name the task for debugging
+                task.set_name(f"AggregateCache._process_updates-{id(task)}")
+                # Track the task for cleanup
+                self._background_tasks.add(task)
+                
+                # Set up callback to remove task from set when done
+                def _remove_task(t):
+                    self._background_tasks.discard(t)
+                    
+                task.add_done_callback(_remove_task)
 
     def _add_to_memory_cache(self, aggregate: Aggregate):
         if aggregate.symbol not in self._memory_cache:
