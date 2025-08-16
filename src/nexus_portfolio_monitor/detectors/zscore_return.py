@@ -52,11 +52,13 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
         z_score = (current_return - mean_return) / std_dev
 
         if np.abs(z_score) >= self.threshold:
-            msg = f"{aggregate.symbol}: Return of {current_return:.2f} is {z_score:.2f} standard deviations over {self.period} average"
+            direction = "above" if z_score > 0 else "below"
+            current_return_percent = current_return * 100
+            msg = f"{aggregate.symbol}: Return of {current_return_percent:.2f}% is {direction} {self.threshold}x standard deviations from {self.period} average return."
             extra = {
                 "z_score": float(z_score),
-                "current_return": current_return,
-                "average_return": float(mean_return),
+                "current_return_percent": float(current_return_percent),
+                "average_return_percent": float(mean_return * 100),
                 "standard_deviation": float(std_dev),
                 "period": self.period,
             }

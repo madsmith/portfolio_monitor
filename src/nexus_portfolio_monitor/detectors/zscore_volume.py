@@ -44,7 +44,8 @@ class ZScoreVolumeDetector(TimeRangeDetectorBase[float]):
         z_score = (aggregate.volume - mean) / std_dev
 
         if z_score > self.threshold:
-            msg = f"{aggregate.symbol}: Volume spike of {z_score:.2f} standard deviations over {self.period} average"
+            direction = "above" if z_score > 0 else "below"
+            msg = f"{aggregate.symbol}: Volume spike of {z_score:.2f} {direction} {self.threshold}x standard deviations from {self.period} average volume."
             extra = {
                 "z_score": float(z_score),
                 "current_volume": aggregate.volume,
