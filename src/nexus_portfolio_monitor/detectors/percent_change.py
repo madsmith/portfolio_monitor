@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
+from nexus_portfolio_monitor.core.datetime import parse_period
 from nexus_portfolio_monitor.detectors.base import Alert, Detector, DetectorRegistry
 from nexus_portfolio_monitor.service.types import AssetSymbol
 
@@ -101,7 +102,7 @@ class PercentChangeDetector(Detector):
             return
 
         current_close = self._price_history[symbol][-1]
-        period_timedelta = self._parse_period(self.period)
+        period_timedelta = parse_period(self.period)
         cutoff_date = current_close.date - period_timedelta
 
         prune_idx = -1
@@ -146,27 +147,12 @@ class PercentChangeDetector(Detector):
         oldest_close = self._price_history[symbol][0]
         return oldest_close.close
         
-    def _parse_period(self, period: str) -> timedelta:
-        """
-        Parse the period string into a timedelta.
-        """
-        if period.endswith("d"):
-            return timedelta(days=int(period[:-1]))
-        elif period.endswith("h"):
-            return timedelta(hours=int(period[:-1]))
-        elif period.endswith("m"):
-            return timedelta(minutes=int(period[:-1]))
-        elif period.endswith("s"):
-            return timedelta(seconds=int(period[:-1]))
-        else:
-            raise ValueError(f"Invalid period: {period}")
-        
     def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
         """
         This detector needs data going back to the specified period.
         """
         # Need data as old as the period
-        period_td = self._parse_period(self.period)
+        period_td = parse_period(self.period)
         
         # Add a buffer of one sample interval to ensure we have data beyond the period
         buffer = sample_interval
