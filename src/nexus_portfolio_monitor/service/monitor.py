@@ -100,7 +100,7 @@ class MonitorService:
         await self.aggregate_cache.wait_for_completion()
 
         await self.nexus_connection.disconnect()
-        
+
         if not self.running:
             logger.warning("Monitor service is not running")
             return
@@ -430,9 +430,10 @@ class MonitorService:
             "message" : f"Portfolio Alert: {alert.kind} {alert.message}",
             "delay": 0
         })
-        print(f"!! Alert !! {alert.ticker} - {alert.kind}")
+        print(f"!!!!! Alert !!!!! {alert.ticker} - {alert.kind}")
         print(f"  {alert.message}")
         print(f"  {alert.aggregate.close:,.2f} (Volume {alert.aggregate.volume:,})")
+        print(f"  {alert.extra}")
 
     def _get_symbol(self, ticker: str) -> AssetSymbol:
         for portfolio in self.portfolios:

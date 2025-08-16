@@ -46,7 +46,7 @@ class VolumeSpikeDetector(Detector):
         
     def update(self, aggregate: Aggregate) -> Alert | None:
         symbol = aggregate.symbol
-        
+
         # Clean up old volume records
         self._clean_old_volumes(symbol, aggregate.date)
             
@@ -68,9 +68,13 @@ class VolumeSpikeDetector(Detector):
         if aggregate.volume >= (avg_volume * self.threshold_mult):
             pct_increase = ((aggregate.volume / avg_volume) - 1) * 100
             msg = f"{symbol}: Volume spike of {pct_increase:.2f}% over {self.period} average"
-            severity = aggregate.volume / avg_volume
+            extra = {
+                "current_volume": aggregate.volume,
+                "average_volume": avg_volume,
+                "percent_increase": pct_increase,
+            }
             
-            return Alert(symbol, self.name, severity, msg, aggregate.date, aggregate)
+            return Alert(symbol, self.name, msg, extra, aggregate.date, aggregate)
             
         return None
         

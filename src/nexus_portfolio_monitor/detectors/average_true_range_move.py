@@ -75,8 +75,12 @@ class AverageTrueRangeMoveDetector(Detector):
         if current_range >= (atr * self.threshold_multiple):
             atr_multiple = current_range / atr
             msg = f"{symbol}: Range of {current_range:.2f} is {atr_multiple:.2f}x Average True Range ({self.period}-sample)"
-            
-            return Alert(symbol, self.name, atr_multiple, msg, aggregate.date, aggregate)
+            extra = {
+                "current_range": current_range,
+                "average_true_range": atr,
+                "range_multiple": atr_multiple,
+            }
+            return Alert(symbol, self.name, msg, extra, aggregate.date, aggregate)
             
         return None
 

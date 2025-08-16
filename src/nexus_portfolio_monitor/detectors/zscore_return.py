@@ -78,8 +78,14 @@ class ZScoreReturnDetector(Detector):
         if abs(zscore) >= self.threshold:
             direction = "positive" if zscore > 0 else "negative"
             msg = f"{symbol}: {direction} return with z-score of {zscore:.2f} (±{self.threshold} threshold)"
+            extra = {
+                "zscore": zscore,
+                "today_return": today_return,
+                "average_return": avg_return,
+                "standard_deviation": std_return,
+            }
             
-            return Alert(symbol, self.name, abs(zscore), msg, aggregate.date, aggregate)
+            return Alert(symbol, self.name, msg, extra, aggregate.date, aggregate)
             
         return None
         

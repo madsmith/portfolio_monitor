@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 class Alert:
     ticker: AssetSymbol
     kind: str
-    magnitude: float
     message: str
+    extra: dict[str, Any]
     at: datetime
     aggregate: Aggregate  # The price aggregate that triggered the alert
 

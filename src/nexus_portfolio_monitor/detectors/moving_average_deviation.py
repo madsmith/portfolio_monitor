@@ -48,8 +48,11 @@ class MovingAverageDeviationDetector(Detector):
         if abs(deviation_pct) >= self.threshold:
             direction = "above" if deviation_pct > 0 else "below"
             msg = f"{symbol}: Price {direction} {self.period}-sample moving average by {abs(deviation_pct)*100:.2f}%"
+            extra = {
+                "deviation_percent": deviation_pct * 100,
+            }
             
-            return Alert(symbol, self.name, abs(deviation_pct), msg, aggregate.date, aggregate)
+            return Alert(symbol, self.name, msg, extra, aggregate.date, aggregate)
             
         return None
         
