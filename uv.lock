@@ -176,38 +176,6 @@ wheels = [
 ]
 
 [[package]]
-name = "nexus-portfolio-monitor"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "appconf" },
-    { name = "asyncio" },
-    { name = "logfire" },
-    { name = "numpy" },
-    { name = "omegaconf" },
-    { name = "polygon-api-client" },
-    { name = "sortedcontainers" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "appconf", git = "https://github.com/madsmith/appconf" },
-    { name = "asyncio", specifier = ">=3.4.3" },
-    { name = "logfire", specifier = ">=4.0.0" },
-    { name = "numpy", specifier = ">=2.3.2" },
-    { name = "omegaconf", specifier = ">=2.3.0" },
-    { name = "polygon-api-client", specifier = ">=1.15.3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
-    { name = "sortedcontainers", specifier = ">=2.4.0" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "numpy"
 version = "2.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -411,6 +379,38 @@ sdist = { url = "https://files.pythonhosted.org/packages/0f/87/da00179018cbbe520
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d5/b2/4a51232a3017dce2a74cd3e9bda16d118a95cc20e7c75969710ca9839dc0/polygon_api_client-1.15.3-py3-none-any.whl", hash = "sha256:a6a3b36cfb4a021c4fd89d782e5950d2e6b20554afb463c1217f3cc138c0d2d3", size = 54553, upload-time = "2025-07-17T15:55:25.958Z" },
 ]
+
+[[package]]
+name = "portfolio-monitor"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "appconf" },
+    { name = "asyncio" },
+    { name = "logfire" },
+    { name = "numpy" },
+    { name = "omegaconf" },
+    { name = "polygon-api-client" },
+    { name = "sortedcontainers" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "appconf", git = "https://github.com/madsmith/appconf" },
+    { name = "asyncio", specifier = ">=3.4.3" },
+    { name = "logfire", specifier = ">=4.0.0" },
+    { name = "numpy", specifier = ">=2.3.2" },
+    { name = "omegaconf", specifier = ">=2.3.0" },
+    { name = "polygon-api-client", specifier = ">=1.15.3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
+    { name = "sortedcontainers", specifier = ">=2.4.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "protobuf"

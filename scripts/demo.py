@@ -12,10 +12,10 @@ from pathlib import Path
 # Add project root to path to allow running script directly
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
 
-from nexus_portfolio_monitor.core.config import load_config
-from nexus_portfolio_monitor.portfolio import load_portfolios, Portfolio
-from nexus_portfolio_monitor.core.currency import Currency
-from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
+from portfolio_monitor.core.config import load_config
+from portfolio_monitor.portfolio import load_portfolios, Portfolio
+from portfolio_monitor.core.currency import Currency
+from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 # Configure logging
 logging.basicConfig(

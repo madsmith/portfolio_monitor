@@ -6,7 +6,7 @@ import pytest
 import decimal
 from decimal import Decimal
 
-from nexus_portfolio_monitor.core.currency import Currency, CurrencyType, EQUIVALENT_CURRENCIES
+from portfolio_monitor.core.currency import Currency, CurrencyType, EQUIVALENT_CURRENCIES
 
 
 class TestCurrency:

@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 import logging
 from typing import Generic, NamedTuple, Protocol, Type, TypeVar, Any, runtime_checkable
 
-from nexus_portfolio_monitor.core.datetime import parse_period
-from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.core.datetime import parse_period
+from portfolio_monitor.data.aggregate_cache import Aggregate
+from portfolio_monitor.service.types import AssetSymbol
 
 
 logger = logging.getLogger(__name__)

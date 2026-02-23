@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
-from nexus_portfolio_monitor.core.currency import Currency
+from portfolio_monitor.core.currency import Currency
 
 
 class AssetTypes(Enum):

@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any, Protocol, runtime_checkable
 
-from nexus_portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.detectors.base import Alert
 
 logger = logging.getLogger(__name__)
 

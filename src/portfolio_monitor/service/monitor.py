@@ -2,10 +2,10 @@ import asyncio
 from datetime import datetime, time as dtime, timedelta
 import logging
 
-from nexus_portfolio_monitor.config import PortfolioMonitorConfig
-from nexus_portfolio_monitor.data.provider import DataProvider
-from nexus_portfolio_monitor.detectors import Alert
-from nexus_portfolio_monitor.service.alerts import AlertDelivery
+from portfolio_monitor.config import PortfolioMonitorConfig
+from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.detectors import Alert
+from portfolio_monitor.service.alerts import AlertDelivery
 
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.rest.aggs import PreviousCloseAgg
@@ -16,12 +16,12 @@ from typing import Any, List
 from urllib3.exceptions import RequestError
 from zoneinfo import ZoneInfo
 
-from nexus_portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
-from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
-from nexus_portfolio_monitor.core.currency import Currency
-from nexus_portfolio_monitor.service.types import AssetUpdateRecord
-from nexus_portfolio_monitor.detectors import DeviationEngine
-from nexus_portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
+from portfolio_monitor.portfolio.portfolio import Portfolio
+from portfolio_monitor.core.currency import Currency
+from portfolio_monitor.service.types import AssetUpdateRecord
+from portfolio_monitor.detectors import DeviationEngine
+from portfolio_monitor.service.types import AssetSymbol
 
 
 logger = logging.getLogger(__name__)

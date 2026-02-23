@@ -5,9 +5,9 @@ Tests for the Portfolio module in Nexus Portfolio Monitor.
 import pytest
 from decimal import Decimal
 from datetime import datetime
-from nexus_portfolio_monitor.core.currency import Currency, CurrencyType
-from nexus_portfolio_monitor.portfolio.portfolio import Lot, Asset, Portfolio
-from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
+from portfolio_monitor.core.currency import Currency, CurrencyType
+from portfolio_monitor.portfolio.portfolio import Lot, Asset, Portfolio
+from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 class TestLot:
     """Test suite for the Lot class."""

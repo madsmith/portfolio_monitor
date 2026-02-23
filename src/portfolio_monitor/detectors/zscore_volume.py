@@ -1,7 +1,7 @@
 import numpy as np
 
-from nexus_portfolio_monitor.detectors import Alert, TimeRangeDetectorBase, DetectorRegistry
-from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
+from portfolio_monitor.detectors import Alert, TimeRangeDetectorBase, DetectorRegistry
+from portfolio_monitor.data.aggregate_cache import Aggregate
 
 @DetectorRegistry.register
 class ZScoreVolumeDetector(TimeRangeDetectorBase[float]):

@@ -4,11 +4,11 @@ import logging
 import logfire
 from pathlib import Path
 
-from nexus_portfolio_monitor.config import PortfolioMonitorConfig
-from nexus_portfolio_monitor.data.aggregate_cache import AggregateCache
-from nexus_portfolio_monitor.portfolio.loader import load_portfolios
-from nexus_portfolio_monitor.service.alerts import LoggingAlertDelivery
-from nexus_portfolio_monitor.service.monitor import MonitorService
+from portfolio_monitor.config import PortfolioMonitorConfig
+from portfolio_monitor.data.aggregate_cache import AggregateCache
+from portfolio_monitor.portfolio.loader import load_portfolios
+from portfolio_monitor.service.alerts import LoggingAlertDelivery
+from portfolio_monitor.service.monitor import MonitorService
 
 # Configure logging
 logging.basicConfig(

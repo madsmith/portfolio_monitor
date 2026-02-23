@@ -10,9 +10,9 @@ from urllib3 import HTTPResponse
 from urllib3.exceptions import RequestError
 from sortedcontainers import SortedDict
 
-from nexus_portfolio_monitor.config import PortfolioMonitorConfig
-from nexus_portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache, ms_from_datetime, datetime_from_ms
-from nexus_portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.config import PortfolioMonitorConfig
+from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache, ms_from_datetime, datetime_from_ms
+from portfolio_monitor.service.types import AssetSymbol
 
 logger = logging.getLogger(__name__)
 

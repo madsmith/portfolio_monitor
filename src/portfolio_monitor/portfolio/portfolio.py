@@ -10,8 +10,8 @@ import logging
 import re
 from typing import List, Dict, Any, Literal
 
-from nexus_portfolio_monitor.core.currency import Currency, CurrencyType
-from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
+from portfolio_monitor.core.currency import Currency, CurrencyType
+from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 logger = logging.getLogger(__name__)
 

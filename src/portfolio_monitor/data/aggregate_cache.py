@@ -7,7 +7,7 @@ import sqlite3
 from zoneinfo import ZoneInfo
 
 from sortedcontainers import SortedDict
-from nexus_portfolio_monitor.service.types import AssetSymbol, AssetTypes
+from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 import numpy as np
 
-from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
-from nexus_portfolio_monitor.detectors import Alert, TimeRangeDetectorBase, DetectorRegistry
+from portfolio_monitor.data.aggregate_cache import Aggregate
+from portfolio_monitor.detectors import Alert, TimeRangeDetectorBase, DetectorRegistry
 
 @DetectorRegistry.register
 class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
