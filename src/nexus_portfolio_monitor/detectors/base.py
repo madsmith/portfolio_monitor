@@ -9,7 +9,6 @@ from nexus_portfolio_monitor.core.datetime import parse_period
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate
 from nexus_portfolio_monitor.service.types import AssetSymbol
 
-from pydantic.types import T
 
 logger = logging.getLogger(__name__)
 

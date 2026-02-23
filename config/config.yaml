@@ -1,20 +1,19 @@
-nexus:
-  portfolio-monitor:
-    portfolio_path: "config/portfolios"
-    aggregate_cache_path: "config/aggregate_cache.db"
+portfolio_monitor:
+  portfolio_path: "config/portfolios"
+  aggregate_cache_path: "config/aggregate_cache.db"
 
-    # Define the common set of detectors and give it an anchor
-    all_detectors:
-      average_true_range_move: {}
-      SMA_deviation: {}
-      percent_change_previous_close: {}
-      percent_change: {}
-      volume_spike: {}
-      zscore_return: {}
-      zscore_volume: {}
+  # Define the common set of detectors and give it an anchor
+  all_detectors:
+    average_true_range_move: {}
+    SMA_deviation: {}
+    percent_change_previous_close: {}
+    percent_change: {}
+    volume_spike: {}
+    zscore_return: {}
+    zscore_volume: {}
 
-    monitors:
-      default:
-        
+  monitors:
+    default:
+
 polygon:
-  api-key: "${private.polygon.api-key}"
+  api_key: "${private.polygon.api_key}"

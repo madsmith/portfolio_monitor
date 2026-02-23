@@ -7,7 +7,7 @@ authors = [
     {name = "Martin Smith", email = "msmith@bitmonster.org"}
 ]
 license = {text = "MIT"}
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -20,7 +20,7 @@ dependencies = [
     "omegaconf>=2.3.0",
     "polygon-api-client>=1.15.3",
     "sortedcontainers>=2.4.0",
-    "nexusvoice-core @ git+https://github.com/madsmith/NexusVoice@v0.6.3#subdirectory=nexusvoice/core",
+    "appconf @ git+https://github.com/madsmith/appconf",
     "numpy>=2.3.2",
 ]
 

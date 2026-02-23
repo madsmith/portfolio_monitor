@@ -10,7 +10,7 @@ from urllib3 import HTTPResponse
 from urllib3.exceptions import RequestError
 from sortedcontainers import SortedDict
 
-from nexus_portfolio_monitor.core.config import NexusConfig
+from nexus_portfolio_monitor.config import PortfolioMonitorConfig
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache, ms_from_datetime, datetime_from_ms
 from nexus_portfolio_monitor.service.types import AssetSymbol
 
@@ -20,23 +20,22 @@ logger = logging.getLogger(__name__)
 class DataProvider:
     """Provider for fetching aggregate data with cache-first approach"""
     
-    def __init__(self, config: NexusConfig, aggregate_cache: AggregateCache):
+    def __init__(self, config: PortfolioMonitorConfig, aggregate_cache: AggregateCache):
         """
         Initialize the data provider with configuration and cache
-        
+
         Args:
             config: Application configuration with Polygon API settings
             aggregate_cache: Cache for storing/retrieving aggregates
         """
-        self._config: NexusConfig = config
+        self._config: PortfolioMonitorConfig = config
         self._aggregate_cache: AggregateCache = aggregate_cache
 
-        api_key = config.get("polygon.api-key")
         # Time delay before considering data not real-time (default 15 minutes)
         # Add a 1-minute margin to the configured delay to ensure we're getting truly fresh data
-        base_delay = timedelta(seconds=config.get('polygon.delay', 15 * 60))
+        base_delay = timedelta(seconds=config.polygon_delay)
         self._delay = base_delay + timedelta(minutes=1)  # Add 1 minute margin
-        self._polygon_client: PolygonRESTClient = PolygonRESTClient(api_key)
+        self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.polygon_api_key)
         self._rate_limit_sleep = 12.1  # Sleep time when rate limited (slightly over 12 seconds per Polygon docs)
         self._max_retries = 5
 

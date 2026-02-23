@@ -2,13 +2,12 @@ import argparse
 import asyncio
 import logging
 import logfire
-from nexusvoice.core.protocol import NexusConnection
 from pathlib import Path
 
-from nexus_portfolio_monitor.core.config import load_config
+from nexus_portfolio_monitor.config import PortfolioMonitorConfig
 from nexus_portfolio_monitor.data.aggregate_cache import AggregateCache
 from nexus_portfolio_monitor.portfolio.loader import load_portfolios
-
+from nexus_portfolio_monitor.service.alerts import LoggingAlertDelivery
 from nexus_portfolio_monitor.service.monitor import MonitorService
 
 # Configure logging
@@ -27,9 +26,9 @@ async def run_service(args: argparse.Namespace):
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
         logging.getLogger("urllib3.connectionpool").setLevel(logging.DEBUG)
 
-    config = load_config()
-    portfolio_path = config.get("nexus.portfolio-monitor.portfolio_path")
-    aggregate_cache_path = config.get("nexus.portfolio-monitor.aggregate_cache_path")
+    config = PortfolioMonitorConfig("config/config.yaml", args)
+    portfolio_path = config.portfolio_path
+    aggregate_cache_path = config.aggregate_cache_path
     
     if not portfolio_path:
         raise ValueError("Portfolio path not configured")
@@ -46,9 +45,9 @@ async def run_service(args: argparse.Namespace):
     aggregate_cache.initialize()
     await aggregate_cache.load()
 
-    nexus_connection = NexusConnection(args.host, args.port)
+    alert_delivery = LoggingAlertDelivery()
 
-    service = MonitorService(config, nexus_connection, portfolios, aggregate_cache)
+    service = MonitorService(config, alert_delivery, portfolios, aggregate_cache)
     
     try:
         # Start the service and wait for it to complete or be cancelled
@@ -83,10 +82,8 @@ async def run_service(args: argparse.Namespace):
 
 def main():
     """Entry point for the monitor service"""
-    parser = argparse.ArgumentParser(description="Nexus Portfolio Monitor Service")
-    
-    parser.add_argument("-H", "--host", type=str, default="localhost", help="Nexus host")
-    parser.add_argument("-p", "--port", type=int, default=8008, help="Nexus port")
+    parser = argparse.ArgumentParser(description="Portfolio Monitor Service")
+
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
     
     args = parser.parse_args()

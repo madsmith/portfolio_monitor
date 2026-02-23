@@ -1,10 +1,11 @@
 import asyncio
 from datetime import datetime, time as dtime, timedelta
 import logging
-from nexusvoice.core.protocol import NexusConnection
 
+from nexus_portfolio_monitor.config import PortfolioMonitorConfig
 from nexus_portfolio_monitor.data.provider import DataProvider
 from nexus_portfolio_monitor.detectors import Alert
+from nexus_portfolio_monitor.service.alerts import AlertDelivery
 
 from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
 from polygon.rest.aggs import PreviousCloseAgg
@@ -15,7 +16,6 @@ from typing import Any, List
 from urllib3.exceptions import RequestError
 from zoneinfo import ZoneInfo
 
-from nexus_portfolio_monitor.core.config import NexusConfig
 from nexus_portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
 from nexus_portfolio_monitor.portfolio.portfolio import Portfolio
 from nexus_portfolio_monitor.core.currency import Currency
@@ -32,28 +32,28 @@ class MonitorService:
     
     def __init__(
         self,
-        config: NexusConfig,
-        nexus_connection: NexusConnection,
+        config: PortfolioMonitorConfig,
+        alert_delivery: AlertDelivery,
         portfolios: List[Portfolio],
         aggregate_cache: AggregateCache
     ):
         """
         Initialize the monitor service
         """
-        self.config: NexusConfig = config
-        self.nexus_connection: NexusConnection = nexus_connection
+        self.config: PortfolioMonitorConfig = config
+        self.alert_delivery: AlertDelivery = alert_delivery
         self.portfolios: List[Portfolio] = portfolios
         self.aggregate_cache: AggregateCache = aggregate_cache
-        self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.get("polygon.api-key"))
+        self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.polygon_api_key)
         self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(
-            config.get("polygon.api-key"),
+            config.polygon_api_key,
             Feed.RealTime,
             market = Market.Crypto
         )
 
         self._data_provider = DataProvider(config, aggregate_cache)
 
-        default_detectors_config = config.get("nexus.portfolio-monitor.monitors.default", {}) or {}
+        default_detectors_config = config.get("portfolio_monitor.monitors.default", {}) or {}
         default_detectors = [
             { "name": name, "args": args }
             for name, args in default_detectors_config.items()
@@ -63,7 +63,7 @@ class MonitorService:
             default_detectors = default_detectors
         )
 
-        monitors_config: dict[str, dict[str, dict[str, Any]]] = config.get("nexus.portfolio-monitor.monitors", {}) or {}
+        monitors_config: dict[str, dict[str, dict[str, Any]]] = config.get("portfolio_monitor.monitors", {}) or {}
 
         for ticker, detector_configs in monitors_config.items():
             if ticker == "default":
@@ -87,9 +87,8 @@ class MonitorService:
             logger.warning("Monitor service is already running")
             return
 
-        logger.info("Connecting to Nexus")
-        connected = await self.nexus_connection.connect()
-        logger.debug(f"Connected to Nexus: {connected}")
+        logger.info("Connecting alert delivery")
+        await self.alert_delivery.connect()
             
         self.running = True
         logger.info("Starting monitor")
@@ -99,7 +98,7 @@ class MonitorService:
         """Stop the monitoring service"""
         await self.aggregate_cache.wait_for_completion()
 
-        await self.nexus_connection.disconnect()
+        await self.alert_delivery.disconnect()
 
         if not self.running:
             logger.warning("Monitor service is not running")
@@ -426,22 +425,9 @@ class MonitorService:
             return dtime(9, 30) <= t <= dtime(16, 0)
 
     async def _send_alert(self, alert: Alert) -> None:
-        await self.nexus_connection.send_command("schedule_broadcast", {
-            "message" : f"Portfolio Alert: {alert.message}",
-            "delay": 0
-        })
-        print(f"!!!!! Alert !!!!! {alert.ticker} - {alert.kind}")
-        print(f"  {alert.message}")
-        print(f"  {alert.aggregate.close:,.2f} (Volume {alert.aggregate.volume:,})")
-        self._print_extra(alert.extra)
+        await self.alert_delivery.send_alert(alert)
 
-    def _print_extra(self, extra: dict[str, Any], indent: int = 4) -> None:
-        def json_with_prefix(data, prefix="    "):
-            import json
-            return "\n".join(prefix + line for line in json.dumps(data, indent=2).splitlines())
-            
-        print(json_with_prefix(extra, prefix=" " * indent))
-        
+
     def _get_symbol(self, ticker: str) -> AssetSymbol:
         for portfolio in self.portfolios:
             for asset in portfolio.assets():
