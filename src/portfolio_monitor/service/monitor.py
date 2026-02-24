@@ -2,13 +2,11 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from datetime import time as dtime
-from typing import Any
 from zoneinfo import ZoneInfo
 
 from polygon import RESTClient as PolygonRESTClient
 from polygon import WebSocketClient as PolygonWebSocketClient
 from polygon.rest.aggs import PreviousCloseAgg
-from polygon.rest.models.trades import CryptoTrade
 from polygon.websocket import CurrencyAgg, Market
 from polygon.websocket.models import Feed, WebSocketMessage
 from urllib3.exceptions import RequestError
@@ -174,7 +172,7 @@ class MonitorService:
                         )
                         return aggregate
 
-            except RequestError as e:
+            except RequestError:
                 logger.warning(
                     f"Error fetching aggregate for {symbol}: Waiting 60 seconds"
                 )
@@ -277,7 +275,7 @@ class MonitorService:
                         trade = self._polygon_client.get_previous_close_agg(
                             ticker=symbol.lookup_symbol
                         )
-                    except RequestError as e:
+                    except RequestError:
                         logger.warning(
                             f"Error updating stock {symbol}: Waiting 60 seconds"
                         )
@@ -345,7 +343,7 @@ class MonitorService:
                             from_=now - timedelta(minutes=1),
                             to=now,
                         )
-                    except RequestError as e:
+                    except RequestError:
                         logger.warning(
                             f"Error updating crypto {symbol}: Waiting 60 seconds"
                         )
