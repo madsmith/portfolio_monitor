@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+
 
 def parse_period(period: str) -> timedelta:
     """
