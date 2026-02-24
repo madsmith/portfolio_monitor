@@ -211,14 +211,15 @@ class TestCurrency:
 
         # Comparing different currency types might raise ValueError
         try:
-            result = usd_100 == eur_100
+            _ = usd_100 == eur_100
             # Either true or false is fine, just shouldn't crash
         except ValueError:
             # It's also fine if it raises ValueError
             pass
 
         try:
-            result = usd_100 < eur_100
+            _ = usd_100 < eur_100
+
             # If we get here, the operation didn't raise an exception
         except ValueError:
             # It's also fine if it raises ValueError
