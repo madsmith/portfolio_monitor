@@ -6,13 +6,17 @@ import sys
 from pathlib import Path
 
 import logfire
+import uvicorn
 from appconf.omegaconf.errors import PrivateConfigError
 from omegaconf import OmegaConf
+from starlette.applications import Starlette
+from uvicorn.server import Server
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.data.aggregate_cache import AggregateCache
 from portfolio_monitor.portfolio.loader import load_portfolios
 from portfolio_monitor.service.alerts import LoggingAlertDelivery
+from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.monitor import MonitorService
 
 # Configure logging
@@ -51,15 +55,21 @@ async def run_service(config: PortfolioMonitorConfig):
 
     service = MonitorService(config, alert_delivery, portfolios, aggregate_cache)
 
-    try:
-        # Start the service and wait for it to complete or be cancelled
-        await service.start()
+    # Start API server
+    assert config.auth_key is not None, "Auth key is required"
+    api_app: Starlette = create_api_app(config.auth_key)
+    uvicorn_config = uvicorn.Config(
+        api_app,
+        host=config.host,
+        port=config.port,
+        log_level="debug" if config.debug else "info",
+    )
+    api_server: Server = uvicorn.Server(uvicorn_config)
 
-        # Wait for the task to complete if a task was created
-        service_task = service.task()
-        if service_task:
-            while not service_task.done():
-                await asyncio.sleep(0.1)
+    try:
+        # Start monitor service and API server concurrently
+        await service.start()
+        await api_server.serve()
     except asyncio.CancelledError:
         # This is expected on Ctrl+C, asyncio.run() will cancel the main task
         logger.info("Main task cancelled, initiating graceful shutdown...")
