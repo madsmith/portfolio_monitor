@@ -53,17 +53,16 @@ class MonitorService:
 
         self._data_provider = DataProvider(config, aggregate_cache)
 
-        default_detectors_config = config.get("portfolio_monitor.monitors.default", {}) or {}
+        monitors_config = config.monitors
+        default_detectors_config = monitors_config.get("default", {})
         default_detectors = [
             { "name": name, "args": args }
             for name, args in default_detectors_config.items()
-        ] 
+        ]
 
         self._detection_engine: DeviationEngine = DeviationEngine(
             default_detectors = default_detectors
         )
-
-        monitors_config: dict[str, dict[str, dict[str, Any]]] = config.get("portfolio_monitor.monitors", {}) or {}
 
         for ticker, detector_configs in monitors_config.items():
             if ticker == "default":
