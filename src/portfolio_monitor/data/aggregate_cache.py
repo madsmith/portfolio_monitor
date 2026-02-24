@@ -1,15 +1,17 @@
 import asyncio
+import logging
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import logging
 from pathlib import Path
-import sqlite3
 from zoneinfo import ZoneInfo
 
 from sortedcontainers import SortedDict
+
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class Aggregate:
@@ -20,7 +22,7 @@ class Aggregate:
     low: float
     close: float
     volume: float
-    
+
     def __post_init__(self):
         """Validate that the date is timezone-aware"""
         if self.date.tzinfo is None:
@@ -30,6 +32,7 @@ class Aggregate:
     def timestamp_ms(self) -> int:
         """Convert datetime to milliseconds since epoch"""
         return int(self.date.timestamp() * 1000)
+
 
 class AggregateCache:
     CURRENT_SCHEMA_VERSION = 1
@@ -41,7 +44,7 @@ class AggregateCache:
         self._is_initialized = False
         self._memory_cache: dict[AssetSymbol, SortedDict] = {}
 
-        self._spawn_lock = asyncio.Lock()    # Guards task spawning logic
+        self._spawn_lock = asyncio.Lock()  # Guards task spawning logic
         self._process_lock = asyncio.Lock()  # Ensures _process_updates runs exclusively
         self._update_in_progress = asyncio.Event()
         self._pending_db_updates: asyncio.Queue[Aggregate] = asyncio.Queue()
@@ -55,7 +58,7 @@ class AggregateCache:
         assert age.total_seconds() > 0, "Age must be greater than 0"
 
         self._memory_cache_age = age
-    
+
     def initialize(self):
         """
         Initialize the sqlite database
@@ -71,9 +74,11 @@ class AggregateCache:
             cursor = conn.cursor()
 
             # Check if the info table exists to determine current schema version
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='info'")
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='info'"
+            )
             table_exists = cursor.fetchone() is not None
-            
+
             current_version = 0
             if table_exists:
                 # Get current schema version from the info table
@@ -81,16 +86,16 @@ class AggregateCache:
                 result = cursor.fetchone()
                 if result:
                     current_version = int(result[0])
-            
+
             # Run all necessary migrations in sequence
             self._run_migrations(conn, current_version)
-            
+
             conn.commit()
 
     def _run_migrations(self, conn: sqlite3.Connection, current_version: int):
         """
         Run migrations sequentially to update the database schema.
-        
+
         Args:
             conn: SQLite connection
             current_version: Current schema version of the database
@@ -100,17 +105,17 @@ class AggregateCache:
             1: self._migrate_to_v1,
             2: self._migrate_to_v2,
         }
-        
+
         # Apply migrations in version order
         for version in sorted([v for v in migrations.keys() if v > current_version]):
             logger.info(f"Migrating database schema to version {version}")
             migrations[version](conn)
-            
+
             # Update schema version
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR REPLACE INTO info (key, value, updated_at) VALUES (?, ?, ?)",
-                ("schema_version", str(version), datetime.now().isoformat())
+                ("schema_version", str(version), datetime.now().isoformat()),
             )
             conn.commit()
 
@@ -139,16 +144,16 @@ class AggregateCache:
                 PRIMARY KEY (symbol, date_utc)
             )
         """)
-            
+
         # Create index for efficient range queries
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_aggregates_symbol_date 
+            CREATE INDEX IF NOT EXISTS idx_aggregates_symbol_date
             ON aggregates(symbol, date_utc)
         """)
-        
+
         # Index for time-based queries across all symbols
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_aggregates_date_utc 
+            CREATE INDEX IF NOT EXISTS idx_aggregates_date_utc
             ON aggregates(date_utc)
         """)
 
@@ -161,16 +166,19 @@ class AggregateCache:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
     async def wait_for_completion(self):
         """Wait for all pending updates to be written to database"""
         task = None
         # If there are pending updates and no processing is happening, start it
         async with self._spawn_lock:
-            if not self._pending_db_updates.empty() and not self._update_in_progress.is_set():
+            if (
+                not self._pending_db_updates.empty()
+                and not self._update_in_progress.is_set()
+            ):
                 task = asyncio.create_task(self._process_updates())
                 # We'll wait for it below
-        
+
         # Wait until the queue is empty and processing is complete
         while not self._pending_db_updates.empty() or self._update_in_progress.is_set():
             try:
@@ -184,43 +192,49 @@ class AggregateCache:
     async def close(self):
         """Close the cache and ensure all pending updates are written"""
         logger.info("Closing AggregateCache...")
-        
+
         # Wait for all pending updates to be processed
         await self.wait_for_completion()
-        
+
         # Cancel any remaining background tasks
         for task in self._background_tasks:
             if not task.done():
                 logger.debug(f"Cancelling background task: {task.get_name()}")
                 task.cancel()
-        
+
         # Wait for all tasks to complete
         if self._background_tasks:
             done, pending = await asyncio.wait(self._background_tasks, timeout=5)
             if pending:
-                logger.warning(f"Some background tasks did not complete: {len(pending)}")
-            
+                logger.warning(
+                    f"Some background tasks did not complete: {len(pending)}"
+                )
+
         logger.info("AggregateCache closed successfully")
-    
+
     async def load(self):
         """
         Load the cache from an sqlite database
         """
         if not self._is_initialized:
             self.initialize()
-            
-        assert self._cache_file.exists(), f"Cache file: {self._cache_file} does not exist"
-            
-        logger.info(f"Loading aggregates from {self._cache_file}") 
+
+        assert self._cache_file.exists(), (
+            f"Cache file: {self._cache_file} does not exist"
+        )
+
+        logger.info(f"Loading aggregates from {self._cache_file}")
         with sqlite3.connect(self._cache_file) as conn:
             cursor = conn.cursor()
-            
-            utc_time_ms = ms_from_datetime(datetime.now(ZoneInfo("UTC")) - self._memory_cache_age)
+
+            utc_time_ms = ms_from_datetime(
+                datetime.now(ZoneInfo("UTC")) - self._memory_cache_age
+            )
             cursor.execute(
-                """SELECT aggregates.*, symbols.asset_type 
-                FROM aggregates JOIN symbols ON aggregates.symbol = symbols.symbol 
+                """SELECT aggregates.*, symbols.asset_type
+                FROM aggregates JOIN symbols ON aggregates.symbol = symbols.symbol
                 WHERE aggregates.date_utc >= ?""",
-                (utc_time_ms,)
+                (utc_time_ms,),
             )
 
             rows = cursor.fetchall()
@@ -238,7 +252,7 @@ class AggregateCache:
                 symbol = AssetSymbol(ticker, AssetTypes(asset_type))
                 aggregate = Aggregate(symbol, date, open, high, low, close, volume)
                 await self.add(aggregate)
-        
+
         return self
 
     async def _process_updates(self):
@@ -247,27 +261,29 @@ class AggregateCache:
             self._update_in_progress.set()
             try:
                 batch_size = 100
-                
+
                 while not self._pending_db_updates.empty():
                     batch = []
-                    
+
                     # Get a batch
                     while len(batch) < batch_size:
                         try:
                             batch.append(self._pending_db_updates.get_nowait())
                         except asyncio.QueueEmpty:
                             break
-                    
+
                     if batch:
                         try:
                             await asyncio.to_thread(self._add_batch_to_db, batch)
                         except asyncio.CancelledError:
-                            logger.warning("Processing was cancelled, committing current batch before exit")
+                            logger.warning(
+                                "Processing was cancelled, committing current batch before exit"
+                            )
                             raise
-                    
+
                     # Always yield after each batch for responsiveness
                     await asyncio.sleep(0)
-                    
+
             except Exception as e:
                 logger.error(f"Error processing updates: {e}")
                 raise
@@ -278,7 +294,7 @@ class AggregateCache:
         """Add an aggregate to the cache and queue it for database persistence"""
         self._add_to_memory_cache(aggregate)
         await self._pending_db_updates.put(aggregate)
-        
+
         # Spawn a task to process updates if needed
         async with self._spawn_lock:  # Use spawn_lock to guard task creation
             if not self._update_in_progress.is_set():
@@ -287,38 +303,46 @@ class AggregateCache:
                 task.set_name(f"AggregateCache._process_updates-{id(task)}")
                 # Track the task for cleanup
                 self._background_tasks.add(task)
-                
+
                 # Set up callback to remove task from set when done
                 def _remove_task(t):
                     self._background_tasks.discard(t)
-                    
+
                 task.add_done_callback(_remove_task)
 
     def _add_to_memory_cache(self, aggregate: Aggregate):
         if aggregate.symbol not in self._memory_cache:
             self._memory_cache[aggregate.symbol] = SortedDict()
         self._memory_cache[aggregate.symbol][aggregate.timestamp_ms] = aggregate
-            
+
     def _add_batch_to_db(self, aggregates: list[Aggregate]):
         """Add multiple aggregates to the database in a single transaction"""
         if not aggregates:
             return
-            
+
         with sqlite3.connect(self._cache_file) as conn:
             cursor = conn.cursor()
             cursor.executemany(
                 "INSERT OR REPLACE INTO aggregates (symbol, date_utc, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (agg.symbol.ticker, agg.timestamp_ms, agg.open, agg.high, agg.low, agg.close, agg.volume)
+                    (
+                        agg.symbol.ticker,
+                        agg.timestamp_ms,
+                        agg.open,
+                        agg.high,
+                        agg.low,
+                        agg.close,
+                        agg.volume,
+                    )
                     for agg in aggregates
-                ]
+                ],
             )
             cursor.executemany(
                 "INSERT OR REPLACE INTO symbols (symbol, asset_type) VALUES (?, ?)",
                 [
                     (agg.symbol.ticker, agg.symbol.asset_type.value)
                     for agg in aggregates
-                ]
+                ],
             )
             conn.commit()
 
@@ -327,9 +351,11 @@ class AggregateCache:
             return None
         return self._memory_cache[symbol].peekitem(-1)[1]
 
+
 def datetime_from_ms(ms: int, tz: ZoneInfo) -> datetime:
     assert tz is not None, "Timezone must be specified"
     return datetime.fromtimestamp(ms / 1000, tz)
+
 
 def ms_from_datetime(dt: datetime) -> int:
     """
@@ -338,7 +364,7 @@ def ms_from_datetime(dt: datetime) -> int:
     """
     if dt.tzinfo is None:
         raise ValueError(f"Datetime must be timezone-aware. Got: {dt}")
-    
+
     # Convert to UTC if not already
     utc_dt = dt.astimezone(ZoneInfo("UTC"))
     return int(utc_dt.timestamp() * 1000)

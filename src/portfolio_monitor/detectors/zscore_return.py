@@ -1,26 +1,27 @@
 import numpy as np
 
 from portfolio_monitor.data.aggregate_cache import Aggregate
-from portfolio_monitor.detectors import Alert, TimeRangeDetectorBase, DetectorRegistry
+from portfolio_monitor.detectors import Alert, DetectorRegistry, TimeRangeDetectorBase
+
 
 @DetectorRegistry.register
 class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
     """
     Detector for returns that deviate significantly from historical distribution.
-    
+
     This detector tracks asset price movements over a specified time period and alerts
     when the current price movement (return) deviates significantly from the historical
     distribution of returns, measured in standard deviations (Z-score).
     """
-    
+
     @property
     def name(self) -> str:
         return "zscore_return"
-    
+
     def __init__(self, period: str = "2h", threshold: float = 2.0):
         """
         Initialize the Z-score return detector with specified parameters.
-        
+
         Args:
             period: Time period to use for calculating return statistics (e.g. "2h", "1d").
                     Used for establishing the baseline return distribution.
@@ -38,7 +39,7 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
 
         if len(close_history) < 3:
             return None
-        
+
         return_values = self._calculate_returns(close_history)
 
         if len(return_values) < 2:
@@ -67,16 +68,18 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
             }
             return self.alert(aggregate, msg, extra)
         return None
-    
+
     def _calculate_returns(self, close_history: list[float]) -> list[float]:
         """Calculate percentage returns from price history"""
         if len(close_history) <= 1:
             return []
-            
+
         returns = []
-        
+
         for i in range(1, len(close_history)):
-            return_value = (close_history[i] - close_history[i-1]) / close_history[i-1]
+            return_value = (close_history[i] - close_history[i - 1]) / close_history[
+                i - 1
+            ]
             returns.append(return_value)
-            
+
         return returns

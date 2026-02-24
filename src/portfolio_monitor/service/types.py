@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from enum import Enum
 from datetime import datetime
+from enum import Enum
+
 from portfolio_monitor.core.currency import Currency
 
 
@@ -8,12 +9,13 @@ class AssetTypes(Enum):
     Stock = "stock"
     Currency = "currency"
     Crypto = "crypto"
-    
+
+
 class AssetSymbol:
     def __init__(self, ticker: str, asset_type: AssetTypes):
         self.ticker = ticker
         self.asset_type = asset_type
-    
+
     @property
     def symbol(self) -> str:
         return self.ticker
@@ -28,12 +30,13 @@ class AssetSymbol:
             return f"X:{self.ticker}USD"
         else:
             raise ValueError(f"Unknown asset type: {self.asset_type}")
-    
+
     def __str__(self) -> str:
         return self.symbol
 
     def __repr__(self) -> str:
         return f"AssetSymbol(ticker='{self.ticker}', asset_type='{self.asset_type}')"
+
 
 @dataclass
 class AssetUpdateRecord:

@@ -2,11 +2,16 @@
 Tests for the Currency class in Nexus Portfolio Monitor.
 """
 
-import pytest
 import decimal
 from decimal import Decimal
 
-from portfolio_monitor.core.currency import Currency, CurrencyType, EQUIVALENT_CURRENCIES
+import pytest
+
+from portfolio_monitor.core.currency import (
+    EQUIVALENT_CURRENCIES,
+    Currency,
+    CurrencyType,
+)
 
 
 class TestCurrency:
@@ -76,7 +81,7 @@ class TestCurrency:
         usd = Currency("1234.56", CurrencyType.USD)  # Use string for exact precision
         assert str(usd) == "$1,234.56"
         assert usd._value == Decimal("1234.56")
-        
+
         # EUR formatting
         eur = Currency(1234.56, CurrencyType.EUR)
         # Check for either prefix or suffix format based on implementation
@@ -203,7 +208,7 @@ class TestCurrency:
         assert usd_100 >= usd_50
         assert usd_100 >= usd_100_copy
         assert not (usd_50 >= usd_100)
-        
+
         # Comparing different currency types might raise ValueError
         try:
             result = usd_100 == eur_100
@@ -211,7 +216,7 @@ class TestCurrency:
         except ValueError:
             # It's also fine if it raises ValueError
             pass
-        
+
         try:
             result = usd_100 < eur_100
             # If we get here, the operation didn't raise an exception
@@ -257,27 +262,27 @@ class TestCurrency:
         currency = Currency.parse_number("1,234.56")
         assert currency._value == Decimal("1234.56")
         assert currency.currency_type == CurrencyType.USD
-        
+
         # Test parsing with USD symbol prefix
         currency = Currency.parse_number("$123.45")
         assert currency._value == Decimal("123.45")
         assert currency.currency_type == CurrencyType.USD
-        
+
         # Test parsing with EUR symbol prefix
         currency = Currency.parse_number("€99.95")
         assert currency._value == Decimal("99.95")
         assert currency.currency_type == CurrencyType.EUR
-        
+
         # Test parsing with GBP symbol prefix
         currency = Currency.parse_number("£45.67")
         assert currency._value == Decimal("45.67")
         assert currency.currency_type == CurrencyType.GBP
-        
+
         # Test parsing with space after the symbol
         currency = Currency.parse_number("$ 50.25")
         assert currency._value == Decimal("50.25")
         assert currency.currency_type == CurrencyType.USD
-            
+
         # Invalid format should raise some kind of error
         with pytest.raises((ValueError, decimal.InvalidOperation)):
             Currency.parse_number("completely invalid")
@@ -293,7 +298,7 @@ class TestCurrency:
         # Test BTC with higher precision
         btc = Currency(1.23456789, CurrencyType.BTC)
         # Just verify the Bitcoin symbol is included
-        assert "₿" in str(btc) 
+        assert "₿" in str(btc)
         # And that some form of the number is included
         assert "1.2346" in str(btc) or "1.23456789" in str(btc) or "1.2345" in str(btc)
 
@@ -303,7 +308,7 @@ class TestCurrency:
         assert "€" in str(eur)
         # And that the number is included
         assert "1,234.56" in str(eur) or "1234.56" in str(eur)
-        
+
     def test_equivalent_currencies(self):
         """Test that operations work between equivalent currencies (USD, USDT, USDC)."""
         # Create test currencies
@@ -311,64 +316,76 @@ class TestCurrency:
         usdt_75 = Currency(75, CurrencyType.USDT)
         usdc_50 = Currency(50, CurrencyType.USDC)
         eur_100 = Currency(100, CurrencyType.EUR)  # Non-equivalent currency
-        
+
         # Test are_equivalent_currencies helper
         assert Currency.are_equivalent_currencies(CurrencyType.USD, CurrencyType.USDT)
         assert Currency.are_equivalent_currencies(CurrencyType.USD, CurrencyType.USDC)
         assert Currency.are_equivalent_currencies(CurrencyType.USDT, CurrencyType.USDC)
-        assert not Currency.are_equivalent_currencies(CurrencyType.USD, CurrencyType.EUR)
-        assert not Currency.are_equivalent_currencies(CurrencyType.USDT, CurrencyType.BTC)
-        
+        assert not Currency.are_equivalent_currencies(
+            CurrencyType.USD, CurrencyType.EUR
+        )
+        assert not Currency.are_equivalent_currencies(
+            CurrencyType.USDT, CurrencyType.BTC
+        )
+
         # Check that equivalent currencies are in EQUIVALENT_CURRENCIES set
         assert (CurrencyType.USD, CurrencyType.USDT) in EQUIVALENT_CURRENCIES
         assert (CurrencyType.USDT, CurrencyType.USDC) in EQUIVALENT_CURRENCIES
         assert (CurrencyType.USD, CurrencyType.USDC) in EQUIVALENT_CURRENCIES
-        
+
         # Test addition between equivalent currencies
         result = usd_100 + usdt_75
         assert result._value == Decimal(175)
-        assert result.currency_type == CurrencyType.USD  # Result is in first operand's type
-        
+        assert (
+            result.currency_type == CurrencyType.USD
+        )  # Result is in first operand's type
+
         result = usdt_75 + usdc_50
         assert result._value == Decimal(125)
-        assert result.currency_type == CurrencyType.USDT  # Result is in first operand's type
-        
+        assert (
+            result.currency_type == CurrencyType.USDT
+        )  # Result is in first operand's type
+
         # Test subtraction between equivalent currencies
         result = usd_100 - usdc_50
         assert result._value == Decimal(50)
-        assert result.currency_type == CurrencyType.USD  # Result is in first operand's type
-        
+        assert (
+            result.currency_type == CurrencyType.USD
+        )  # Result is in first operand's type
+
         # Non-equivalent currencies should still raise ValueError
         with pytest.raises(ValueError):
             _ = usd_100 + eur_100
-        
+
         with pytest.raises(ValueError):
             _ = usdt_75 - eur_100
-            
+
         # Test comparison operations between equivalent currencies
         # Less than
         assert usdc_50 < usd_100
         assert not (usdt_75 < usdc_50)
-        
+
         # Less than or equal
         assert usdc_50 <= usdt_75
         assert usdt_75 <= usdt_75  # Same value
-        
+
         # Greater than
         assert usd_100 > usdt_75
         assert not (usdc_50 > usd_100)
-        
+
         # Greater than or equal
         assert usdt_75 >= usdc_50
         assert usdt_75 >= usdt_75  # Same value
-        
+
         # Equality still requires exact match
-        usdt_100 = Currency(100, CurrencyType.USDT)  # Create a USDT currency with same value
+        usdt_100 = Currency(
+            100, CurrencyType.USDT
+        )  # Create a USDT currency with same value
         assert not (usd_100 == usdt_100)  # Even if value is equal, types must match
-        
+
         # Different currency type should raise for non-equivalent currencies
         with pytest.raises(ValueError):
             _ = usd_100 < eur_100
-            
+
         with pytest.raises(ValueError):
             _ = usdt_75 > eur_100

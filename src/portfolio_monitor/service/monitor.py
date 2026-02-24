@@ -1,41 +1,39 @@
 import asyncio
-from datetime import datetime, time as dtime, timedelta
 import logging
+from datetime import datetime, timedelta
+from datetime import time as dtime
+from typing import Any
+from zoneinfo import ZoneInfo
 
-from portfolio_monitor.config import PortfolioMonitorConfig
-from portfolio_monitor.data.provider import DataProvider
-from portfolio_monitor.detectors import Alert
-from portfolio_monitor.service.alerts import AlertDelivery
-
-from polygon import RESTClient as PolygonRESTClient, WebSocketClient as PolygonWebSocketClient
+from polygon import RESTClient as PolygonRESTClient
+from polygon import WebSocketClient as PolygonWebSocketClient
 from polygon.rest.aggs import PreviousCloseAgg
 from polygon.rest.models.trades import CryptoTrade
 from polygon.websocket import CurrencyAgg, Market
 from polygon.websocket.models import Feed, WebSocketMessage
-from typing import Any
 from urllib3.exceptions import RequestError
-from zoneinfo import ZoneInfo
 
-from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
-from portfolio_monitor.portfolio.portfolio import Portfolio
+from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.currency import Currency
-from portfolio_monitor.service.types import AssetUpdateRecord
-from portfolio_monitor.detectors import DeviationEngine
-from portfolio_monitor.service.types import AssetSymbol
-
+from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
+from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.detectors import Alert, DeviationEngine
+from portfolio_monitor.portfolio.portfolio import Portfolio
+from portfolio_monitor.service.alerts import AlertDelivery
+from portfolio_monitor.service.types import AssetSymbol, AssetUpdateRecord
 
 logger = logging.getLogger(__name__)
 
 
 class MonitorService:
     """Monitor service that runs in an asyncio event loop"""
-    
+
     def __init__(
         self,
         config: PortfolioMonitorConfig,
         alert_delivery: AlertDelivery,
         portfolios: list[Portfolio],
-        aggregate_cache: AggregateCache
+        aggregate_cache: AggregateCache,
     ):
         """
         Initialize the monitor service
@@ -44,11 +42,11 @@ class MonitorService:
         self.alert_delivery: AlertDelivery = alert_delivery
         self.portfolios: list[Portfolio] = portfolios
         self.aggregate_cache: AggregateCache = aggregate_cache
-        self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.polygon_api_key)
+        self._polygon_client: PolygonRESTClient = PolygonRESTClient(
+            config.polygon_api_key
+        )
         self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(
-            config.polygon_api_key,
-            Feed.RealTime,
-            market = Market.Crypto
+            config.polygon_api_key, Feed.RealTime, market=Market.Crypto
         )
 
         self._data_provider = DataProvider(config, aggregate_cache)
@@ -56,19 +54,19 @@ class MonitorService:
         monitors_config = config.monitors
         default_detectors_config = monitors_config.get("default", {})
         default_detectors = [
-            { "name": name, "args": args }
+            {"name": name, "args": args}
             for name, args in default_detectors_config.items()
         ]
 
         self._detection_engine: DeviationEngine = DeviationEngine(
-            default_detectors = default_detectors
+            default_detectors=default_detectors
         )
 
         for ticker, detector_configs in monitors_config.items():
             if ticker == "default":
                 continue
             for name, args in detector_configs.items():
-                detector_config = { "name": name, "args": args }
+                detector_config = {"name": name, "args": args}
                 symbol = self._get_symbol(ticker)
                 logger.debug(f"Adding detector {name} for {symbol}")
                 self._detection_engine.add_detector(symbol, detector_config)
@@ -76,10 +74,10 @@ class MonitorService:
         # print(self._detection_engine.asset_detectors)
         self.running = False
         self._task: asyncio.Task | None = None
-    
+
     def task(self):
         return self._task
-    
+
     async def start(self) -> None:
         """Start the monitoring service"""
         if self.running:
@@ -88,11 +86,11 @@ class MonitorService:
 
         logger.info("Connecting alert delivery")
         await self.alert_delivery.connect()
-            
+
         self.running = True
         logger.info("Starting monitor")
         self._task = asyncio.create_task(self._run())
-        
+
     async def stop(self) -> None:
         """Stop the monitoring service"""
         await self.aggregate_cache.wait_for_completion()
@@ -102,7 +100,7 @@ class MonitorService:
         if not self.running:
             logger.warning("Monitor service is not running")
             return
-            
+
         logger.info("Stopping monitor")
         self.running = False
         if self._task:
@@ -113,12 +111,13 @@ class MonitorService:
                 pass
             self._task = None
         logger.info("Monitor stopped")
-        
+
     async def test_streaming(self):
         print("Streaming test")
         try:
-
-            self._polygon_websocket_client.subscribe("XAS.XRP-USD, XAS.BTC-USD, XAS.ETH-USD")
+            self._polygon_websocket_client.subscribe(
+                "XAS.XRP-USD, XAS.BTC-USD, XAS.ETH-USD"
+            )
             # self._polygon_websocket_client.subscribe("XAS.*")
 
             async def handle_msg(msgs: list[WebSocketMessage]):
@@ -126,13 +125,17 @@ class MonitorService:
                     if isinstance(msg, CurrencyAgg):
                         change_percent = (msg.close - msg.open) / msg.open
                         if abs(change_percent) > 0.00001:
-                            print(f"  {msg.pair + ":":<10} {change_percent:<20.2%} Open: {msg.open} Close: {msg.close}")
+                            print(
+                                f"  {msg.pair + ':':<10} {change_percent:<20.2%} Open: {msg.open} Close: {msg.close}"
+                            )
 
             await self._polygon_websocket_client.connect(handle_msg)
         except Exception as e:
             logger.exception(f"Error in streaming test: {e}")
 
-    async def _fetch_aggregate(self, symbol: AssetSymbol, from_: datetime, to: datetime) -> Aggregate | None:
+    async def _fetch_aggregate(
+        self, symbol: AssetSymbol, from_: datetime, to: datetime
+    ) -> Aggregate | None:
         while True:
             try:
                 agg_windows = self._polygon_client.get_aggs(
@@ -141,20 +144,22 @@ class MonitorService:
                     timespan="minute",
                     limit=1,
                     from_=from_,
-                    to=to
+                    to=to,
                 )
 
                 if isinstance(agg_windows, list):
                     for agg_window in agg_windows:
                         if (
-                            agg_window.timestamp is None or
-                            agg_window.open is None or
-                            agg_window.high is None or
-                            agg_window.low is None or
-                            agg_window.close is None or
-                            agg_window.volume is None
+                            agg_window.timestamp is None
+                            or agg_window.open is None
+                            or agg_window.high is None
+                            or agg_window.low is None
+                            or agg_window.close is None
+                            or agg_window.volume is None
                         ):
-                            logger.warning(f"Invalid aggregate for {symbol}: {agg_window}")
+                            logger.warning(
+                                f"Invalid aggregate for {symbol}: {agg_window}"
+                            )
                             continue
 
                         agg_date = polygon_timestamp_to_datetime(agg_window.timestamp)
@@ -165,16 +170,20 @@ class MonitorService:
                             agg_window.high,
                             agg_window.low,
                             agg_window.close,
-                            agg_window.volume
+                            agg_window.volume,
                         )
                         return aggregate
-                    
+
             except RequestError as e:
-                logger.warning(f"Error fetching aggregate for {symbol}: Waiting 60 seconds")
+                logger.warning(
+                    f"Error fetching aggregate for {symbol}: Waiting 60 seconds"
+                )
                 await asyncio.sleep(60)
                 continue
             except BaseException as e:
-                logger.exception(f"Error fetching aggregate for {symbol}: {e} [{type(e)}]")
+                logger.exception(
+                    f"Error fetching aggregate for {symbol}: {e} [{type(e)}]"
+                )
                 await asyncio.sleep(60)
                 return None
             break
@@ -184,10 +193,9 @@ class MonitorService:
 
         # return await self.test_streaming()
 
-        
         update_interval = 60
         stock_update_interval = 24 * 60 * 60
-        
+
         stocks: dict[AssetSymbol, AssetUpdateRecord] = {}
         currencies: dict[AssetSymbol, AssetUpdateRecord] = {}
         crypto: dict[AssetSymbol, AssetUpdateRecord] = {}
@@ -198,7 +206,9 @@ class MonitorService:
                 record = AssetUpdateRecord(asset.symbol)
                 aggregate = self.aggregate_cache.get_current(asset.symbol)
                 if aggregate:
-                    record.price = Currency(aggregate.close, Currency.DEFAULT_CURRENCY_TYPE)
+                    record.price = Currency(
+                        aggregate.close, Currency.DEFAULT_CURRENCY_TYPE
+                    )
                     record.time_updated = aggregate.date
                 if asset.asset_type == "stock":
                     stocks[asset.symbol] = record
@@ -210,15 +220,21 @@ class MonitorService:
         # Fetch historical aggregates for all asset, priming the detector
         end = datetime.now(ZoneInfo("UTC"))
 
-        assets = list(stocks.values()) + list(currencies.values()) + list(crypto.values())
-    
+        assets = (
+            list(stocks.values()) + list(currencies.values()) + list(crypto.values())
+        )
+
         start = self._detection_engine.preload_data_age(end, timedelta(minutes=1))
 
         if start is not None:
             logger.info(f"Fetching historical aggregates... {start} to {end}")
             for asset_record in assets:
-                logger.debug(f"Fetching historical aggregates for {asset_record.symbol}")
-                aggs = await self._data_provider.get_range(asset_record.symbol, start, end)
+                logger.debug(
+                    f"Fetching historical aggregates for {asset_record.symbol}"
+                )
+                aggs = await self._data_provider.get_range(
+                    asset_record.symbol, start, end
+                )
                 for agg in aggs:
                     self._detection_engine.detect(agg)
 
@@ -235,11 +251,9 @@ class MonitorService:
         # for ticker, record in crypto.items():
         #     print(f"  {ticker}: {record}")
 
-
         last_portfolio_dump_time: datetime = datetime.min
         try:
             while self.running:
-                
                 # Update all assets
                 for record in stocks.values():
                     # if not self.is_market_open():
@@ -249,32 +263,41 @@ class MonitorService:
                     symbol = record.symbol
 
                     if (
-                        record.time_updated 
-                        and (previous_close - record.time_updated).total_seconds() < stock_update_interval
+                        record.time_updated
+                        and (previous_close - record.time_updated).total_seconds()
+                        < stock_update_interval
                     ):
-                        logger.debug(f"Skipping update for {symbol} - too soon since previous close")
+                        logger.debug(
+                            f"Skipping update for {symbol} - too soon since previous close"
+                        )
                         continue
 
                     logger.debug(f"Updating stock {symbol}")
                     try:
-                        trade = self._polygon_client.get_previous_close_agg(ticker=symbol.lookup_symbol)
+                        trade = self._polygon_client.get_previous_close_agg(
+                            ticker=symbol.lookup_symbol
+                        )
                     except RequestError as e:
-                        logger.warning(f"Error updating stock {symbol}: Waiting 60 seconds")
+                        logger.warning(
+                            f"Error updating stock {symbol}: Waiting 60 seconds"
+                        )
                         await asyncio.sleep(60)
                         continue
                     except BaseException as e:
-                        logger.exception(f"Error updating stock {symbol}: {e} [{type(e)}]")
+                        logger.exception(
+                            f"Error updating stock {symbol}: {e} [{type(e)}]"
+                        )
                         continue
 
                     if isinstance(trade, list):
                         trade = trade[0]
                     if isinstance(trade, PreviousCloseAgg):
                         if (
-                            trade.timestamp is None 
-                            or trade.open is None 
-                            or trade.high is None 
-                            or trade.low is None 
-                            or trade.close is None 
+                            trade.timestamp is None
+                            or trade.open is None
+                            or trade.high is None
+                            or trade.low is None
+                            or trade.close is None
                             or trade.volume is None
                         ):
                             logger.warning(f"Invalid trade data for {symbol}: {trade}")
@@ -282,9 +305,11 @@ class MonitorService:
 
                         record_date = polygon_timestamp_to_datetime(trade.timestamp)
 
-                        record.price = Currency(trade.close, Currency.DEFAULT_CURRENCY_TYPE)
+                        record.price = Currency(
+                            trade.close, Currency.DEFAULT_CURRENCY_TYPE
+                        )
                         record.time_updated = record_date
-                        
+
                         aggregate = Aggregate(
                             symbol,
                             record_date,
@@ -292,18 +317,22 @@ class MonitorService:
                             trade.high,
                             trade.low,
                             trade.close,
-                            trade.volume
+                            trade.volume,
                         )
                         await self.aggregate_cache.add(aggregate)
                     else:
                         logger.warning(f"Unknown trade type: {type(trade)} {trade}")
                         await asyncio.sleep(60)
-                
+
                 for record in crypto.values():
                     now = datetime.now(ZoneInfo("UTC"))
                     symbol = record.symbol
 
-                    if record.time_updated and (now - record.time_updated).total_seconds() < update_interval:
+                    if (
+                        record.time_updated
+                        and (now - record.time_updated).total_seconds()
+                        < update_interval
+                    ):
                         continue
 
                     logger.debug(f"Updating crypto {symbol}")
@@ -314,14 +343,18 @@ class MonitorService:
                             multiplier=1,
                             timespan="minute",
                             from_=now - timedelta(minutes=1),
-                            to=now
+                            to=now,
                         )
                     except RequestError as e:
-                        logger.warning(f"Error updating crypto {symbol}: Waiting 60 seconds")
+                        logger.warning(
+                            f"Error updating crypto {symbol}: Waiting 60 seconds"
+                        )
                         await asyncio.sleep(60)
                         continue
                     except BaseException as e:
-                        logger.exception(f"Error updating crypto {symbol}: {e} [{type(e)}]")
+                        logger.exception(
+                            f"Error updating crypto {symbol}: {e} [{type(e)}]"
+                        )
                         await asyncio.sleep(60)
                         continue
 
@@ -330,16 +363,18 @@ class MonitorService:
                             logger.warning(f"No aggregate windows found for {symbol}")
                             continue
                         elif len(agg_windows) > 1:
-                            logger.warning(f"Multiple aggregate windows found for {symbol}")
-                        
+                            logger.warning(
+                                f"Multiple aggregate windows found for {symbol}"
+                            )
+
                         trade = agg_windows[0]
 
                         if (
-                            trade.timestamp is None 
-                            or trade.open is None 
-                            or trade.high is None 
-                            or trade.low is None 
-                            or trade.close is None 
+                            trade.timestamp is None
+                            or trade.open is None
+                            or trade.high is None
+                            or trade.low is None
+                            or trade.close is None
                             or trade.volume is None
                         ):
                             logger.warning(f"Invalid trade data for {symbol}: {trade}")
@@ -348,9 +383,11 @@ class MonitorService:
                         record_date = polygon_timestamp_to_datetime(trade.timestamp)
 
                         # Update pricing data for display
-                        record.price = Currency(trade.close, Currency.DEFAULT_CURRENCY_TYPE)
+                        record.price = Currency(
+                            trade.close, Currency.DEFAULT_CURRENCY_TYPE
+                        )
                         record.time_updated = record_date
-                        
+
                         # Update aggregate cache
                         aggregate = Aggregate(
                             symbol,
@@ -359,7 +396,7 @@ class MonitorService:
                             trade.high,
                             trade.low,
                             trade.close,
-                            trade.volume
+                            trade.volume,
                         )
                         await self.aggregate_cache.add(aggregate)
 
@@ -384,7 +421,7 @@ class MonitorService:
                 for portfolio in self.portfolios:
                     portfolio.update_prices(price_data)
 
-                logger.debug("Portfolios updated") 
+                logger.debug("Portfolios updated")
 
                 if (datetime.now() - last_portfolio_dump_time) > timedelta(minutes=15):
                     last_portfolio_dump_time = datetime.now()
@@ -401,6 +438,7 @@ class MonitorService:
         except Exception as e:
             logger.exception(f"Error in monitor loop: {e}")
             import traceback
+
             traceback.print_exc()
             self.running = False
 
@@ -426,16 +464,17 @@ class MonitorService:
     async def _send_alert(self, alert: Alert) -> None:
         await self.alert_delivery.send_alert(alert)
 
-
     def _get_symbol(self, ticker: str) -> AssetSymbol:
         for portfolio in self.portfolios:
             for asset in portfolio.assets():
                 if asset.symbol.ticker == ticker:
                     return asset.symbol
         raise ValueError(f"Ticker {ticker} not found")
-    
+
+
 def polygon_timestamp_to_datetime(timestamp: int | float) -> datetime:
     return datetime.fromtimestamp(timestamp / 1000, ZoneInfo("UTC"))
+
 
 def get_previous_close_datetime() -> datetime:
     """
@@ -446,11 +485,11 @@ def get_previous_close_datetime() -> datetime:
     eastern = ZoneInfo("America/New_York")
     now = datetime.now(tz=eastern)
     market_close_time = dtime(16, 0)  # 4:00 PM Eastern
-    
+
     # If it's after market close today (and a weekday), use today's date
     if now.weekday() < 5 and now.time() >= market_close_time:  # Weekday after 4:00 PM
         return datetime.combine(now.date(), market_close_time, tzinfo=eastern)
-    
+
     # Otherwise, find the previous market day
     if now.weekday() == 0:  # Monday
         base_date = now.date() - timedelta(days=3)  # Previous Friday
@@ -458,12 +497,8 @@ def get_previous_close_datetime() -> datetime:
         base_date = now.date() - timedelta(days=2)  # Previous Friday
     else:
         base_date = now.date() - timedelta(days=1)  # Previous day
-    
+
     # Create a datetime at 4:00 PM on the determined date (market close time)
-    market_close = datetime.combine(
-        base_date,
-        market_close_time,
-        tzinfo=eastern
-    )
-    
+    market_close = datetime.combine(base_date, market_close_time, tzinfo=eastern)
+
     return market_close

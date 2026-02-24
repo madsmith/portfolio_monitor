@@ -9,11 +9,11 @@ from portfolio_monitor.service.types import AssetSymbol
 @DetectorRegistry.register
 class AverageTrueRangeMoveDetector(Detector):
     """Detector for price moves that exceed a multiple of Average True Range"""
-    
+
     @property
     def name(self) -> str:
         return "average_true_range_move"
-    
+
     def __init__(self, period: int = 30, threshold: float = 2.0):
         """
         Args:
@@ -24,18 +24,18 @@ class AverageTrueRangeMoveDetector(Detector):
         self.threshold_multiple = threshold
         # Dictionary of price histories per ticker: [high, low, close]
         self.price_histories: dict[AssetSymbol, deque[tuple[float, float, float]]] = {}
-        
+
     def _calculate_atr(self, price_history: deque[tuple[float, float, float]]) -> float:
         """Calculate the Average True Range"""
         if len(price_history) <= 1:
             return 0.0
-            
+
         true_ranges = []
-        
+
         for i in range(1, len(price_history)):
-            prev_close = price_history[i-1][2]
+            prev_close = price_history[i - 1][2]
             high, low, _ = price_history[i]
-            
+
             # True range is the greatest of:
             # 1. Current high - current low
             # 2. Abs(current high - previous close)
@@ -44,33 +44,37 @@ class AverageTrueRangeMoveDetector(Detector):
             tr2 = abs(high - prev_close)
             tr3 = abs(low - prev_close)
             true_range = max(tr1, tr2, tr3)
-            
+
             true_ranges.append(true_range)
-            
+
         # Simple average of true ranges
         return sum(true_ranges) / len(true_ranges)
-        
+
     def update(self, aggregate: Aggregate) -> Alert | None:
         symbol = aggregate.symbol
         # Initialize history for this ticker if it doesn't exist
         if symbol not in self.price_histories:
-            self.price_histories[symbol] = deque(maxlen=self.period+1)  # +1 to calculate TR
-            
+            self.price_histories[symbol] = deque(
+                maxlen=self.period + 1
+            )  # +1 to calculate TR
+
         # Add current candle data to history
-        self.price_histories[symbol].append((aggregate.high, aggregate.low, aggregate.close))
-        
+        self.price_histories[symbol].append(
+            (aggregate.high, aggregate.low, aggregate.close)
+        )
+
         # Need at least atr_period candles to calculate meaningful ATR
         if len(self.price_histories[symbol]) <= self.period:
             return None
-            
+
         # Calculate ATR
         atr = self._calculate_atr(self.price_histories[symbol])
         if atr == 0:
             return None
-            
+
         # Calculate today's range
         current_range = aggregate.high - aggregate.low
-        
+
         # Check if current range exceeds ATR threshold
         if current_range >= (atr * self.threshold_multiple):
             atr_multiple = current_range / atr
@@ -81,21 +85,23 @@ class AverageTrueRangeMoveDetector(Detector):
                 "range_multiple": atr_multiple,
             }
             return Alert(symbol, self.name, msg, extra, aggregate.date, aggregate)
-            
+
         return None
 
-    def preload_data_age(self, current_time: datetime, sample_interval: timedelta) -> datetime | None:
+    def preload_data_age(
+        self, current_time: datetime, sample_interval: timedelta
+    ) -> datetime | None:
         """
         The ATR detector needs period+1 samples to calculate the ATR.
         """
         # ATR needs period+1 samples (period for the ATR calculation + 1 for previous close)
         required_samples = self.period + 1
-        
+
         # Add buffer for statistical stability
         buffer_samples = 5
-        
+
         # Calculate total time needed
         total_samples_needed = required_samples + buffer_samples
         total_time_needed = sample_interval * total_samples_needed
-        
+
         return current_time - total_time_needed
