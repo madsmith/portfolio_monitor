@@ -1,6 +1,7 @@
 portfolio_monitor:
   portfolio_path: "config/portfolios"
   aggregate_cache_path: "config/aggregate_cache.db"
+  auth_key: "${private.portfolio_monitor.auth_key}"
 
   # Define the common set of detectors and give it an anchor
   all_detectors:

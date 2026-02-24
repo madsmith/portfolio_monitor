@@ -7,7 +7,9 @@ authors = [
     {name = "Martin Smith", email = "msmith@bitmonster.org"}
 ]
 license = {text = "MIT"}
-requires-python = ">=3.12"
+# Python 3.14 breaks polygon-api-client: PEP 749 deferred annotations
+# cause KeyError on cls.__dict__["__annotations__"] in modelclass decorator.
+requires-python = ">=3.12,<3.14"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -20,7 +22,7 @@ dependencies = [
     "omegaconf>=2.3.0",
     "polygon-api-client>=1.15.3",
     "sortedcontainers>=2.4.0",
-    "appconf @ git+https://github.com/madsmith/appconf@v1.2.0",
+    "appconf @ git+https://github.com/madsmith/appconf@v1.3.0",
     "numpy>=2.3.2",
 ]
 
