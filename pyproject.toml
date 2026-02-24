@@ -36,7 +36,8 @@ portfolio-monitor = "portfolio_monitor.service.main:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.4.1"
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.25.0",
 ]
 
 [build-system]
