@@ -31,6 +31,14 @@ class AssetSymbol:
         else:
             raise ValueError(f"Unknown asset type: {self.asset_type}")
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, AssetSymbol):
+            return self.ticker == other.ticker and self.asset_type == other.asset_type
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.ticker, self.asset_type))
+
     def __str__(self) -> str:
         return self.symbol
 

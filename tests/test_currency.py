@@ -330,9 +330,8 @@ class TestCurrency:
         )
 
         # Check that equivalent currencies are in EQUIVALENT_CURRENCIES set
-        assert (CurrencyType.USD, CurrencyType.USDT) in EQUIVALENT_CURRENCIES
-        assert (CurrencyType.USDT, CurrencyType.USDC) in EQUIVALENT_CURRENCIES
-        assert (CurrencyType.USD, CurrencyType.USDC) in EQUIVALENT_CURRENCIES
+        usd_stables = frozenset({CurrencyType.USD, CurrencyType.USDT, CurrencyType.USDC})
+        assert usd_stables in EQUIVALENT_CURRENCIES
 
         # Test addition between equivalent currencies
         result = usd_100 + usdt_75

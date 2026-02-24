@@ -209,16 +209,18 @@ class TestAsset:
     def test_initialization(self, sample_lots):
         """Test Asset initialization."""
         asset = Asset(symbol=AssetSymbol("AAPL", AssetTypes.Stock), lots=sample_lots)
-        assert asset.symbol == "AAPL"
+        assert asset.symbol.ticker == "AAPL"
         assert len(asset.lots) == 3
         assert asset.current_price is None
         assert asset.asset_type == "stock"
 
         # Test with different asset_type
         crypto_asset = Asset(
-            symbol=AssetSymbol("BTC", AssetTypes.Crypto), lots=sample_lots
+            symbol=AssetSymbol("BTC", AssetTypes.Crypto),
+            lots=sample_lots,
+            asset_type="crypto",
         )
-        assert crypto_asset.asset_type == "currency"
+        assert crypto_asset.asset_type == "crypto"
 
     def test_total_quantity(self, sample_lots):
         """Test Asset.total_quantity property."""
@@ -368,7 +370,7 @@ class TestAsset:
         }
 
         asset = Asset.from_dict(data)
-        assert asset.symbol == "AAPL"
+        assert asset.symbol.ticker == "AAPL"
         assert len(asset.lots) == 2
         assert asset.lots[0].quantity == Decimal("10")
         assert asset.lots[0].price == Decimal("100")
@@ -384,7 +386,7 @@ class TestAsset:
         }
 
         currency_asset = Asset.from_dict(currency_data, asset_type="currency")
-        assert currency_asset.symbol == "BTC"
+        assert currency_asset.symbol.ticker == "BTC"
         assert currency_asset.asset_type == "currency"
 
         # Test with lots that have fees and rebates
@@ -403,7 +405,7 @@ class TestAsset:
         }
 
         asset_with_fees = Asset.from_dict(data_with_fees)
-        assert asset_with_fees.symbol == "AAPL"
+        assert asset_with_fees.symbol.ticker == "AAPL"
         assert len(asset_with_fees.lots) == 3
         assert asset_with_fees.lots[0].fees == Decimal("5")
         assert asset_with_fees.lots[0].rebates is None
@@ -444,8 +446,8 @@ class TestPortfolio:
         assert portfolio.name == "Test Portfolio"
         assert len(portfolio.stocks) == 1
         assert len(portfolio.currencies) == 1
-        assert portfolio.stocks[0].symbol == "AAPL"
-        assert portfolio.currencies[0].symbol == "BTC"
+        assert portfolio.stocks[0].symbol.ticker == "AAPL"
+        assert portfolio.currencies[0].symbol.ticker == "BTC"
 
     def test_all_assets(self, sample_assets):
         """Test Portfolio.all_assets method."""
@@ -456,8 +458,8 @@ class TestPortfolio:
         )
         all_assets = portfolio.assets()
         assert len(all_assets) == 2
-        assert all_assets[0].symbol == "AAPL"
-        assert all_assets[1].symbol == "BTC"
+        assert all_assets[0].symbol.ticker == "AAPL"
+        assert all_assets[1].symbol.ticker == "BTC"
 
     def test_update_prices(self, sample_assets):
         """Test Portfolio.update_prices method."""
@@ -575,6 +577,6 @@ class TestPortfolio:
         portfolio = Portfolio.from_dict(data)
         assert portfolio.name == "Test Portfolio"
         assert len(portfolio.stocks) == 1
-        assert portfolio.stocks[0].symbol == "AAPL"
+        assert portfolio.stocks[0].symbol.ticker == "AAPL"
         assert len(portfolio.currencies) == 1
-        assert portfolio.currencies[0].symbol == "BTC"
+        assert portfolio.currencies[0].symbol.ticker == "BTC"
