@@ -5,7 +5,7 @@ Currency module for Nexus Portfolio Monitor.
 from decimal import Decimal, getcontext, Context, ROUND_HALF_UP
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import ClassVar, Dict, Any
+from typing import ClassVar, Any
 
 
 class CurrencyType(Enum):
@@ -52,7 +52,7 @@ class CurrencyConfig:
 
 
 # Define all currency configurations
-CURRENCY_CONFIGS: Dict[CurrencyType, CurrencyConfig] = {
+CURRENCY_CONFIGS: dict[CurrencyType, CurrencyConfig] = {
     # Fiat currencies
     CurrencyType.USD: CurrencyConfig("$", "US Dollar", 2),
     CurrencyType.EUR: CurrencyConfig("€", "Euro", 2),

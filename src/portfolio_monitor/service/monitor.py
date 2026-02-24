@@ -12,7 +12,7 @@ from polygon.rest.aggs import PreviousCloseAgg
 from polygon.rest.models.trades import CryptoTrade
 from polygon.websocket import CurrencyAgg, Market
 from polygon.websocket.models import Feed, WebSocketMessage
-from typing import Any, List
+from typing import Any
 from urllib3.exceptions import RequestError
 from zoneinfo import ZoneInfo
 
@@ -34,7 +34,7 @@ class MonitorService:
         self,
         config: PortfolioMonitorConfig,
         alert_delivery: AlertDelivery,
-        portfolios: List[Portfolio],
+        portfolios: list[Portfolio],
         aggregate_cache: AggregateCache
     ):
         """
@@ -42,7 +42,7 @@ class MonitorService:
         """
         self.config: PortfolioMonitorConfig = config
         self.alert_delivery: AlertDelivery = alert_delivery
-        self.portfolios: List[Portfolio] = portfolios
+        self.portfolios: list[Portfolio] = portfolios
         self.aggregate_cache: AggregateCache = aggregate_cache
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(config.polygon_api_key)
         self._polygon_websocket_client: PolygonWebSocketClient = PolygonWebSocketClient(
@@ -122,7 +122,7 @@ class MonitorService:
             self._polygon_websocket_client.subscribe("XAS.XRP-USD, XAS.BTC-USD, XAS.ETH-USD")
             # self._polygon_websocket_client.subscribe("XAS.*")
 
-            async def handle_msg(msgs: List[WebSocketMessage]):
+            async def handle_msg(msgs: list[WebSocketMessage]):
                 for msg in msgs:
                     if isinstance(msg, CurrencyAgg):
                         change_percent = (msg.close - msg.open) / msg.open

@@ -8,7 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 import logging
 import re
-from typing import List, Dict, Any, Literal
+from typing import Any, Literal
 
 from portfolio_monitor.core.currency import Currency, CurrencyType
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
@@ -43,7 +43,7 @@ class Lot:
         return total_cost
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Lot':
+    def from_dict(cls, data: dict[str, Any]) -> 'Lot':
         """Create a Lot from a dictionary."""
         # Parse quantity as a Decimal, not a Currency
         quantity_str = str(data.get('quantity', data.get('amount', 0)))
@@ -89,7 +89,7 @@ class Asset:
     Represents a financial asset with lots.
     """
     symbol: AssetSymbol
-    lots: List[Lot] = field(default_factory=list)
+    lots: list[Lot] = field(default_factory=list)
     current_price: Currency | None = None
     asset_type: Literal["stock", "currency", "crypto"] = "stock"
     
@@ -155,7 +155,7 @@ class Asset:
         return (self.profit_loss._value / self.cost_basis._value) * 100
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], asset_type: Literal["stock", "currency", "crypto"] = "stock") -> 'Asset':
+    def from_dict(cls, data: dict[str, Any], asset_type: Literal["stock", "currency", "crypto"] = "stock") -> 'Asset':
         """Create an Asset from a dictionary."""
         lots = [Lot.from_dict(lot_data) for lot_data in data.get('lots', [])]
         return cls(
@@ -196,15 +196,15 @@ class Portfolio:
     A portfolio can contain stocks and cryptocurrencies.
     """
     name: str
-    stocks: List[Asset] = field(default_factory=list)
-    currencies: List[Asset] = field(default_factory=list)
-    crypto: List[Asset] = field(default_factory=list)
+    stocks: list[Asset] = field(default_factory=list)
+    currencies: list[Asset] = field(default_factory=list)
+    crypto: list[Asset] = field(default_factory=list)
     
-    def assets(self) -> List[Asset]:
+    def assets(self) -> list[Asset]:
         """Return all assets in this portfolio."""
         return self.stocks + self.currencies + self.crypto
     
-    def update_prices(self, price_data: Dict[AssetSymbol, Currency]) -> None:
+    def update_prices(self, price_data: dict[AssetSymbol, Currency]) -> None:
         """Update the prices of all assets in this portfolio."""
         for asset in self.assets():
             if asset.symbol in price_data:
@@ -244,7 +244,7 @@ class Portfolio:
         return (self.total_profit_loss._value / self.total_cost_basis._value) * 100
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Portfolio':
+    def from_dict(cls, data: dict[str, Any]) -> 'Portfolio':
         """Create a Portfolio from a dictionary."""
         portfolio = cls(name=data['name'])
         
@@ -260,7 +260,7 @@ class Portfolio:
             source_assets = data.get(asset_type_key, [])
             if source_assets:
                 # Get the correct list attribute from portfolio
-                asset_list: List[Asset] = getattr(portfolio, asset_type_key)
+                asset_list: list[Asset] = getattr(portfolio, asset_type_key)
                 
                 # Add each asset to the appropriate list
                 for asset_data in source_assets:

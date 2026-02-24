@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 import logging
 import asyncio
-from typing import Optional, List
 from zoneinfo import ZoneInfo
 
 from polygon import RESTClient as PolygonRESTClient
@@ -110,7 +109,7 @@ class DataProvider:
         
         return current  # Fall back to cached value even if it's old
 
-    async def get_range(self, symbol: AssetSymbol, from_: datetime, to: datetime) -> List[Aggregate]:
+    async def get_range(self, symbol: AssetSymbol, from_: datetime, to: datetime) -> list[Aggregate]:
         """
         Get a range of aggregates for a ticker
         
@@ -150,7 +149,7 @@ class DataProvider:
         # Sort by date and return
         return sorted(all_aggregates, key=lambda x: x.date)
 
-    async def _get_cached_range(self, symbol: AssetSymbol, from_: datetime, to: datetime) -> List[Aggregate]:
+    async def _get_cached_range(self, symbol: AssetSymbol, from_: datetime, to: datetime) -> list[Aggregate]:
         """
         Get cached aggregates in the given range
         
@@ -174,7 +173,7 @@ class DataProvider:
                     
         return result
         
-    def _find_missing_ranges(self, aggregates: List[Aggregate], from_: datetime, to: datetime) -> List[tuple[datetime, datetime]]:
+    def _find_missing_ranges(self, aggregates: list[Aggregate], from_: datetime, to: datetime) -> list[tuple[datetime, datetime]]:
         """
         Find missing 1-minute ranges in the data
         
@@ -234,7 +233,7 @@ class DataProvider:
             
         return ranges
         
-    async def _fetch_range(self, symbol: AssetSymbol, from_: datetime, to: datetime) -> List[Aggregate]:
+    async def _fetch_range(self, symbol: AssetSymbol, from_: datetime, to: datetime) -> list[Aggregate]:
         """
         Fetch a range of aggregates from the API
         

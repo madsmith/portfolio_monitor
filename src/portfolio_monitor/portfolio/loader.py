@@ -5,14 +5,13 @@ Portfolio loader module for Nexus Portfolio Monitor.
 import logging
 from omegaconf import OmegaConf
 from pathlib import Path
-from typing import List
 
 from .portfolio import Portfolio
 
 logger = logging.getLogger(__name__)
 
 
-def load_portfolios(portfolio_path: Path) -> List[Portfolio]:
+def load_portfolios(portfolio_path: Path) -> list[Portfolio]:
     """
     Load all portfolios from YAML files in the configured portfolio path.
     
