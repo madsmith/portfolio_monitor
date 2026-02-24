@@ -2,15 +2,15 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.routing import Mount
 from starlette.templating import Jinja2Templates
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 
-from .auth import AuthRegistry
+from .auth import BearerTokenBackend
 from .dashboard import DashboardApp
-from .middleware import AuthKeyMiddleware
 from .v1 import APIv1ServiceApp
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -22,12 +22,14 @@ def create_api_app(config: PortfolioMonitorConfig) -> Starlette:
     templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
     # API sub-app with Bearer token auth
-    registry = AuthRegistry()
-    api_v1_app = APIv1ServiceApp(registry, prefix="/api/v1")
+    api_v1_app = APIv1ServiceApp()
     api_app = Starlette(
         routes=[Mount("/v1", app=api_v1_app)],
         middleware=[
-            Middleware(AuthKeyMiddleware, auth_key=config.auth_key, registry=registry),
+            Middleware(
+                AuthenticationMiddleware,
+                backend=BearerTokenBackend(config),
+            ),
         ],
     )
 
@@ -41,4 +43,5 @@ def create_api_app(config: PortfolioMonitorConfig) -> Starlette:
         ],
     )
     app.add_middleware(SessionMiddleware, secret_key=config.auth_key)
+
     return app
