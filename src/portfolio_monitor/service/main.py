@@ -57,7 +57,7 @@ async def run_service(config: PortfolioMonitorConfig):
 
     # Start API server
     assert config.auth_key is not None, "Auth key is required"
-    api_app: Starlette = create_api_app(config.auth_key)
+    api_app: Starlette = create_api_app(config)
     uvicorn_config = uvicorn.Config(
         api_app,
         host=config.host,

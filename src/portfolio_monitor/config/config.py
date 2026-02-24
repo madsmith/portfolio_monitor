@@ -26,6 +26,10 @@ class PortfolioMonitorConfig(AppConfig):
     port = BindDefault[int]("portfolio_monitor.port", default=8400)
     auth_key = Bind[str]("portfolio_monitor.auth_key")
 
+    # Dashboard credentials
+    dashboard_username = Bind[str]("portfolio_monitor.dashboard.username")
+    dashboard_password = Bind[str]("portfolio_monitor.dashboard.password")
+
     # Monitor settings for securities
     monitors = BindDefault[dict[str, dict[str, Any]]](
         "portfolio_monitor.monitors", default={"default": {}}

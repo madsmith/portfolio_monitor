@@ -3,6 +3,10 @@ portfolio_monitor:
   aggregate_cache_path: "config/aggregate_cache.db"
   auth_key: "${private.portfolio_monitor.auth_key}"
 
+  dashboard:
+    username: "${private.portfolio_monitor.dashboard.username}"
+    password: "${private.portfolio_monitor.dashboard.password}"
+
   # Define the common set of detectors and give it an anchor
   all_detectors:
     average_true_range_move: {}
