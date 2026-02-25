@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any, Protocol, runtime_checkable
 
 from portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.utils import get_trace_logger
 
-logger = logging.getLogger(__name__)
+logger = get_trace_logger(__name__)
 
 
 @runtime_checkable
@@ -34,7 +34,9 @@ class LoggingAlertDelivery:
     """
 
     async def send_alert(self, alert: Alert) -> None:
-        logger.warning(f"Portfolio Alert: {alert.message}")
+        logger.trace(f"Portfolio Alert: {alert.message}")
+        return
+        # Short circuit debug logic for now
         print(f"!!!!! Alert !!!!! {alert.ticker} - {alert.kind}")
         print(f"  {alert.message}")
         print(f"  {alert.aggregate.close:,.2f} (Volume {alert.aggregate.volume:,})")

@@ -50,10 +50,11 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
 
     portfolios = load_portfolios(config.portfolio_path)
 
-    print("=== Portfolios     ===")
-    for portfolio in portfolios:
-        print(portfolio)
-    print("=== End Portfolios ===")
+    if config.debug:
+        print("=== Portfolios     ===")
+        for portfolio in portfolios:
+            print(portfolio)
+        print("=== End Portfolios ===")
 
     # Load aggregate cache
     aggregate_cache = AggregateCache(config.aggregate_cache_path)
@@ -194,11 +195,14 @@ def arg_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--port", type=int, help="Control interface port")
     run_parser.add_argument("--auth-key", type=str, help="Authorization key")
     run_parser.add_argument(
-        "--dev", action="store_true",
+        "--dev",
+        action="store_true",
         help="Run in dev mode with synthetic data (no API keys needed)",
     )
     run_parser.add_argument(
-        "--tick-interval", type=float, default=5.0,
+        "--tick-interval",
+        type=float,
+        default=5.0,
         help="Dev mode: seconds between synthetic price ticks (default: 5.0)",
     )
 

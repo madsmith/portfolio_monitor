@@ -1,4 +1,3 @@
-import logging
 from collections import deque
 from datetime import datetime, timedelta
 
@@ -10,8 +9,9 @@ from portfolio_monitor.detectors.base import Alert
 from portfolio_monitor.detectors.engine import DeviationEngine
 from portfolio_monitor.detectors.events import AlertFired
 from portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.utils import get_trace_logger
 
-logger = logging.getLogger(__name__)
+logger = get_trace_logger(__name__)
 
 
 class DetectionService:
@@ -78,6 +78,6 @@ class DetectionService:
     async def _on_aggregate_updated(self, event: AggregateUpdated) -> None:
         alerts: list[Alert] = self._detection_engine.detect(event.aggregate)
         for alert in alerts:
-            logger.warning("Alert: %s", alert)
+            logger.trace("Alert: %s", alert)
             self._alert_log.append(alert)
             await self._bus.publish(AlertFired(alert=alert))

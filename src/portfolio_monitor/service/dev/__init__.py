@@ -31,11 +31,12 @@ async def run_dev_service(config: DevConfig) -> None:
     # 1. Load portfolios (same as production)
     portfolios = load_portfolios(config.portfolio_path)
 
-    print("=== Dev Mode ===")
-    print(f"Tick interval: {config.tick_interval}s")
-    for portfolio in portfolios:
-        print(portfolio)
-    print("================")
+    if config.debug:
+        print("=== Dev Mode ===")
+        print(f"Tick interval: {config.tick_interval}s")
+        for portfolio in portfolios:
+            print(portfolio)
+        print("================")
 
     # 2. Memory-only aggregate cache
     aggregate_cache = MemoryOnlyAggregateCache()
@@ -64,7 +65,10 @@ async def run_dev_service(config: DevConfig) -> None:
             {"name": name, "args": {}}
             for name in DetectorRegistry.list_available_detectors()
         ]
-        logger.info("No detectors in config — using all %d registered detectors", len(default_detectors))
+        logger.info(
+            "No detectors in config — using all %d registered detectors",
+            len(default_detectors),
+        )
     detection_engine = DeviationEngine(default_detectors=default_detectors)
 
     # Per-asset detectors
@@ -80,7 +84,9 @@ async def run_dev_service(config: DevConfig) -> None:
             continue
         symbol = symbol_lookup.get(ticker)
         if symbol is None:
-            logger.warning("Ticker %s from monitors config not found in portfolios", ticker)
+            logger.warning(
+                "Ticker %s from monitors config not found in portfolios", ticker
+            )
             continue
         for name, args in detector_configs.items():
             detection_engine.add_detector(symbol, {"name": name, "args": args})
@@ -103,7 +109,10 @@ async def run_dev_service(config: DevConfig) -> None:
     alert_router.add_target(LoggingAlertDelivery())
 
     # 7. Prime with synthetic history
-    logger.info("Priming detection engine with %d minutes of synthetic history...", config.prime_history_minutes)
+    logger.info(
+        "Priming detection engine with %d minutes of synthetic history...",
+        config.prime_history_minutes,
+    )
     history = synthetic_source.generate_history(config.prime_history_minutes)
     for agg in history:
         await aggregate_cache.add(agg)
