@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Portfolio Monitor — Dev Mode</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    monospace;
+                background: #0d1117;
+                color: #c9d1d9;
+                font-size: 14px;
+            }
+
+            /* Tick progress bar */
+            #tick-bar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 3px;
+                background: #58a6ff;
+                transition: width 0.1s linear;
+                z-index: 100;
+            }
+
+            /* Header */
+            header {
+                background: #161b22;
+                border-bottom: 1px solid #30363d;
+                padding: 0.75rem 1.5rem;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-top: 3px;
+            }
+            header h1 {
+                font-size: 1rem;
+                color: #58a6ff;
+                font-weight: 600;
+            }
+            header .status {
+                font-size: 0.8rem;
+                color: #8b949e;
+            }
+            header .status .tick-count {
+                color: #58a6ff;
+            }
+
+            /* Layout */
+            .grid {
+                display: grid;
+                grid-template-columns: 1fr 320px;
+                gap: 1px;
+                background: #30363d;
+                min-height: calc(100vh - 40px);
+            }
+            .main-col {
+                background: #0d1117;
+                padding: 1rem;
+            }
+            .side-col {
+                background: #0d1117;
+                padding: 1rem;
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            /* Panels */
+            .panel {
+                background: #161b22;
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                overflow: hidden;
+            }
+            .panel-header {
+                background: #1c2128;
+                padding: 0.5rem 0.75rem;
+                font-size: 0.75rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: #8b949e;
+                border-bottom: 1px solid #30363d;
+            }
+            .panel-body {
+                padding: 0.5rem;
+            }
+
+            /* Controls */
+            .controls {
+                display: flex;
+                gap: 0.5rem;
+                flex-wrap: wrap;
+                align-items: center;
+                padding: 0.75rem;
+            }
+            button {
+                background: #21262d;
+                color: #c9d1d9;
+                border: 1px solid #30363d;
+                border-radius: 4px;
+                padding: 0.35rem 0.75rem;
+                cursor: pointer;
+                font-size: 0.8rem;
+                font-family: inherit;
+                transition: background 0.15s;
+            }
+            button:hover {
+                background: #30363d;
+            }
+            button.active {
+                background: #1f6feb;
+                border-color: #58a6ff;
+                color: #fff;
+            }
+            button.danger {
+                border-color: #f85149;
+                color: #f85149;
+            }
+            button.danger:hover {
+                background: #f8514922;
+            }
+
+            label.control-label {
+                font-size: 0.75rem;
+                color: #8b949e;
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+            }
+            input[type="range"] {
+                width: 300px;
+                accent-color: #58a6ff;
+            }
+            .interval-val {
+                color: #58a6ff;
+                min-width: 2.5em;
+            }
+
+            /* Securities table */
+            .securities-table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            .securities-table th {
+                text-align: left;
+                font-size: 0.7rem;
+                text-transform: uppercase;
+                color: #8b949e;
+                padding: 0.4rem 0.5rem;
+                border-bottom: 1px solid #30363d;
+                font-weight: 600;
+            }
+            .securities-table td {
+                padding: 0.35rem 0.5rem;
+                border-bottom: 1px solid #21262d;
+                white-space: nowrap;
+            }
+            .securities-table tr.data-row {
+                background: #131920;
+            }
+            .securities-table tr.data-row:hover {
+                background: #161b22;
+            }
+            .ticker {
+                font-weight: 600;
+                color: #58a6ff;
+            }
+            .asset-type {
+                font-size: 0.65rem;
+                padding: 0.1rem 0.35rem;
+                border-radius: 3px;
+                background: #21262d;
+                color: #8b949e;
+            }
+            .price {
+                font-variant-numeric: tabular-nums;
+                text-align: right;
+            }
+            .change {
+                font-variant-numeric: tabular-nums;
+                text-align: right;
+            }
+            .change.up {
+                color: #3fb950;
+            }
+            .change.down {
+                color: #f85149;
+            }
+
+            .bias-btns {
+                display: flex;
+                gap: 2px;
+            }
+            .bias-btn {
+                background: #21262d;
+                border: 1px solid #30363d;
+                border-radius: 3px;
+                color: #8b949e;
+                padding: 0.15rem 0.3rem;
+                font-size: 0.65rem;
+                cursor: pointer;
+                font-family: inherit;
+            }
+            .bias-btn:hover {
+                background: #30363d;
+                color: #c9d1d9;
+            }
+            .bias-btn.neg {
+                color: #f85149;
+            }
+            .bias-btn.neg:hover {
+                background: #f8514922;
+            }
+            .bias-btn.pos {
+                color: #3fb950;
+            }
+            .bias-btn.pos:hover {
+                background: #3fb95022;
+            }
+
+            /* Sparkline chart row */
+            .securities-table tr.data-row {
+                cursor: pointer;
+            }
+            .chart-row {
+                display: none;
+            }
+            .chart-row.open {
+                display: table-row;
+            }
+            .chart-row td {
+                padding: 0.25rem 0.5rem 0.5rem;
+                border-bottom: 1px solid #30363d;
+                background: #090d12;
+            }
+            .sparkline {
+                display: block;
+            }
+
+            /* Chevron */
+            .chevron {
+                display: inline-block;
+                color: #484f58;
+                font-size: 0.7rem;
+                transition: transform 0.15s;
+                user-select: none;
+            }
+            .chevron.expanded {
+                transform: rotate(-90deg);
+            }
+            .chevron-header {
+                display: inline-block;
+                cursor: pointer;
+                color: #484f58;
+                font-size: 0.7rem;
+                user-select: none;
+                transition: color 0.15s, transform 0.15s;
+            }
+            .chevron-header:hover {
+                color: #c9d1d9;
+            }
+            .chevron-header.expanded {
+                transform: rotate(-90deg);
+            }
+
+            /* Detectors */
+            .detector-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0.4rem 0.75rem;
+                border-bottom: 1px solid #21262d;
+            }
+            .detector-row:last-child {
+                border-bottom: none;
+            }
+            .detector-name {
+                font-size: 0.8rem;
+            }
+            .toggle {
+                position: relative;
+                width: 36px;
+                height: 20px;
+                background: #30363d;
+                border-radius: 10px;
+                cursor: pointer;
+                transition: background 0.2s;
+            }
+            .toggle.on {
+                background: #238636;
+            }
+            .toggle::after {
+                content: "";
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 16px;
+                height: 16px;
+                background: #c9d1d9;
+                border-radius: 50%;
+                transition: transform 0.2s;
+            }
+            .toggle.on::after {
+                transform: translateX(16px);
+            }
+
+            /* Alert log */
+            .alert-log {
+                max-height: 400px;
+                overflow-y: auto;
+                font-size: 0.75rem;
+            }
+            .alert-entry {
+                padding: 0.4rem 0.75rem;
+                border-bottom: 1px solid #21262d;
+                animation: flash 0.5s;
+            }
+            .alert-entry:first-child {
+                border-top: none;
+            }
+            .alert-time {
+                color: #8b949e;
+                margin-right: 0.5rem;
+            }
+            .alert-ticker {
+                color: #58a6ff;
+                font-weight: 600;
+                margin-right: 0.3rem;
+            }
+            .alert-kind {
+                font-size: 0.65rem;
+                background: #f8514933;
+                color: #f85149;
+                padding: 0.1rem 0.3rem;
+                border-radius: 3px;
+                margin-right: 0.3rem;
+            }
+            .alert-msg {
+                color: #c9d1d9;
+            }
+            .alert-log .empty-msg {
+                padding: 1rem;
+                text-align: center;
+                color: #484f58;
+                font-style: italic;
+            }
+
+            @keyframes flash {
+                0% {
+                    background: #f8514922;
+                }
+                100% {
+                    background: transparent;
+                }
+            }
+
+            /* Scrollbar styling */
+            ::-webkit-scrollbar {
+                width: 6px;
+            }
+            ::-webkit-scrollbar-track {
+                background: #0d1117;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: #30363d;
+                border-radius: 3px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: #484f58;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="tick-bar" style="width: 0%"></div>
+
+        <header>
+            <h1>Portfolio Monitor &mdash; Dev Mode</h1>
+            <div class="status">
+                Tick <span class="tick-count" id="tick-count">0</span>
+                &middot;
+                <span id="regime-label">CALM</span>
+                &middot;
+                <span id="pause-label">Running</span>
+            </div>
+        </header>
+
+        <div class="grid">
+            <div class="main-col">
+                <!-- Controls -->
+                <div class="panel" style="margin-bottom: 1rem">
+                    <div class="panel-header">Controls</div>
+                    <div class="controls">
+                        <button id="btn-pause" onclick="togglePause()">
+                            Pause
+                        </button>
+
+                        <label class="control-label">
+                            Tick
+                            <input
+                                type="range"
+                                id="tick-slider"
+                                min="0.5"
+                                max="30"
+                                step="0.5"
+                                value="{{ tick_interval }}"
+                                oninput="updateTickInterval(this.value)"
+                            />
+                            <span class="interval-val" id="tick-val"
+                                >{{ tick_interval }}s</span
+                            >
+                        </label>
+
+                        <button
+                            id="btn-calm"
+                            class="active"
+                            onclick="setRegime('CALM')"
+                        >
+                            Calm
+                        </button>
+                        <button
+                            id="btn-volatile"
+                            onclick="setRegime('VOLATILE')"
+                        >
+                            Volatile
+                        </button>
+
+                        <button
+                            class="danger"
+                            onclick="resetEngine()"
+                            style="margin-left: auto"
+                        >
+                            Reset
+                        </button>
+                        <button class="danger" onclick="stopServer()">
+                            Stop Server
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Securities table -->
+                <div class="panel">
+                    <div class="panel-header">Securities</div>
+                    <table class="securities-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Type</th>
+                                <th style="text-align: right">Price</th>
+                                <th style="text-align: right">Change</th>
+                                <th>Bias</th>
+                                <th style="text-align: right">
+                                    <span
+                                        class="chevron-header"
+                                        id="chevron-all"
+                                        onclick="toggleAllCharts()"
+                                        title="Expand/Collapse all"
+                                    >&#10094;</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="securities-body">
+                            {% for s in symbols %}
+                            <tr
+                                class="data-row"
+                                data-ticker="{{ s.ticker }}"
+                                onclick="toggleChart('{{ s.ticker }}')"
+                            >
+                                <td class="ticker">{{ s.ticker }}</td>
+                                <td>
+                                    <span class="asset-type"
+                                        >{{ s.asset_type }}</span
+                                    >
+                                </td>
+                                <td class="price" id="price-{{ s.ticker }}">
+                                    {{ "%.2f"|format(s.price) }}
+                                </td>
+                                <td class="change" id="change-{{ s.ticker }}">
+                                    &mdash;
+                                </td>
+                                <td>
+                                    <div class="bias-btns">
+                                        <button
+                                            class="bias-btn neg"
+                                            onclick="event.stopPropagation(); setBias('{{ s.ticker }}', -10)"
+                                        >
+                                            -10%
+                                        </button>
+                                        <button
+                                            class="bias-btn neg"
+                                            onclick="event.stopPropagation(); setBias('{{ s.ticker }}', -5)"
+                                        >
+                                            -5%
+                                        </button>
+                                        <button
+                                            class="bias-btn neg"
+                                            onclick="event.stopPropagation(); setBias('{{ s.ticker }}', -2)"
+                                        >
+                                            -2%
+                                        </button>
+                                        <button
+                                            class="bias-btn neg"
+                                            onclick="event.stopPropagation(); setBias('{{ s.ticker }}', -1)"
+                                        >
+                                            -1%
+                                        </button>
+                                        <button
+                                            class="bias-btn pos"
+                                            onclick="event.stopPropagation(); setBias('{{ s.ticker }}', 1)"
+                                        >
+                                            +1%
+                                        </button>
+                                        <button
+                                            class="bias-btn pos"
+                                            onclick="event.stopPropagation(); setBias('{{ s.ticker }}', 2)"
+                                        >
+                                            +2%
+                                        </button>
+                                        <button
+                                            class="bias-btn pos"
+                                            onclick="event.stopPropagation(); setBias('{{ s.ticker }}', 5)"
+                                        >
+                                            +5%
+                                        </button>
+                                        <button
+                                            class="bias-btn pos"
+                                            onclick="event.stopPropagation(); setBias('{{ s.ticker }}', 10)"
+                                        >
+                                            +10%
+                                        </button>
+                                    </div>
+                                </td>
+                                <td style="text-align: right">
+                                    <span class="chevron" id="chevron-{{ s.ticker }}">&#10094;</span>
+                                </td>
+                            </tr>
+                            <tr class="chart-row" id="chart-{{ s.ticker }}">
+                                <td colspan="6">
+                                    <svg
+                                        class="sparkline"
+                                        id="svg-{{ s.ticker }}"
+                                        width="100%"
+                                        height="40"
+                                        preserveAspectRatio="none"
+                                    ></svg>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="side-col">
+                <!-- Detectors -->
+                <div class="panel">
+                    <div class="panel-header">Detectors</div>
+                    {% for d in detectors %}
+                    <div class="detector-row">
+                        <span class="detector-name">{{ d }}</span>
+                        <div
+                            class="toggle {{ 'on' if d not in disabled_detectors else '' }}"
+                            id="toggle-{{ d }}"
+                            onclick="toggleDetector('{{ d }}')"
+                        ></div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Alert log -->
+                <div
+                    class="panel"
+                    style="flex: 1; display: flex; flex-direction: column"
+                >
+                    <div class="panel-header">
+                        Alerts
+                        <span
+                            id="alert-count"
+                            style="float: right; color: #58a6ff"
+                            >0</span
+                        >
+                    </div>
+                    <div class="alert-log" id="alert-log">
+                        <div class="empty-msg">Waiting for alerts...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // State
+            let paused = {{ "true" if paused else "false" }};
+            let currentRegime = "CALM";
+            let alertCount = 0;
+            const prevPrices = {};
+            const priceHistory = {};  // ticker -> array of closes (max 60)
+            const MAX_HISTORY = 60;
+
+            // --- API calls ---
+            async function api(url, body) {
+                const resp = await fetch(url, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(body),
+                });
+                return resp.json();
+            }
+
+            function togglePause() {
+                api("/api/pause").then(r => {
+                    paused = r.paused;
+                    document.getElementById("btn-pause").textContent = paused ? "Resume" : "Pause";
+                    document.getElementById("btn-pause").classList.toggle("active", paused);
+                    document.getElementById("pause-label").textContent = paused ? "Paused" : "Running";
+                });
+            }
+
+            function updateTickInterval(val) {
+                document.getElementById("tick-val").textContent = val + "s";
+                api("/api/tick-interval", {interval: parseFloat(val)});
+            }
+
+            function setRegime(regime) {
+                api("/api/regime", {regime}).then(() => {
+                    currentRegime = regime;
+                    document.getElementById("regime-label").textContent = regime;
+                    document.getElementById("btn-calm").classList.toggle("active", regime === "CALM");
+                    document.getElementById("btn-volatile").classList.toggle("active", regime === "VOLATILE");
+                });
+            }
+
+            function setBias(ticker, pct) {
+                api("/api/bias", {ticker, bias_pct: pct});
+            }
+
+            function toggleDetector(name) {
+                api("/api/detector/" + name + "/toggle").then(r => {
+                    const el = document.getElementById("toggle-" + name);
+                    el.classList.toggle("on", r.enabled);
+                });
+            }
+
+            function resetEngine() {
+                api("/api/reset").then(r => {
+                    alertCount = 0;
+                    document.getElementById("alert-count").textContent = "0";
+                    document.getElementById("alert-log").innerHTML =
+                        '<div class="empty-msg">Engine reset — primed with ' + r.primed_aggregates + ' aggregates</div>';
+                });
+            }
+
+            function stopServer() {
+                if (!confirm("Stop the dev server?")) return;
+                api("/api/stop").then(() => {
+                    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8b949e;font-size:1.2rem;">Server stopped.</div>';
+                });
+            }
+
+            // --- SSE: Prices ---
+            const priceSSE = new EventSource("/sse/prices");
+            priceSSE.onmessage = function(e) {
+                const d = JSON.parse(e.data);
+                const ticker = d.ticker;
+                const priceEl = document.getElementById("price-" + ticker);
+                const changeEl = document.getElementById("change-" + ticker);
+                if (!priceEl) return;
+
+                const prev = prevPrices[ticker];
+                const price = d.price;
+                prevPrices[ticker] = price;
+
+                priceEl.textContent = formatPrice(price);
+
+                if (prev !== undefined) {
+                    const pct = ((price - prev) / prev) * 100;
+                    changeEl.textContent = (pct >= 0 ? "+" : "") + pct.toFixed(2) + "%";
+                    changeEl.className = "change " + (pct >= 0 ? "up" : "down");
+                }
+
+                // Accumulate history for sparkline
+                if (!priceHistory[ticker]) priceHistory[ticker] = [];
+                const hist = priceHistory[ticker];
+                hist.push(price);
+                if (hist.length > MAX_HISTORY) hist.shift();
+
+                // Redraw if chart is visible
+                const chartRow = document.getElementById("chart-" + ticker);
+                if (chartRow && chartRow.classList.contains("open")) {
+                    drawSparkline(ticker);
+                }
+            };
+
+            // --- SSE: Alerts ---
+            const alertSSE = new EventSource("/sse/alerts");
+            alertSSE.onmessage = function(e) {
+                const d = JSON.parse(e.data);
+                alertCount++;
+                document.getElementById("alert-count").textContent = alertCount;
+
+                const log = document.getElementById("alert-log");
+                // Remove empty message
+                const emptyMsg = log.querySelector(".empty-msg");
+                if (emptyMsg) emptyMsg.remove();
+
+                const time = new Date(d.at).toLocaleTimeString();
+                const entry = document.createElement("div");
+                entry.className = "alert-entry";
+                entry.innerHTML =
+                    '<span class="alert-time">' + time + '</span>' +
+                    '<span class="alert-ticker">' + d.ticker + '</span>' +
+                    '<span class="alert-kind">' + d.kind + '</span>' +
+                    '<span class="alert-msg">' + d.message + '</span>';
+                log.insertBefore(entry, log.firstChild);
+
+                // Keep max 200 entries
+                while (log.children.length > 200) {
+                    log.removeChild(log.lastChild);
+                }
+            };
+
+            // --- SSE: Tick progress ---
+            const tickSSE = new EventSource("/sse/tick-progress");
+            let tickBarRAF = null;
+            let lastTickTime = null;
+            let tickInterval = {{ tick_interval }};
+
+            tickSSE.onmessage = function(e) {
+                const d = JSON.parse(e.data);
+                document.getElementById("tick-count").textContent = d.tick_count;
+                tickInterval = d.tick_interval;
+
+                if (d.paused) {
+                    cancelAnimationFrame(tickBarRAF);
+                    document.getElementById("tick-bar").style.width = "0%";
+                    return;
+                }
+
+                if (d.last_tick) {
+                    lastTickTime = new Date(d.last_tick).getTime();
+                    animateBar();
+                }
+            };
+
+            function animateBar() {
+                cancelAnimationFrame(tickBarRAF);
+                function step() {
+                    if (!lastTickTime || paused) return;
+                    const elapsed = Date.now() - lastTickTime;
+                    const pct = Math.min(100, (elapsed / (tickInterval * 1000)) * 100);
+                    document.getElementById("tick-bar").style.width = pct + "%";
+                    if (pct < 100) {
+                        tickBarRAF = requestAnimationFrame(step);
+                    }
+                }
+                tickBarRAF = requestAnimationFrame(step);
+            }
+
+            // --- Sparkline ---
+            function toggleChart(ticker) {
+                const row = document.getElementById("chart-" + ticker);
+                row.classList.toggle("open");
+                const isOpen = row.classList.contains("open");
+                const chevron = document.getElementById("chevron-" + ticker);
+                if (chevron) chevron.classList.toggle("expanded", isOpen);
+                if (isOpen) drawSparkline(ticker);
+                updateHeaderChevron();
+            }
+
+            function toggleAllCharts() {
+                const chartRows = document.querySelectorAll(".chart-row");
+                const anyOpen = Array.from(chartRows).some(r => r.classList.contains("open"));
+                chartRows.forEach(r => {
+                    const ticker = r.id.replace("chart-", "");
+                    const chevron = document.getElementById("chevron-" + ticker);
+                    if (anyOpen) {
+                        r.classList.remove("open");
+                        if (chevron) chevron.classList.remove("expanded");
+                    } else {
+                        r.classList.add("open");
+                        if (chevron) chevron.classList.add("expanded");
+                        drawSparkline(ticker);
+                    }
+                });
+                updateHeaderChevron();
+            }
+
+            function updateHeaderChevron() {
+                const chartRows = document.querySelectorAll(".chart-row");
+                const anyOpen = Array.from(chartRows).some(r => r.classList.contains("open"));
+                const hdr = document.getElementById("chevron-all");
+                if (hdr) hdr.classList.toggle("expanded", anyOpen);
+            }
+
+            function drawSparkline(ticker) {
+                const svg = document.getElementById("svg-" + ticker);
+                const hist = priceHistory[ticker];
+                if (!hist || hist.length < 2) {
+                    svg.innerHTML = '';
+                    return;
+                }
+
+                const w = svg.clientWidth || 400;
+                const h = 40;
+                const min = Math.min(...hist);
+                const max = Math.max(...hist);
+                const range = max - min || 1;
+                const pad = 2;
+
+                const points = hist.map((p, i) => {
+                    const x = (i / (MAX_HISTORY - 1)) * w;
+                    const y = pad + ((max - p) / range) * (h - 2 * pad);
+                    return x.toFixed(1) + "," + y.toFixed(1);
+                }).join(" ");
+
+                const up = hist[hist.length - 1] >= hist[0];
+                const color = up ? "#3fb950" : "#f85149";
+
+                svg.innerHTML =
+                    '<polyline points="' + points + '" fill="none" stroke="' + color + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/>';
+            }
+
+            // --- Helpers ---
+            function formatPrice(p) {
+                if (p >= 1000) return p.toFixed(0);
+                if (p >= 1) return p.toFixed(2);
+                return p.toFixed(4);
+            }
+        </script>
+    </body>
+</html>

@@ -193,6 +193,14 @@ def arg_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--host", type=str, help="Control interface host")
     run_parser.add_argument("--port", type=int, help="Control interface port")
     run_parser.add_argument("--auth-key", type=str, help="Authorization key")
+    run_parser.add_argument(
+        "--dev", action="store_true",
+        help="Run in dev mode with synthetic data (no API keys needed)",
+    )
+    run_parser.add_argument(
+        "--tick-interval", type=float, default=5.0,
+        help="Dev mode: seconds between synthetic price ticks (default: 5.0)",
+    )
 
     return parser
 
@@ -216,6 +224,18 @@ def main() -> None:
     # Default to "run" when no subcommand given
     if args.command is None:
         args = parser.parse_args(["run"])
+
+    # Dev mode — bypass PortfolioMonitorConfig entirely
+    if getattr(args, "dev", False):
+        from portfolio_monitor.service.dev import run_dev_service
+        from portfolio_monitor.service.dev.config import DevConfig
+
+        dev_config = DevConfig.from_config_file(config_path, args)
+        try:
+            asyncio.run(run_dev_service(dev_config))
+        except KeyboardInterrupt:
+            logger.info("Shutting down dev mode [Ctrl+C]")
+        return
 
     try:
         config = PortfolioMonitorConfig(config_path, args)

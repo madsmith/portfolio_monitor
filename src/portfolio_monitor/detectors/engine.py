@@ -47,6 +47,7 @@ class DeviationEngine:
                 else:
                     raise ValueError(f"Type {type(detector)} is not a valid detector")
 
+        self.disabled_detectors: set[str] = set()
         self.asset_detectors: dict[AssetSymbol, list[Detector]] = {}
 
     def add_detector(self, symbol: AssetSymbol, detector: DetectorSpec) -> None:
@@ -95,6 +96,8 @@ class DeviationEngine:
 
         # Process through default detectors (apply to all assets)
         for detector in self.default_detectors:
+            if detector.name in self.disabled_detectors:
+                continue
             alert = detector.update(aggregate)
             if alert and self._check_cooldown(alert):
                 alerts.append(alert)
@@ -102,6 +105,8 @@ class DeviationEngine:
         # Process through asset-specific detectors if any
         if ticker in self.asset_detectors:
             for detector in self.asset_detectors[ticker]:
+                if detector.name in self.disabled_detectors:
+                    continue
                 alert = detector.update(aggregate)
                 if alert and self._check_cooldown(alert):
                     alerts.append(alert)

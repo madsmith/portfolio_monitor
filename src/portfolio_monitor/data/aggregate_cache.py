@@ -413,6 +413,27 @@ class AggregateCache:
         return [cache[ts_ms] for ts_ms in cache.irange(from_ms, to_ms)]
 
 
+class MemoryOnlyAggregateCache(AggregateCache):
+    """In-memory-only cache that skips all SQLite persistence."""
+
+    def __init__(self) -> None:
+        self._memory_cache_age = timedelta(days=7)
+        self._is_initialized = True
+        self._memory_cache: dict[AssetSymbol, SortedDict] = {}
+
+    def initialize(self) -> None:
+        pass
+
+    async def load(self) -> "MemoryOnlyAggregateCache":
+        return self
+
+    async def add(self, aggregate: Aggregate) -> None:
+        self._add_to_memory_cache(aggregate)
+
+    async def close(self) -> None:
+        pass
+
+
 def datetime_from_ms(ms: int, tz: ZoneInfo) -> datetime:
     assert tz is not None, "Timezone must be specified"
     return datetime.fromtimestamp(ms / 1000, tz)

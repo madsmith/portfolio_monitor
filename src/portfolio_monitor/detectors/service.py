@@ -25,18 +25,21 @@ class DetectionService:
         self,
         bus: EventBus,
         detection_engine: DeviationEngine,
-        data_provider: DataProvider,
+        data_provider: DataProvider | None = None,
         max_alert_history: int = 1000,
     ) -> None:
         self._bus: EventBus = bus
         self._detection_engine: DeviationEngine = detection_engine
-        self._data_provider: DataProvider = data_provider
+        self._data_provider: DataProvider | None = data_provider
         self._alert_log: deque[Alert] = deque(maxlen=max_alert_history)
 
         self._bus.subscribe(AggregateUpdated, self._on_aggregate_updated)
 
     async def prime(self, symbols: list[AssetSymbol], end: datetime) -> None:
         """Fetch historical data to warm up detectors, then clear cooldowns."""
+        if self._data_provider is None:
+            raise RuntimeError("Cannot prime without a DataProvider")
+
         start: datetime | None = self._detection_engine.preload_data_age(
             end, timedelta(minutes=1)
         )
