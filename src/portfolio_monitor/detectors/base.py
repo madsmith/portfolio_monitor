@@ -63,6 +63,7 @@ class DetectorBase(ABC, Detector):
 
 
 T = TypeVar("T")
+D = TypeVar("D", bound=Detector)
 
 
 class HistoryRecord(Generic[T], NamedTuple):
@@ -133,7 +134,7 @@ class DetectorRegistry:
     _registry: dict[str, Type[Detector]] = {}
 
     @classmethod
-    def register(cls, detector_class: Type[Detector]) -> Type[Detector]:
+    def register(cls, detector_class: Type[D]) -> Type[D]:
         """Register a detector class by its name
 
         Can be used as a decorator:
