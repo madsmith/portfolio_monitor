@@ -37,7 +37,7 @@ class PercentChangeFromPreviousCloseDetector(Detector):
         if abs(pct) >= self.threshold:
             msg = f"{ticker}: {pct * 100:.2f}% vs previous close ({prev_close:.4f})"
             extra = {"percent_change": pct * 100}
-            return Alert(ticker, self.name, msg, extra, aggregate.date, aggregate)
+            return Alert(ticker, self.name, msg, extra, aggregate.date_open, aggregate)
         return None
 
     def preload_data_age(
@@ -85,7 +85,7 @@ class PercentChangeDetector(Detector):
         if abs(pct) >= self.threshold:
             msg = f"{symbol}: {pct * 100:.2f}% vs previous close ({prev_close:.4f}) [{self.period} ago]"
             extra = {"percent_change": pct * 100}
-            return Alert(symbol, self.name, msg, extra, aggregate.date, aggregate)
+            return Alert(symbol, self.name, msg, extra, aggregate.date_open, aggregate)
         return None
 
     def _append_price_history(self, aggregate: Aggregate) -> None:
@@ -98,7 +98,7 @@ class PercentChangeDetector(Detector):
             self._price_history[symbol] = []
 
         self._price_history[symbol].append(
-            PreviousClose(aggregate.date, aggregate.close)
+            PreviousClose(aggregate.date_open, aggregate.close)
         )
 
         self._cleanup_price_history(symbol)

@@ -77,10 +77,10 @@ class TimeRangeDetectorBase(DetectorBase, Generic[T]):
         self.histories: dict[AssetSymbol, list[HistoryRecord[T]]] = defaultdict(list)
 
     def update(self, aggregate: Aggregate) -> Alert | None:
-        self._append_history(aggregate.date, aggregate)
+        self._append_history(aggregate.date_open, aggregate)
 
         # Remove old records
-        self._history_cleanup(aggregate.symbol, aggregate.date)
+        self._history_cleanup(aggregate.symbol, aggregate.date_open)
 
         return self._check_alert(aggregate)
 
@@ -96,7 +96,7 @@ class TimeRangeDetectorBase(DetectorBase, Generic[T]):
         return [record.value for record in self.histories[symbol]]
 
     def alert(self, aggregate: Aggregate, msg: str, extra: dict[str, Any]) -> Alert:
-        return Alert(aggregate.symbol, self.name, msg, extra, aggregate.date, aggregate)
+        return Alert(aggregate.symbol, self.name, msg, extra, aggregate.date_open, aggregate)
 
     def _append_history(self, timestamp: datetime, aggregate: Aggregate):
         value = self._value_from_aggregate(aggregate)

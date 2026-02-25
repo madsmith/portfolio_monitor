@@ -3,7 +3,9 @@ import asyncio
 import logging
 import secrets
 import sys
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import logfire
 import uvicorn
@@ -13,11 +15,19 @@ from starlette.applications import Starlette
 from uvicorn.server import Server
 
 from portfolio_monitor.config import PortfolioMonitorConfig
+from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.aggregate_cache import AggregateCache
+from portfolio_monitor.data.events import AggregateUpdated
+from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.detectors import DeviationEngine
+from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.loader import load_portfolios
+from portfolio_monitor.portfolio.service import PortfolioService
+from portfolio_monitor.service.alert_router import AlertRouter
 from portfolio_monitor.service.alerts import LoggingAlertDelivery
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.monitor import MonitorService
+from portfolio_monitor.service.types import AssetSymbol
 
 # Configure logging
 logging.basicConfig(
@@ -27,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def run_service(config: PortfolioMonitorConfig):
+async def run_service(config: PortfolioMonitorConfig) -> None:
     """Run the monitor service until interrupted"""
 
     if config.debug:
@@ -51,9 +61,57 @@ async def run_service(config: PortfolioMonitorConfig):
     aggregate_cache.initialize()
     await aggregate_cache.load()
 
-    alert_delivery = LoggingAlertDelivery()
+    # Create event bus
+    bus = EventBus()
 
-    service = MonitorService(config, alert_delivery, portfolios, aggregate_cache)
+    # Wire aggregate cache to persist on AggregateUpdated
+    async def _persist_aggregate(event: AggregateUpdated) -> None:
+        await aggregate_cache.add(event.aggregate)
+
+    bus.subscribe(AggregateUpdated, _persist_aggregate)
+
+    # Create data provider
+    data_provider = DataProvider(config, aggregate_cache)
+
+    # Build detection engine from config
+    monitors_config = config.monitors
+    default_detectors_config = monitors_config.get("default", {})
+    default_detectors = [
+        {"name": name, "args": args} for name, args in default_detectors_config.items()
+    ]
+    detection_engine = DeviationEngine(default_detectors=default_detectors)
+
+    # Register per-asset detectors
+    for ticker, detector_configs in monitors_config.items():
+        if ticker == "default":
+            continue
+        for name, args in detector_configs.items():
+            detection_engine.add_detector(
+                _resolve_symbol(portfolios, ticker),
+                {"name": name, "args": args},
+            )
+
+    # Create services — subscriptions happen in constructors
+    detection_service = DetectionService(
+        bus=bus,
+        detection_engine=detection_engine,
+        data_provider=data_provider,
+    )
+    portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)  # noqa: F841
+    alert_router = AlertRouter(bus=bus)
+    alert_router.add_target(LoggingAlertDelivery())
+
+    monitor = MonitorService(
+        bus=bus,
+        data_provider=data_provider,
+        portfolios=portfolios,
+    )
+
+    # Prime detection engine with historical data
+    all_symbols: list[AssetSymbol] = list(
+        {asset.symbol for portfolio in portfolios for asset in portfolio.assets()}
+    )
+    await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
 
     # Start API server
     assert config.auth_key is not None, "Auth key is required"
@@ -67,30 +125,39 @@ async def run_service(config: PortfolioMonitorConfig):
     api_server: Server = uvicorn.Server(uvicorn_config)
 
     try:
-        # Start monitor service and API server concurrently
-        await service.start()
+        await alert_router.connect_all()
+        await monitor.start()
         await api_server.serve()
     except asyncio.CancelledError:
-        # This is expected on Ctrl+C, asyncio.run() will cancel the main task
         logger.info("Main task cancelled, initiating graceful shutdown...")
     except Exception as e:
-        logger.error(f"Error in service: {e}")
+        logger.error("Error in service: %s", e)
         raise
     finally:
-        # Ensure all resources are properly closed, even on cancellation
         try:
-            if service.running:
-                await service.stop()
+            if monitor.running:
+                await monitor.stop()
         except Exception as e:
-            logger.error(f"Error stopping service: {e}")
-            import traceback
+            logger.error("Error stopping monitor: %s", e)
 
-            traceback.print_exc()
+        try:
+            await alert_router.disconnect_all()
+        except Exception as e:
+            logger.error("Error disconnecting alert router: %s", e)
 
         try:
             await aggregate_cache.close()
         except Exception as e:
-            logger.error(f"Error closing aggregate cache: {e}")
+            logger.error("Error closing aggregate cache: %s", e)
+
+
+def _resolve_symbol(portfolios: list, ticker: str) -> AssetSymbol:
+    """Resolve a ticker string to an AssetSymbol from loaded portfolios."""
+    for portfolio in portfolios:
+        for asset in portfolio.assets():
+            if asset.symbol.ticker == ticker:
+                return asset.symbol
+    raise ValueError(f"Ticker {ticker} not found in portfolios")
 
 
 def generate_auth_key(config_path: Path) -> None:
@@ -131,13 +198,13 @@ def arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _auth_key_exit():
+def _auth_key_exit() -> None:
     program_name = Path(sys.argv[0]).name
     print(f"Authorization key is not configured: ./{program_name} generate-auth-key")
     SystemExit(-1)
 
 
-def main():
+def main() -> None:
     parser = arg_parser()
     args = parser.parse_args()
 

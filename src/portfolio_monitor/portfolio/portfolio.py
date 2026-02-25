@@ -224,13 +224,16 @@ class Portfolio:
         """Return all assets in this portfolio."""
         return self.stocks + self.currencies + self.crypto
 
-    def update_prices(self, price_data: dict[AssetSymbol, Currency]) -> None:
+    def update_prices(self, price_data: dict[AssetSymbol, Currency]) -> bool:
         """Update the prices of all assets in this portfolio."""
+        data_matched = False
         for asset in self.assets():
             if asset.symbol in price_data:
                 price = price_data[asset.symbol]
                 assert isinstance(price, Currency)
                 asset.current_price = price
+                data_matched = True
+        return data_matched
 
     @property
     def total_value(self) -> Currency:

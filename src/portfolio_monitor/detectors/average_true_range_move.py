@@ -84,7 +84,7 @@ class AverageTrueRangeMoveDetector(Detector):
                 "average_true_range": atr,
                 "range_multiple": atr_multiple,
             }
-            return Alert(symbol, self.name, msg, extra, aggregate.date, aggregate)
+            return Alert(symbol, self.name, msg, extra, aggregate.date_open, aggregate)
 
         return None
 

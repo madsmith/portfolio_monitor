@@ -4,8 +4,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from polygon import RESTClient as PolygonRESTClient
-from polygon.rest.aggs import Agg
-from sortedcontainers import SortedDict
+from polygon.rest.aggs import Agg, PreviousCloseAgg
 from urllib3 import HTTPResponse
 from urllib3.exceptions import RequestError
 
@@ -13,11 +12,12 @@ from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.data.aggregate_cache import (
     Aggregate,
     AggregateCache,
-    ms_from_datetime,
 )
 from portfolio_monitor.service.types import AssetSymbol
 
 logger = logging.getLogger(__name__)
+
+DateRange = tuple[datetime, datetime]
 
 
 class DataProvider:
@@ -37,29 +37,31 @@ class DataProvider:
         # Time delay before considering data not real-time (default 15 minutes)
         # Add a 1-minute margin to the configured delay to ensure we're getting truly fresh data
         base_delay = timedelta(seconds=config.polygon_delay)
-        self._delay = base_delay + timedelta(minutes=1)  # Add 1 minute margin
+        self._delay: timedelta = base_delay + timedelta(minutes=1)
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(
             config.polygon_api_key
         )
-        self._rate_limit_sleep = 12.1  # Sleep time when rate limited (slightly over 12 seconds per Polygon docs)
-        self._max_retries = 5
+        self._rate_limit_sleep: float = 12.1  # Sleep time when rate limited (slightly over 12 seconds per Polygon docs)
+        self._max_retries: int = 5
 
-    async def get_aggregate(self, symbol: AssetSymbol) -> Aggregate | None:
+    async def get_aggregate(
+        self, symbol: AssetSymbol, *, cache_write: bool = False
+    ) -> Aggregate | None:
         """
         Get the most recent aggregate for a ticker
 
         Args:
-            ticker: Ticker symbol to fetch data for
+            symbol: Ticker symbol to fetch data for
 
         Returns:
             Most recent Aggregate or None if not available
         """
         # Try to get from cache first
-        current = self._aggregate_cache.get_current(symbol)
-        now = datetime.now(ZoneInfo("UTC"))
+        current: Aggregate | None = self._aggregate_cache.get_current(symbol)
+        now: datetime = datetime.now(ZoneInfo("UTC"))
 
         # Check if we have recent data in cache
-        if current and (now - current.date) < self._delay:
+        if current and (now - current.date_open) < self._delay:
             return current
 
         # Otherwise fetch from API
@@ -109,8 +111,10 @@ class DataProvider:
                             agg.low,
                             agg.close,
                             agg.volume,
+                            timedelta(minutes=1),
                         )
-                        await self._aggregate_cache.add(aggregate)
+                        if cache_write:
+                            await self._aggregate_cache.add(aggregate)
                         last_aggregate = aggregate
                 return last_aggregate
         except Exception as e:
@@ -118,8 +122,65 @@ class DataProvider:
 
         return current  # Fall back to cached value even if it's old
 
+    async def get_previous_close(
+        self, symbol: AssetSymbol, *, cache_write: bool = False
+    ) -> Aggregate | None:
+        """Fetch the previous trading day's OHLCV aggregate for a symbol.
+
+        Returns:
+            Aggregate with timespan of one trading session, or None on error.
+        """
+        try:
+            trade = self._polygon_client.get_previous_close_agg(
+                ticker=symbol.lookup_symbol
+            )
+        except RequestError:
+            logger.warning(
+                "Error fetching previous close for %s, will retry next tick", symbol
+            )
+            return None
+        except Exception:
+            logger.exception("Error fetching previous close for %s", symbol)
+            return None
+
+        if isinstance(trade, list):
+            trade = trade[0]
+        if isinstance(trade, PreviousCloseAgg):
+            if (
+                trade.timestamp is None
+                or trade.open is None
+                or trade.high is None
+                or trade.low is None
+                or trade.close is None
+                or trade.volume is None
+            ):
+                logger.warning("Invalid previous close data for %s: %s", symbol, trade)
+                return None
+
+            aggregate = Aggregate(
+                symbol,
+                _polygon_timestamp_to_datetime(trade.timestamp),
+                trade.open,
+                trade.high,
+                trade.low,
+                trade.close,
+                trade.volume,
+                timedelta(hours=6, minutes=30),
+            )
+            if cache_write:
+                await self._aggregate_cache.add(aggregate)
+            return aggregate
+
+        logger.warning("Unknown trade type for %s: %s", symbol, type(trade))
+        return None
+
     async def get_range(
-        self, symbol: AssetSymbol, from_: datetime, to: datetime
+        self,
+        symbol: AssetSymbol,
+        from_: datetime,
+        to: datetime,
+        *,
+        cache_write: bool = False,
     ) -> list[Aggregate]:
         """
         Get a range of aggregates for a ticker
@@ -141,79 +202,55 @@ class DataProvider:
         to_utc = to.astimezone(ZoneInfo("UTC"))
 
         # Get cached data in this range
-        cached_aggregates = await self._get_cached_range(symbol, from_utc, to_utc)
+        cached_aggregates: list[Aggregate] = self._aggregate_cache.get_range(
+            symbol, from_utc, to_utc
+        )
 
         # Check if we have contiguous 1-minute data
-        missing_ranges = self._find_missing_ranges(cached_aggregates, from_utc, to_utc)
+        missing_ranges: list[DateRange] = self._find_missing_ranges(
+            cached_aggregates, from_utc, to_utc
+        )
 
         # If we have all the data we need, return it
         if not missing_ranges:
-            return sorted(cached_aggregates, key=lambda x: x.date)
+            return sorted(cached_aggregates, key=lambda x: x.date_open)
 
         # Otherwise fetch the missing ranges
         all_aggregates = list(cached_aggregates)  # Start with what we have
 
         for start, end in missing_ranges:
-            fetched = await self._fetch_range(symbol, start, end)
+            fetched = await self._fetch_range(
+                symbol, start, end, cache_write=cache_write
+            )
             all_aggregates.extend(fetched)
 
         # Sort by date and return
-        return sorted(all_aggregates, key=lambda x: x.date)
-
-    async def _get_cached_range(
-        self, symbol: AssetSymbol, from_: datetime, to: datetime
-    ) -> list[Aggregate]:
-        """
-        Get cached aggregates in the given range
-
-        This is a placeholder - you'll need to implement based on your AggregateCache API
-        """
-        # Convert datetimes to ms for comparison
-        from_ms = ms_from_datetime(from_)
-        to_ms = ms_from_datetime(to)
-
-        # Get aggregates from cache
-        result = []
-
-        # Check if ticker exists in cache
-        # TODO: Replace with an API in AggregateCache
-        if symbol.ticker in self._aggregate_cache._memory_cache:
-            # Get all aggregates in range
-            ticker_cache = self._aggregate_cache._memory_cache[symbol.ticker]
-            for timestamp_ms, agg in ticker_cache.items():
-                if from_ms <= timestamp_ms <= to_ms:
-                    result.append(agg)
-
-        return result
+        return sorted(all_aggregates, key=lambda x: x.date_open)
 
     def _find_missing_ranges(
         self, aggregates: list[Aggregate], from_: datetime, to: datetime
-    ) -> list[tuple[datetime, datetime]]:
+    ) -> list[DateRange]:
         """
-        Find missing 1-minute ranges in the data
+        Find missing 1-minute ranges in the data.
 
         Args:
             aggregates: List of existing aggregates
-            from_: Start time of desired range
-            to: End time of desired range
+            from_: Start time of desired range (inclusive)
+            to: End time of desired range (inclusive)
 
         Returns:
             List of (start, end) datetime tuples representing missing ranges
+            where start and end are both inclusive.
         """
         if not aggregates:
-            # If we have no data, the entire range is missing
             return [(from_, to)]
 
-        # Create a sorted dictionary of existing timestamps
-        sorted_aggs = SortedDict({agg.date: agg for agg in aggregates})
-
-        # Ensure we have complete minute coverage
+        # Build set of expected minute-aligned timestamps in [from_, to]
         expected_timestamps: set[datetime] = set()
 
-        # Advance from_ to next full minute if it has microseconds
+        # Advance from_ to next full minute if it has sub-minute components
         start_time = from_
         if start_time.microsecond > 0 or start_time.second > 0:
-            # Round up to the next minute
             start_time = (start_time + timedelta(minutes=1)).replace(
                 second=0, microsecond=0
             )
@@ -223,8 +260,8 @@ class DataProvider:
             expected_timestamps.add(current)
             current += timedelta(minutes=1)
 
-        # Find missing ranges
-        existing_timestamps: set[datetime] = set(sorted_aggs.keys())
+        # Find missing timestamps
+        existing_timestamps: set[datetime] = {agg.date_open for agg in aggregates}
         missing_timestamps: list[datetime] = sorted(
             expected_timestamps - existing_timestamps
         )
@@ -232,37 +269,36 @@ class DataProvider:
         if not missing_timestamps:
             return []
 
-        # Group consecutive missing timestamps into ranges
-        ranges: list[tuple[datetime, datetime]] = []
-        range_start: datetime | None = None
-        prev_ts: datetime | None = None
+        # Group consecutive missing timestamps into [start, end] ranges
+        ranges: list[DateRange] = []
+        range_start: datetime = missing_timestamps[0]
+        prev_ts: datetime = missing_timestamps[0]
 
-        for ts in missing_timestamps:
-            if range_start is None:
-                range_start = ts
-            elif (
-                prev_ts and (ts - prev_ts).total_seconds() > 60
-            ):  # More than 1 minute gap
+        for ts in missing_timestamps[1:]:
+            if (ts - prev_ts).total_seconds() > 60:
                 ranges.append((range_start, prev_ts))
                 range_start = ts
-
             prev_ts = ts
 
-        if range_start is not None and prev_ts is not None:
-            ranges.append((range_start, prev_ts))
+        ranges.append((range_start, prev_ts))
 
         return ranges
 
     async def _fetch_range(
-        self, symbol: AssetSymbol, from_: datetime, to: datetime
+        self,
+        symbol: AssetSymbol,
+        from_: datetime,
+        to: datetime,
+        *,
+        cache_write: bool = False,
     ) -> list[Aggregate]:
         """
-        Fetch a range of aggregates from the API
+        Fetch a range of aggregates from the API.
 
         Args:
             symbol: Asset symbol
-            from_: Start datetime
-            to: End datetime
+            from_: Start datetime (inclusive)
+            to: End datetime (inclusive)
 
         Returns:
             List of fetched aggregates
@@ -270,10 +306,8 @@ class DataProvider:
         result = []
 
         try:
-            # Calculate how many minutes we need to fetch
-            minutes_delta = (
-                int((to - from_).total_seconds() / 60) + 1
-            )  # +1 to include both endpoints
+            # Calculate how many minutes in [from_, to]
+            minutes_delta = int((to - from_).total_seconds() / 60) + 1
             limit = min(50000, minutes_delta)  # Polygon API limit
 
             aggs: list[Agg] | HTTPResponse | None = None
@@ -317,8 +351,10 @@ class DataProvider:
                             agg.low,
                             agg.close,
                             agg.volume,
+                            timedelta(minutes=1),
                         )
-                        await self._aggregate_cache.add(aggregate)
+                        if cache_write:
+                            await self._aggregate_cache.add(aggregate)
                         result.append(aggregate)
 
         except Exception as e:

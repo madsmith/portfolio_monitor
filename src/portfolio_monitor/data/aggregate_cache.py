@@ -16,27 +16,39 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Aggregate:
     symbol: AssetSymbol
-    date: datetime
+    date_open: datetime
     open: float
     high: float
     low: float
     close: float
     volume: float
+    timespan: timedelta
 
     def __post_init__(self):
-        """Validate that the date is timezone-aware"""
-        if self.date.tzinfo is None:
-            raise ValueError(f"Aggregate date must be timezone-aware. Got: {self.date}")
+        """Validate and coerce fields."""
+        if not isinstance(self.symbol, AssetSymbol):
+            raise TypeError(
+                f"symbol must be an AssetSymbol, got {type(self.symbol).__name__}: {self.symbol!r}"
+            )
+        if self.date_open.tzinfo is None:
+            raise ValueError(
+                f"Aggregate date_open must be timezone-aware. Got: {self.date_open}"
+            )
+        if isinstance(self.timespan, int):
+            object.__setattr__(self, "timespan", timedelta(milliseconds=self.timespan))
 
     @property
     def timestamp_ms(self) -> int:
         """Convert datetime to milliseconds since epoch"""
-        return int(self.date.timestamp() * 1000)
+        return int(self.date_open.timestamp() * 1000)
+
+    @property
+    def timespan_ms(self) -> int:
+        """Convert timespan to milliseconds"""
+        return int(self.timespan.total_seconds() * 1000)
 
 
 class AggregateCache:
-    CURRENT_SCHEMA_VERSION = 1
-
     def __init__(self, cache_file: Path | str):
         self._cache_file = Path(cache_file)
         self._memory_cache_age = timedelta(days=7)
@@ -104,6 +116,7 @@ class AggregateCache:
         migrations = {
             1: self._migrate_to_v1,
             2: self._migrate_to_v2,
+            3: self._migrate_to_v3,
         }
 
         # Apply migrations in version order
@@ -165,6 +178,20 @@ class AggregateCache:
                 asset_type TEXT,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        """)
+
+    def _migrate_to_v3(self, conn: sqlite3.Connection):
+        cursor = conn.cursor()
+        cursor.execute("ALTER TABLE aggregates ADD COLUMN timespan_ms INTEGER")
+        cursor.execute("ALTER TABLE aggregates ADD COLUMN asset_type TEXT")
+        # Backfill from existing data
+        cursor.execute(
+            "UPDATE aggregates SET timespan_ms = 60000 WHERE timespan_ms IS NULL"
+        )
+        cursor.execute("""
+            UPDATE aggregates
+            SET asset_type = (SELECT s.asset_type FROM symbols s WHERE s.symbol = aggregates.symbol)
+            WHERE asset_type IS NULL
         """)
 
     async def wait_for_completion(self):
@@ -231,26 +258,39 @@ class AggregateCache:
                 datetime.now(ZoneInfo("UTC")) - self._memory_cache_age
             )
             cursor.execute(
-                """SELECT aggregates.*, symbols.asset_type
-                FROM aggregates JOIN symbols ON aggregates.symbol = symbols.symbol
-                WHERE aggregates.date_utc >= ?""",
+                """SELECT
+                    a.symbol,
+                    a.date_utc,
+                    a.open,
+                    a.high,
+                    a.low,
+                    a.close,
+                    a.volume,
+                    a.timespan_ms,
+                    a.asset_type
+                FROM aggregates a
+                WHERE a.date_utc >= ?""",
                 (utc_time_ms,),
             )
 
             rows = cursor.fetchall()
-            for row in rows:
-                ticker: str = row[0]
-                date_utc_ms: int = row[1]
-                open: float = row[2]
-                high: float = row[3]
-                low: float = row[4]
-                close: float = row[5]
-                volume: int = row[6]
-                asset_type: str = row[7]
-
+            for (
+                ticker,
+                date_utc_ms,
+                open_,
+                high,
+                low,
+                close,
+                volume,
+                timespan_ms,
+                asset_type,
+            ) in rows:
                 date = datetime_from_ms(date_utc_ms, ZoneInfo("UTC"))
+                timespan = timedelta(milliseconds=timespan_ms)
                 symbol = AssetSymbol(ticker, AssetTypes(asset_type))
-                aggregate = Aggregate(symbol, date, open, high, low, close, volume)
+                aggregate = Aggregate(
+                    symbol, date, open_, high, low, close, volume, timespan
+                )
                 await self.add(aggregate)
 
         return self
@@ -323,7 +363,11 @@ class AggregateCache:
         with sqlite3.connect(self._cache_file) as conn:
             cursor = conn.cursor()
             cursor.executemany(
-                "INSERT OR REPLACE INTO aggregates (symbol, date_utc, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                """
+                INSERT OR REPLACE INTO aggregates (
+                    symbol, date_utc, open, high, low, close, volume, timespan_ms, asset_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 [
                     (
                         agg.symbol.ticker,
@@ -333,6 +377,8 @@ class AggregateCache:
                         agg.low,
                         agg.close,
                         agg.volume,
+                        agg.timespan_ms,
+                        agg.symbol.asset_type.value,
                     )
                     for agg in aggregates
                 ],
@@ -351,6 +397,21 @@ class AggregateCache:
             return None
         return self._memory_cache[symbol].peekitem(-1)[1]
 
+    def get_range(
+        self, symbol: AssetSymbol, from_: datetime, to: datetime
+    ) -> list[Aggregate]:
+        """
+        Return cached aggregates for *symbol* within [from_, to] inclusive.
+        """
+        if symbol not in self._memory_cache:
+            return []
+
+        from_ms = ms_from_datetime(from_)
+        to_ms = ms_from_datetime(to)
+        cache = self._memory_cache[symbol]
+
+        return [cache[ts_ms] for ts_ms in cache.irange(from_ms, to_ms)]
+
 
 def datetime_from_ms(ms: int, tz: ZoneInfo) -> datetime:
     assert tz is not None, "Timezone must be specified"
@@ -367,4 +428,5 @@ def ms_from_datetime(dt: datetime) -> int:
 
     # Convert to UTC if not already
     utc_dt = dt.astimezone(ZoneInfo("UTC"))
+
     return int(utc_dt.timestamp() * 1000)
