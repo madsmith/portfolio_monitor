@@ -2,7 +2,7 @@ import logging
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.detectors.events import AlertFired
-from portfolio_monitor.service.alerts import AlertDelivery
+from portfolio_monitor.service.alerts.delivery import AlertDelivery
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,10 @@ class AlertRouter:
     async def disconnect_all(self) -> None:
         for target in self._targets:
             await target.disconnect()
+
+    #######################################################
+    # Event Bus Callbacks
+    #######################################################
 
     async def _on_alert_fired(self, event: AlertFired) -> None:
         for target in self._targets:

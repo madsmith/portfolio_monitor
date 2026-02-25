@@ -23,8 +23,7 @@ from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.loader import load_portfolios
 from portfolio_monitor.portfolio.service import PortfolioService
-from portfolio_monitor.service.alert_router import AlertRouter
-from portfolio_monitor.service.alerts import LoggingAlertDelivery
+from portfolio_monitor.service.alerts import AlertRouter, LoggingAlertDelivery
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.types import AssetSymbol
