@@ -63,6 +63,10 @@ class DetectionService:
         """Return the most recent n alerts."""
         return list(self._alert_log)[-n:]
 
+    def clear_alerts(self) -> None:
+        """Clear all stored alerts."""
+        self._alert_log.clear()
+
     def get_alerts_for(self, symbol: AssetSymbol) -> list[Alert]:
         """Return all stored alerts for a given symbol."""
         return [a for a in self._alert_log if a.ticker == symbol]

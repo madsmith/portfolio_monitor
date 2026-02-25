@@ -94,7 +94,7 @@ async def run_dev_service(config: DevConfig) -> None:
     )
 
     # 6. Services (identical to production)
-    detection_service = DetectionService(  # noqa: F841
+    detection_service = DetectionService(
         bus=bus,
         detection_engine=detection_engine,
     )
@@ -118,6 +118,7 @@ async def run_dev_service(config: DevConfig) -> None:
         bus=bus,
         synthetic_source=synthetic_source,
         detection_engine=detection_engine,
+        detection_service=detection_service,
         aggregate_cache=aggregate_cache,
         portfolios=portfolios,
     )

@@ -315,7 +315,7 @@
 
             /* Alert log */
             .alert-log {
-                max-height: 400px;
+                flex: 1;
                 overflow-y: auto;
                 font-size: 0.75rem;
             }
@@ -580,12 +580,17 @@
                     class="panel"
                     style="flex: 1; display: flex; flex-direction: column"
                 >
-                    <div class="panel-header">
+                    <div class="panel-header" style="display: flex; align-items: center; gap: 0.5rem">
                         Alerts
                         <span
                             id="alert-count"
-                            style="float: right; color: #58a6ff"
+                            style="color: #58a6ff"
                             >0</span
+                        >
+                        <span
+                            style="margin-left: auto; color: #484f58; cursor: pointer; font-weight: 400; text-transform: none; letter-spacing: 0"
+                            onclick="clearAlerts()"
+                            >clear</span
                         >
                     </div>
                     <div class="alert-log" id="alert-log">
@@ -654,6 +659,15 @@
                     document.getElementById("alert-count").textContent = "0";
                     document.getElementById("alert-log").innerHTML =
                         '<div class="empty-msg">Engine reset — primed with ' + r.primed_aggregates + ' aggregates</div>';
+                });
+            }
+
+            function clearAlerts() {
+                api("/api/clear-alerts").then(() => {
+                    alertCount = 0;
+                    document.getElementById("alert-count").textContent = "0";
+                    document.getElementById("alert-log").innerHTML =
+                        '<div class="empty-msg">Waiting for alerts...</div>';
                 });
             }
 

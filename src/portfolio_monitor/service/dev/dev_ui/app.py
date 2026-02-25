@@ -15,6 +15,7 @@ from portfolio_monitor.data.aggregate_cache import AggregateCache
 from portfolio_monitor.data.events import AggregateUpdated
 from portfolio_monitor.detectors.engine import DeviationEngine
 from portfolio_monitor.detectors.events import AlertFired
+from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.portfolio import Portfolio
 from portfolio_monitor.service.dev.price_generator import Regime
 from portfolio_monitor.service.dev.synthetic_source import SyntheticDataSource
@@ -32,12 +33,14 @@ class DevUIApp:
         bus: EventBus,
         synthetic_source: SyntheticDataSource,
         detection_engine: DeviationEngine,
+        detection_service: DetectionService,
         aggregate_cache: AggregateCache,
         portfolios: list[Portfolio],
     ) -> None:
         self._bus: EventBus = bus
         self._source: SyntheticDataSource = synthetic_source
         self._engine: DeviationEngine = detection_engine
+        self._detection_service: DetectionService = detection_service
         self._cache: AggregateCache = aggregate_cache
         self._portfolios: list[Portfolio] = portfolios
         self._templates: Jinja2Templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -61,6 +64,7 @@ class DevUIApp:
                 Route("/api/tick-interval", self.set_tick_interval, methods=["POST"]),
                 Route("/api/detector/{name}/toggle", self.toggle_detector, methods=["POST"]),
                 Route("/api/reset", self.reset, methods=["POST"]),
+                Route("/api/clear-alerts", self.clear_alerts, methods=["POST"]),
                 Route("/api/stop", self.stop_server, methods=["POST"]),
                 Route("/sse/alerts", self.sse_alerts, methods=["GET"]),
                 Route("/sse/prices", self.sse_prices, methods=["GET"]),
@@ -171,6 +175,11 @@ class DevUIApp:
         self._engine.clear_cooldowns()
 
         return JSONResponse({"ok": True, "primed_aggregates": len(history)})
+
+    async def clear_alerts(self, request: Request) -> JSONResponse:
+        """Clear the alert log in DetectionService."""
+        self._detection_service.clear_alerts()
+        return JSONResponse({"ok": True})
 
     async def stop_server(self, request: Request) -> JSONResponse:
         """Shut down the dev server."""
