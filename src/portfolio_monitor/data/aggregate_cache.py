@@ -3,12 +3,20 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sortedcontainers import SortedDict
 
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
+
+# Price decimal places by asset type for JSON serialization
+_PRICE_PRECISION: dict[AssetTypes, int] = {
+    AssetTypes.Stock: 2,
+    AssetTypes.Currency: 4,
+    AssetTypes.Crypto: 6,
+}
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +44,19 @@ class Aggregate:
             )
         if isinstance(self.timespan, int):
             object.__setattr__(self, "timespan", timedelta(milliseconds=self.timespan))
+
+    def to_dict(self) -> dict[str, Any]:
+        p = _PRICE_PRECISION.get(self.symbol.asset_type, 6)
+        return {
+            "symbol": self.symbol.to_dict(),
+            "date_open": self.date_open.isoformat(),
+            "open": round(self.open, p),
+            "high": round(self.high, p),
+            "low": round(self.low, p),
+            "close": round(self.close, p),
+            "volume": round(self.volume, 2),
+            "timespan_sec": self.timespan.total_seconds(),
+        }
 
     @property
     def timestamp_ms(self) -> int:

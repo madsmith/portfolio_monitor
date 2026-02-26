@@ -11,7 +11,11 @@ from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.loader import load_portfolios
 from portfolio_monitor.portfolio.service import PortfolioService
-from portfolio_monitor.service.alerts import AlertRouter, LoggingAlertDelivery
+from portfolio_monitor.service.alerts import (
+    AlertRouter,
+    LoggingAlertDelivery,
+    OpenClawAgentHttpDelivery,
+)
 from portfolio_monitor.service.api.app import create_api_app
 from portfolio_monitor.service.types import AssetSymbol
 
@@ -114,7 +118,27 @@ async def run_dev_service(config: DevConfig) -> None:
     )
     portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)  # noqa: F841
     alert_router = AlertRouter(bus=bus)
+    # Suppress all alert delivery by default in dev mode;
+    # detectors still process data and build history.
+    alert_router.suppressed_detectors = {
+        d.name for d in detection_engine.default_detectors
+    } | {
+        d.name
+        for detectors in detection_engine.asset_detectors.values()
+        for d in detectors
+    }
     alert_router.add_target(LoggingAlertDelivery())
+    # TODO: make configurable or state driven.
+    alert_router.add_target(
+        OpenClawAgentHttpDelivery(
+            config.openclaw_host,
+            config.openclaw_port,
+            config.openclaw_auth_key,
+            config.openclaw_agent_id,
+            name="Portfolio Alert",
+            session_key=config.openclaw_session_key,
+        )
+    )
 
     # 8. Prime with synthetic history
     logger.info(
@@ -136,6 +160,7 @@ async def run_dev_service(config: DevConfig) -> None:
         synthetic_source=synthetic_source,
         detection_engine=detection_engine,
         detection_service=detection_service,
+        alert_router=alert_router,
         aggregate_cache=aggregate_cache,
         portfolios=portfolios,
     )

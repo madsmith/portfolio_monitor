@@ -21,6 +21,13 @@ class DevConfig:
     auth_key: str = "44fde1940cf3ddf9af4fcadbdd0852e575079543208e1e10e73daba9ac698f35"
     dashboard_username: str = "admin"
     dashboard_password: str = "admin"
+    openclaw_host: str = "127.0.0.1"
+    openclaw_port: int = 18789
+    openclaw_agent_id: str = "finance"
+    openclaw_auth_key: str = (
+        "345b2454f2ff62f76fefab3925ada29f5fe04c4ba838f08383f577955647be2e"
+    )
+    openclaw_session_key: str = "portfolio_alerts2"
 
     @classmethod
     def from_config_file(

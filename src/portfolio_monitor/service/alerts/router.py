@@ -17,6 +17,7 @@ class AlertRouter:
     def __init__(self, bus: EventBus) -> None:
         self._bus: EventBus = bus
         self._targets: list[AlertDelivery] = []
+        self.suppressed_detectors: set[str] = set()
 
         self._bus.subscribe(AlertFired, self._on_alert_fired)
 
@@ -42,6 +43,8 @@ class AlertRouter:
     #######################################################
 
     async def _on_alert_fired(self, event: AlertFired) -> None:
+        if event.alert.kind in self.suppressed_detectors:
+            return
         for target in self._targets:
             try:
                 await target.send_alert(event.alert)

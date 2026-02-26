@@ -21,6 +21,26 @@ class Alert:
     at: datetime
     aggregate: Aggregate  # The price aggregate that triggered the alert
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ticker": self.ticker.to_dict(),
+            "kind": self.kind,
+            "message": self.message,
+            "extra": _round_floats(self.extra),
+            "at": self.at.isoformat(),
+            "aggregate": self.aggregate.to_dict(),
+        }
+
+
+def _round_floats(obj: Any, precision: int = 4) -> Any:
+    if isinstance(obj, float):
+        return round(obj, precision)
+    if isinstance(obj, dict):
+        return {k: _round_floats(v, precision) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_round_floats(v, precision) for v in obj]
+    return obj
+
 
 @runtime_checkable
 class Detector(Protocol):

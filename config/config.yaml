@@ -22,3 +22,7 @@ portfolio_monitor:
 
 polygon:
   api_key: "${private.polygon.api_key}"
+
+openclaw:
+  auth_key: "${private.openclaw.auth_key}"
+  session_key: "portfolio_alerts"

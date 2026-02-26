@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
 import httpx
 
-from portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.data.aggregate_cache import _PRICE_PRECISION
+from portfolio_monitor.detectors.base import Alert, _round_floats
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +36,12 @@ class OpenClawAgentHttpDelivery:
         self,
         host: str,
         port: int,
-        agent_id: str,
         auth_key: str,
+        agent_id: str,
         *,
         name: str | None = None,
         session_key: str | None = None,
-        deliver: str | None = None,
+        deliver: bool = False,
         channel: str | None = None,
         wake_mode: str | None = None,
         to: str | None = None,
@@ -65,7 +67,7 @@ class OpenClawAgentHttpDelivery:
             logger.warning("OpenClawAgentHttpDelivery not connected, dropping alert")
             return
 
-        payload = {**self._payload_base, "message": repr(alert)}
+        payload = {**self._payload_base, "message": json.dumps(_compact_alert(alert))}
 
         try:
             response = await self._client.post(
@@ -94,3 +96,28 @@ class OpenClawAgentHttpDelivery:
             await self._client.aclose()
             self._client = None
         logger.info("OpenClawAgentHttpDelivery disconnected")
+
+
+def _compact_alert(alert: Alert) -> dict[str, Any]:
+    """Serialize an alert in a compact form for LLM consumption.
+
+    Removes duplicate fields (symbol, date) that appear in both
+    the alert and the embedded aggregate.
+    """
+    agg = alert.aggregate
+    p = _PRICE_PRECISION.get(agg.symbol.asset_type, 6)
+    return {
+        "kind": alert.kind,
+        "message": alert.message,
+        "ticker": alert.ticker.to_dict(),
+        "at": alert.at.isoformat(),
+        "extra": _round_floats(alert.extra),
+        "ohlcv": {
+            "open": round(agg.open, p),
+            "high": round(agg.high, p),
+            "low": round(agg.low, p),
+            "close": round(agg.close, p),
+            "volume": round(agg.volume, 2),
+            "timespan_sec": agg.timespan.total_seconds(),
+        },
+    }

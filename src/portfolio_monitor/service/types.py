@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from portfolio_monitor.core.currency import Currency
 
@@ -11,10 +12,10 @@ class AssetTypes(Enum):
     Crypto = "crypto"
 
 
+@dataclass(frozen=True)
 class AssetSymbol:
-    def __init__(self, ticker: str, asset_type: AssetTypes):
-        self.ticker = ticker
-        self.asset_type = asset_type
+    ticker: str
+    asset_type: AssetTypes
 
     @property
     def symbol(self) -> str:
@@ -31,19 +32,16 @@ class AssetSymbol:
         else:
             raise ValueError(f"Unknown asset type: {self.asset_type}")
 
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, AssetSymbol):
-            return self.ticker == other.ticker and self.asset_type == other.asset_type
-        return NotImplemented
-
-    def __hash__(self) -> int:
-        return hash((self.ticker, self.asset_type))
-
-    def __str__(self) -> str:
-        return self.symbol
+    def to_dict(self) -> dict[str, Any]:
+        return {"ticker": self.ticker, "type": self.asset_type.value}
 
     def __repr__(self) -> str:
-        return f"AssetSymbol(ticker='{self.ticker}', asset_type='{self.asset_type}')"
+        return f"AssetSymbol('{self.ticker}', '{self.asset_type.value}')"
+
+    def __str__(self) -> str:
+        if self.asset_type == AssetTypes.Stock:
+            return f"{self.ticker}"
+        return f"{self.ticker} ({self.asset_type.value})"
 
 
 @dataclass

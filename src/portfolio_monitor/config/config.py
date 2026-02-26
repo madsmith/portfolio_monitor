@@ -36,3 +36,13 @@ class PortfolioMonitorConfig(AppConfig):
     )
 
     debug = BindDefault[bool]("portfolio_monitor.debug", default=False)
+
+    openclaw_host = BindDefault[str](
+        "portfolio_monitor.openclaw.host", default="127.0.0.1"
+    )
+    openclaw_port = BindDefault[int]("portfolio_monitor.openclaw.port", default=18789)
+    openclaw_auth_key = Bind[str]("portfolio_monitor.openclaw.auth_key")
+    openclaw_agent_id = Bind[str]("portfolio_monitor.openclaw.agent_id")
+    openclaw_session_key = BindDefault[str](
+        "portfolio_monitor.openclaw.session_key", default="portfolio_alerts"
+    )

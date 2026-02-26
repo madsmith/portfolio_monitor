@@ -23,7 +23,11 @@ from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.loader import load_portfolios
 from portfolio_monitor.portfolio.service import PortfolioService
-from portfolio_monitor.service.alerts import AlertRouter, LoggingAlertDelivery
+from portfolio_monitor.service.alerts import (
+    AlertRouter,
+    LoggingAlertDelivery,
+    OpenClawAgentHttpDelivery,
+)
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.types import AssetSymbol
@@ -100,6 +104,18 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
     portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)  # noqa: F841
     alert_router = AlertRouter(bus=bus)
     alert_router.add_target(LoggingAlertDelivery())
+    # TODO: make configurable or state driven.
+    if config.openclaw_auth_key and config.openclaw_agent_id:
+        alert_router.add_target(
+            OpenClawAgentHttpDelivery(
+                config.openclaw_host,
+                config.openclaw_port,
+                config.openclaw_auth_key,
+                config.openclaw_agent_id,
+                name="Portfolio Alert",
+                session_key=config.openclaw_session_key,
+            )
+        )
 
     monitor = MonitorService(
         bus=bus,
