@@ -1,7 +1,13 @@
 from portfolio_monitor.service.alerts.delivery import (
     AlertDelivery,
     LoggingAlertDelivery,
+    OpenClawAgentHttpDelivery,
 )
 from portfolio_monitor.service.alerts.router import AlertRouter
 
-__all__ = ["AlertDelivery", "AlertRouter", "LoggingAlertDelivery"]
+__all__ = [
+    "AlertDelivery",
+    "AlertRouter",
+    "LoggingAlertDelivery",
+    "OpenClawAgentHttpDelivery",
+]

@@ -1,29 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from portfolio_monitor.detectors.base import Alert
 from portfolio_monitor.utils import get_trace_logger
 
 logger = get_trace_logger(__name__)
-
-
-@runtime_checkable
-class AlertDelivery(Protocol):
-    """Interface for delivering portfolio alerts to external systems.
-
-    Current method:
-        send_alert -- deliver a triggered detector alert
-
-    Future methods (to be implemented when needed):
-        subscribe_webhook -- register a webhook endpoint for alert delivery
-        query_portfolio   -- respond to external queries about portfolio state
-    """
-
-    async def send_alert(self, alert: Alert) -> None: ...
-    async def connect(self) -> None: ...
-    async def disconnect(self) -> None: ...
 
 
 class LoggingAlertDelivery:
