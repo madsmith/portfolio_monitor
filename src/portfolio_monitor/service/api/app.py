@@ -7,8 +7,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.routing import Mount
 from starlette.templating import Jinja2Templates
 
-from portfolio_monitor.config import PortfolioMonitorConfig
-
 from .auth import BearerTokenBackend
 from .dashboard import DashboardApp
 from .v1 import APIv1ServiceApp
@@ -16,9 +14,9 @@ from .v1 import APIv1ServiceApp
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
-def create_api_app(config: PortfolioMonitorConfig) -> Starlette:
-    assert config.auth_key is not None, "Auth key is not set"
-
+def create_api_app(
+    auth_key: str, dashboard_username: str, dashboard_password: str
+) -> Starlette:
     templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
     # API sub-app with Bearer token auth
@@ -28,13 +26,17 @@ def create_api_app(config: PortfolioMonitorConfig) -> Starlette:
         middleware=[
             Middleware(
                 AuthenticationMiddleware,
-                backend=BearerTokenBackend(config),
+                backend=BearerTokenBackend(auth_key),
             ),
         ],
     )
 
     # Dashboard sub-app with session auth
-    dashboard_app = DashboardApp(config=config, templates=templates)
+    dashboard_app = DashboardApp(
+        username=dashboard_username,
+        password=dashboard_password,
+        templates=templates,
+    )
 
     app = Starlette(
         routes=[
@@ -42,6 +44,6 @@ def create_api_app(config: PortfolioMonitorConfig) -> Starlette:
             Mount("/", app=dashboard_app),
         ],
     )
-    app.add_middleware(SessionMiddleware, secret_key=config.auth_key)
+    app.add_middleware(SessionMiddleware, secret_key=auth_key)
 
     return app

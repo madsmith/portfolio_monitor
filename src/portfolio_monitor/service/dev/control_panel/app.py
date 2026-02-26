@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
-class DevUIApp:
-    """Unauthenticated dev dashboard with SSE for real-time updates."""
+class ControlPanelApp:
+    """Unauthenticated dev control panel with SSE for real-time updates."""
 
     def __init__(
         self,
@@ -62,7 +62,11 @@ class DevUIApp:
                 Route("/api/pause", self.toggle_pause, methods=["POST"]),
                 Route("/api/regime", self.set_regime, methods=["POST"]),
                 Route("/api/tick-interval", self.set_tick_interval, methods=["POST"]),
-                Route("/api/detector/{name}/toggle", self.toggle_detector, methods=["POST"]),
+                Route(
+                    "/api/detector/{name}/toggle",
+                    self.toggle_detector,
+                    methods=["POST"],
+                ),
                 Route("/api/reset", self.reset, methods=["POST"]),
                 Route("/api/clear-alerts", self.clear_alerts, methods=["POST"]),
                 Route("/api/stop", self.stop_server, methods=["POST"]),
@@ -87,11 +91,13 @@ class DevUIApp:
         symbols_data = []
         for symbol in sorted(all_symbols, key=lambda s: s.ticker):
             price = self._source.generator.get_price(symbol.ticker)
-            symbols_data.append({
-                "ticker": symbol.ticker,
-                "asset_type": symbol.asset_type.value,
-                "price": price,
-            })
+            symbols_data.append(
+                {
+                    "ticker": symbol.ticker,
+                    "asset_type": symbol.asset_type.value,
+                    "price": price,
+                }
+            )
 
         detector_names = [d.name for d in self._engine.default_detectors]
         for detectors in self._engine.asset_detectors.values():
@@ -159,13 +165,13 @@ class DevUIApp:
         # Clear detector internal state (duck-type check for histories)
         for detector in self._engine.default_detectors:
             if hasattr(detector, "histories"):
-                detector.histories.clear()
+                detector.histories.clear()  # type: ignore
             if hasattr(detector, "previous_closes"):
-                detector.previous_closes.clear()
+                detector.previous_closes.clear()  # type: ignore
             if hasattr(detector, "price_histories"):
-                detector.price_histories.clear()
+                detector.price_histories.clear()  # type: ignore
             if hasattr(detector, "_price_history"):
-                detector._price_history.clear()
+                detector._price_history.clear()  # type: ignore
 
         # Re-prime
         history = self._source.generate_history(120)

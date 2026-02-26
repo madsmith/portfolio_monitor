@@ -263,7 +263,9 @@
                 color: #484f58;
                 font-size: 0.7rem;
                 user-select: none;
-                transition: color 0.15s, transform 0.15s;
+                transition:
+                    color 0.15s,
+                    transform 0.15s;
             }
             .chevron-header:hover {
                 color: #c9d1d9;
@@ -463,7 +465,8 @@
                                         id="chevron-all"
                                         onclick="toggleAllCharts()"
                                         title="Expand/Collapse all"
-                                    >&#10094;</span>
+                                        >&#10094;</span
+                                    >
                                 </th>
                             </tr>
                         </thead>
@@ -539,7 +542,11 @@
                                     </div>
                                 </td>
                                 <td style="text-align: right">
-                                    <span class="chevron" id="chevron-{{ s.ticker }}">&#10094;</span>
+                                    <span
+                                        class="chevron"
+                                        id="chevron-{{ s.ticker }}"
+                                        >&#10094;</span
+                                    >
                                 </td>
                             </tr>
                             <tr class="chart-row" id="chart-{{ s.ticker }}">
@@ -580,15 +587,25 @@
                     class="panel"
                     style="flex: 1; display: flex; flex-direction: column"
                 >
-                    <div class="panel-header" style="display: flex; align-items: center; gap: 0.5rem">
+                    <div
+                        class="panel-header"
+                        style="display: flex; align-items: center; gap: 0.5rem"
+                    >
                         Alerts
+                        <span id="alert-count" style="color: #58a6ff">0</span>
                         <span
-                            id="alert-count"
-                            style="color: #58a6ff"
-                            >0</span
-                        >
-                        <span
-                            style="margin-left: auto; color: #484f58; cursor: pointer; font-weight: 400; text-transform: none; letter-spacing: 0"
+                            style="
+                                margin-left: auto;
+                                color: #484f58;
+                                cursor: pointer;
+                                font-weight: 400;
+                                text-transform: none;
+                                letter-spacing: 0;
+                                margin-top: -5px;
+                                margin-bottom: -5px;
+                                padding-top: 5px;
+                                padding-bottom: 5px;
+                            "
                             onclick="clearAlerts()"
                             >clear</span
                         >

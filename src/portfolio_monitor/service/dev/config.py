@@ -1,5 +1,5 @@
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,17 +16,25 @@ class DevConfig:
     prime_history_minutes: int = 120
     host: str = "127.0.0.1"
     port: int = 8401
+    api_port: int = 8400
     debug: bool = False
+    auth_key: str = "44fde1940cf3ddf9af4fcadbdd0852e575079543208e1e10e73daba9ac698f35"
+    dashboard_username: str = "admin"
+    dashboard_password: str = "admin"
 
     @classmethod
-    def from_config_file(cls, config_path: Path, args: argparse.Namespace) -> "DevConfig":
+    def from_config_file(
+        cls, config_path: Path, args: argparse.Namespace
+    ) -> "DevConfig":
         raw = OmegaConf.load(config_path)
         portfolio_path = Path(OmegaConf.select(raw, "portfolio_monitor.portfolio_path"))
         monitors_raw = OmegaConf.select(raw, "portfolio_monitor.monitors") or {}
-        monitors = OmegaConf.to_container(monitors_raw, resolve=False) or {"default": {}}
+        monitors = OmegaConf.to_container(monitors_raw, resolve=False) or {
+            "default": {}
+        }
         return cls(
             portfolio_path=portfolio_path,
-            monitors=monitors,
+            monitors=monitors,  # type: ignore
             tick_interval=getattr(args, "tick_interval", 5.0),
             debug=getattr(args, "debug", False),
             host=getattr(args, "host", None) or "127.0.0.1",

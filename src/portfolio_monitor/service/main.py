@@ -18,7 +18,7 @@ from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.aggregate_cache import AggregateCache
 from portfolio_monitor.data.events import AggregateUpdated
-from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.data.provider import PolygonDataProvider
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.loader import load_portfolios
@@ -71,7 +71,7 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
     bus.subscribe(AggregateUpdated, _persist_aggregate)
 
     # Create data provider
-    data_provider = DataProvider(config, aggregate_cache)
+    data_provider = PolygonDataProvider(config, aggregate_cache)
 
     # Build detection engine from config
     monitors_config = config.monitors
@@ -115,7 +115,11 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
 
     # Start API server
     assert config.auth_key is not None, "Auth key is required"
-    api_app: Starlette = create_api_app(config)
+    assert config.dashboard_username is not None, "Username is required"
+    assert config.dashboard_password is not None, "Password is required"
+    api_app: Starlette = create_api_app(
+        config.auth_key, config.dashboard_username, config.dashboard_password
+    )
     uvicorn_config = uvicorn.Config(
         api_app,
         host=config.host,

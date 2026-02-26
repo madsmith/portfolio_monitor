@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from typing import Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
 
 from polygon import RESTClient as PolygonRESTClient
@@ -20,8 +21,30 @@ logger = logging.getLogger(__name__)
 DateRange = tuple[datetime, datetime]
 
 
-class DataProvider:
-    """Provider for fetching aggregate data with cache-first approach"""
+@runtime_checkable
+class DataProvider(Protocol):
+    """Interface for fetching aggregate market data."""
+
+    async def get_aggregate(
+        self, symbol: AssetSymbol, *, cache_write: bool = False
+    ) -> Aggregate | None: ...
+
+    async def get_previous_close(
+        self, symbol: AssetSymbol, *, cache_write: bool = False
+    ) -> Aggregate | None: ...
+
+    async def get_range(
+        self,
+        symbol: AssetSymbol,
+        from_: datetime,
+        to: datetime,
+        *,
+        cache_write: bool = False,
+    ) -> list[Aggregate]: ...
+
+
+class PolygonDataProvider(DataProvider):
+    """Provider for fetching aggregate data from Polygon with cache-first approach."""
 
     def __init__(self, config: PortfolioMonitorConfig, aggregate_cache: AggregateCache):
         """

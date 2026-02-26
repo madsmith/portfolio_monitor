@@ -5,18 +5,13 @@ from starlette.responses import RedirectResponse
 from starlette.routing import Route, Router
 from starlette.templating import Jinja2Templates
 
-from portfolio_monitor.config import PortfolioMonitorConfig
-
 
 class DashboardApp(Router):
     """Dashboard web UI with session-based authentication."""
 
-    def __init__(self, config: PortfolioMonitorConfig, templates: Jinja2Templates):
-        self._config: PortfolioMonitorConfig = config
-        assert config.dashboard_username is not None, "Dashboard username is not set"
-        assert config.dashboard_password is not None, "Dashboard password is not set"
-        self.username: str = config.dashboard_username
-        self.password: str = config.dashboard_password
+    def __init__(self, username: str, password: str, templates: Jinja2Templates):
+        self.username: str = username
+        self.password: str = password
         self.templates: Jinja2Templates = templates
 
         super().__init__(
