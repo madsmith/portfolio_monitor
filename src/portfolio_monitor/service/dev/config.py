@@ -31,7 +31,7 @@ class DevConfig:
     openclaw_session_key: str = ""
     openclaw_gateway_token: str = ""
     openclaw_gateway_password: str = ""
-    openclaw_gateway_device_identity_file: Path = Path("config/device-identity.json")
+    openclaw_gateway_device_identity_file: Path = Path("config/device_identity.json")
     openclaw_alert_enable_http: bool = False
     openclaw_alert_enable_ws: bool = True
 
