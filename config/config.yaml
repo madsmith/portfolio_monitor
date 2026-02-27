@@ -20,9 +20,12 @@ portfolio_monitor:
   monitors:
     default:
 
+  openclaw:
+    agent_id: "main"
+    auth_key: "${private.openclaw.auth_key}"
+    session_key: "portfolio_alerts"
+    gateway_token: "${private.openclaw.gateway_token}"
+    gateway_password: "${private.openclaw.gateway_password}"
+
 polygon:
   api_key: "${private.polygon.api_key}"
-
-openclaw:
-  auth_key: "${private.openclaw.auth_key}"
-  session_key: "portfolio_alerts"

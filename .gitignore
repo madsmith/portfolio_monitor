@@ -9,3 +9,4 @@ build/
 config_private.yaml
 config/portfolios
 config/aggregate_cache.db
+config/device*identity.json

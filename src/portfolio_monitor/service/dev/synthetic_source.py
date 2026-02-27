@@ -36,6 +36,7 @@ class SyntheticDataSource:
         self._last_tick_time: datetime | None = None
         self._next_tick_time: datetime | None = None
         self._tick_count: int = 0
+        self._interval_changed: asyncio.Event = asyncio.Event()
 
         for symbol in symbols:
             price = seed_prices.get(symbol.ticker, 100.0)
@@ -53,6 +54,7 @@ class SyntheticDataSource:
     def tick_interval(self, value: float) -> None:
         self._tick_interval = max(0.5, value)
         self._generator.tick_interval = self._tick_interval
+        self._interval_changed.set()
 
     @property
     def paused(self) -> bool:
@@ -117,6 +119,7 @@ class SyntheticDataSource:
     async def stop(self) -> None:
         self._running = False
         self._tick_event.set()  # unblock if paused
+        self._interval_changed.set()  # unblock sleep loop
         if self._task:
             self._task.cancel()
             try:
@@ -158,7 +161,28 @@ class SyntheticDataSource:
                         AggregateUpdated(symbol=symbol, aggregate=agg)
                     )
 
-                await asyncio.sleep(self._tick_interval)
+                # Sleep until the next tick, but wake early if
+                # tick_interval is changed so we can re-evaluate.
+                deadline = self._last_tick_time + timedelta(
+                    seconds=self._tick_interval
+                )
+                while self._running:
+                    now = datetime.now(ZoneInfo("UTC"))
+                    remaining = (deadline - now).total_seconds()
+                    if remaining <= 0:
+                        break
+                    self._interval_changed.clear()
+                    try:
+                        await asyncio.wait_for(
+                            self._interval_changed.wait(), timeout=remaining
+                        )
+                    except asyncio.TimeoutError:
+                        break
+                    # Interval changed — recompute deadline from last tick
+                    deadline = self._last_tick_time + timedelta(
+                        seconds=self._tick_interval
+                    )
+                    self._next_tick_time = deadline
         except asyncio.CancelledError:
             logger.debug("Synthetic data source loop cancelled")
 

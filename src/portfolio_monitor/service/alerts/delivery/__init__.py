@@ -3,5 +3,13 @@ from portfolio_monitor.service.alerts.delivery.logging import LoggingAlertDelive
 from portfolio_monitor.service.alerts.delivery.openclaw_agent_http import (
     OpenClawAgentHttpDelivery,
 )
+from portfolio_monitor.service.alerts.delivery.openclaw_gateway_ws import (
+    OpenClawGatewayWsDelivery,
+)
 
-__all__ = ["AlertDelivery", "LoggingAlertDelivery", "OpenClawAgentHttpDelivery"]
+__all__ = [
+    "AlertDelivery",
+    "LoggingAlertDelivery",
+    "OpenClawAgentHttpDelivery",
+    "OpenClawGatewayWsDelivery",
+]

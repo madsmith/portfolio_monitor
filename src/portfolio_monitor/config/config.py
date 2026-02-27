@@ -46,3 +46,10 @@ class PortfolioMonitorConfig(AppConfig):
     openclaw_session_key = BindDefault[str](
         "portfolio_monitor.openclaw.session_key", default="portfolio_alerts"
     )
+    openclaw_gateway_token = Bind[str]("portfolio_monitor.openclaw.gateway_token")
+    openclaw_gateway_password = Bind[str]("portfolio_monitor.openclaw.gateway_password")
+    openclaw_gateway_device_identity_file = BindDefault[Path](
+        "portfolio_monitor.openclaw.gateway_device_identity_file",
+        default="config/device_identity.json",
+        converter=Path,
+    )

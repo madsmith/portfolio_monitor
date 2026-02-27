@@ -15,6 +15,7 @@ from portfolio_monitor.service.alerts import (
     AlertRouter,
     LoggingAlertDelivery,
     OpenClawAgentHttpDelivery,
+    OpenClawGatewayWsDelivery,
 )
 from portfolio_monitor.service.api.app import create_api_app
 from portfolio_monitor.service.types import AssetSymbol
@@ -128,17 +129,33 @@ async def run_dev_service(config: DevConfig) -> None:
         for d in detectors
     }
     alert_router.add_target(LoggingAlertDelivery())
-    # TODO: make configurable or state driven.
-    alert_router.add_target(
-        OpenClawAgentHttpDelivery(
-            config.openclaw_host,
-            config.openclaw_port,
-            config.openclaw_auth_key,
-            config.openclaw_agent_id,
-            name="Portfolio Alert",
-            session_key=config.openclaw_session_key,
+    if config.openclaw_alert_enable_http:
+        alert_router.add_target(
+            OpenClawAgentHttpDelivery(
+                config.openclaw_host,
+                config.openclaw_port,
+                config.openclaw_auth_key,
+                config.openclaw_agent_id,
+                name="Portfolio Alert",
+                session_key=config.openclaw_session_key,
+            )
         )
-    )
+
+    if config.openclaw_alert_enable_ws and (
+        config.openclaw_gateway_token or config.openclaw_gateway_password
+    ):
+        alert_router.add_target(
+            OpenClawGatewayWsDelivery(
+                config.openclaw_host,
+                config.openclaw_port,
+                config.openclaw_agent_id,
+                gateway_token=config.openclaw_gateway_token or None,
+                gateway_password=config.openclaw_gateway_password or None,
+                device_identity_file=config.openclaw_gateway_device_identity_file,
+                name="Portfolio Alert",
+                session_key=config.openclaw_session_key,
+            )
+        )
 
     # 8. Prime with synthetic history
     logger.info(

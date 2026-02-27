@@ -645,9 +645,13 @@
                 });
             }
 
+            let _tickDebounce = null;
             function updateTickInterval(val) {
                 document.getElementById("tick-val").textContent = val + "s";
-                api("/api/tick-interval", {interval: parseFloat(val)});
+                clearTimeout(_tickDebounce);
+                _tickDebounce = setTimeout(() => {
+                    api("/api/tick-interval", {interval: parseFloat(val)});
+                }, 250);
             }
 
             function setRegime(regime) {

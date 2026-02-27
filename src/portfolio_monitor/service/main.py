@@ -27,6 +27,7 @@ from portfolio_monitor.service.alerts import (
     AlertRouter,
     LoggingAlertDelivery,
     OpenClawAgentHttpDelivery,
+    OpenClawGatewayWsDelivery,
 )
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.monitor import MonitorService
@@ -112,6 +113,19 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
                 config.openclaw_port,
                 config.openclaw_auth_key,
                 config.openclaw_agent_id,
+                name="Portfolio Alert",
+                session_key=config.openclaw_session_key,
+            )
+        )
+    if (config.openclaw_gateway_token or config.openclaw_gateway_password) and config.openclaw_agent_id:
+        alert_router.add_target(
+            OpenClawGatewayWsDelivery(
+                config.openclaw_host,
+                config.openclaw_port,
+                config.openclaw_agent_id,
+                gateway_token=config.openclaw_gateway_token or None,
+                gateway_password=config.openclaw_gateway_password or None,
+                device_identity_file=config.openclaw_gateway_device_identity_file,
                 name="Portfolio Alert",
                 session_key=config.openclaw_session_key,
             )
@@ -249,7 +263,7 @@ def main() -> None:
     if args.command is None:
         args = parser.parse_args(["run"])
 
-    # Dev mode — bypass PortfolioMonitorConfig entirely
+    # Dev mode — synthetic data, no Polygon API
     if getattr(args, "dev", False):
         from portfolio_monitor.service.dev import run_dev_service
         from portfolio_monitor.service.dev.config import DevConfig

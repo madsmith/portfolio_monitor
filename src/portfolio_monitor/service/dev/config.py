@@ -3,12 +3,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from omegaconf import OmegaConf
+from portfolio_monitor.config.config import PortfolioMonitorConfig
 
 
 @dataclass
 class DevConfig:
-    """Configuration for dev mode — bypasses PortfolioMonitorConfig entirely."""
+    """Configuration for dev mode — loads shared settings from AppConfig,
+    then applies dev-specific overrides."""
 
     portfolio_path: Path
     monitors: dict[str, dict[str, Any]]
@@ -23,29 +24,39 @@ class DevConfig:
     dashboard_password: str = "admin"
     openclaw_host: str = "127.0.0.1"
     openclaw_port: int = 18789
-    openclaw_agent_id: str = "finance"
+    openclaw_agent_id: str = ""
     openclaw_auth_key: str = (
         "345b2454f2ff62f76fefab3925ada29f5fe04c4ba838f08383f577955647be2e"
     )
-    openclaw_session_key: str = "portfolio_alerts2"
+    openclaw_session_key: str = ""
+    openclaw_gateway_token: str = ""
+    openclaw_gateway_password: str = ""
+    openclaw_gateway_device_identity_file: Path = Path("config/device-identity.json")
+    openclaw_alert_enable_http: bool = False
+    openclaw_alert_enable_ws: bool = True
 
     @classmethod
     def from_config_file(
         cls, config_path: Path, args: argparse.Namespace
     ) -> "DevConfig":
-        raw = OmegaConf.load(config_path)
-        portfolio_path = Path(OmegaConf.select(raw, "portfolio_monitor.portfolio_path"))
-        monitors_raw = OmegaConf.select(raw, "portfolio_monitor.monitors") or {}
-        monitors = OmegaConf.to_container(monitors_raw, resolve=False) or {
-            "default": {}
-        }
+        cfg = PortfolioMonitorConfig(config_path, args)
         return cls(
-            portfolio_path=portfolio_path,
-            monitors=monitors,  # type: ignore
+            portfolio_path=cfg.portfolio_path or Path("config/portfolios"),
+            monitors=cfg.monitors,
             tick_interval=getattr(args, "tick_interval", 5.0),
-            debug=getattr(args, "debug", False),
+            debug=cfg.debug,
             host=getattr(args, "host", None) or "127.0.0.1",
             port=getattr(args, "port", None) or 8401,
+            dashboard_username=cfg.dashboard_username or "admin",
+            dashboard_password=cfg.dashboard_password or "admin",
+            openclaw_host=cfg.openclaw_host,
+            openclaw_port=cfg.openclaw_port,
+            openclaw_agent_id=cfg.openclaw_agent_id or "finance",
+            openclaw_auth_key=cfg.openclaw_auth_key or "",
+            openclaw_session_key=cfg.openclaw_session_key,
+            openclaw_gateway_token=cfg.openclaw_gateway_token or "",
+            openclaw_gateway_password=cfg.openclaw_gateway_password or "",
+            openclaw_gateway_device_identity_file=cfg.openclaw_gateway_device_identity_file,
         )
 
 
