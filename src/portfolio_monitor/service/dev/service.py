@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import signal
+from pathlib import Path
 
 import uvicorn
 
@@ -183,15 +184,13 @@ async def run_dev_service(config: DevConfig) -> None:
     )
 
     # 10. Production API server (auth workflow, dashboard, API endpoints)
-    api_app = create_api_app(
-        config.auth_key, config.dashboard_username, config.dashboard_password
-    )
+    api_app = create_api_app(config)
 
     # 11. Start both servers
     dev_uvicorn_config = uvicorn.Config(
         control_panel.app,
         host=config.host,
-        port=config.port,
+        port=config.control_panel_port,
         log_level="debug" if config.debug else "info",
     )
     dev_server = uvicorn.Server(dev_uvicorn_config)
@@ -199,7 +198,7 @@ async def run_dev_service(config: DevConfig) -> None:
     api_uvicorn_config = uvicorn.Config(
         api_app,
         host=config.host,
-        port=config.api_port,
+        port=config.port,
         log_level="debug" if config.debug else "info",
     )
     api_server = uvicorn.Server(api_uvicorn_config)
@@ -219,12 +218,15 @@ async def run_dev_service(config: DevConfig) -> None:
     control_panel._stop_callback = _initiate_shutdown
     loop.add_signal_handler(signal.SIGINT, _initiate_shutdown)
 
+    vite_proc: asyncio.subprocess.Process | None = None
     try:
         await alert_router.connect_all()
         await synthetic_source.start()
-        print(f"\nControl:   http://{config.host}:{config.port}/")
-        print(f"Dashboard: http://{config.host}:{config.api_port}/")
-        print(f"API:       http://{config.host}:{config.api_port}/api/v1/health")
+        vite_proc = await _start_vite()
+        print(f"\nControl:   http://{config.host}:{config.control_panel_port}/")
+        print(f"Dashboard: http://{config.host}:{config.port}/")
+        print(f"Frontend:  http://127.0.0.1:5173/")
+        print(f"API:       http://{config.host}:{config.port}/api/v1/health")
         print(f"Login:     {config.dashboard_username} / {config.dashboard_password}")
         print(f"Auth key:  {config.auth_key[:8]}...{config.auth_key[-4:]}\n")
         await asyncio.gather(dev_server.serve(), api_server.serve())
@@ -234,7 +236,16 @@ async def run_dev_service(config: DevConfig) -> None:
         logger.exception("Error in dev service")
         raise
     finally:
+        if vite_proc is not None and vite_proc.returncode is None:
+            vite_proc.terminate()
+            await vite_proc.wait()
         await synthetic_source.stop()
         await alert_router.disconnect_all()
         loop.remove_signal_handler(signal.SIGINT)
         signal.signal(signal.SIGINT, original_handler)
+
+
+async def _start_vite() -> asyncio.subprocess.Process:
+    """Start the Vite dev server as a subprocess."""
+    frontend_dir = Path(__file__).resolve().parents[4] / "frontend"
+    return await asyncio.create_subprocess_exec("pnpm", "dev", cwd=str(frontend_dir))

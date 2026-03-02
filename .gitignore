@@ -5,6 +5,10 @@ __pycache__/*
 TODO.md
 build/
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
 # Ignore private config
 config_private.yaml
 config/portfolios

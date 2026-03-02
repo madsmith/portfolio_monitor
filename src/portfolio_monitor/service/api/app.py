@@ -1,7 +1,6 @@
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from starlette.routing import Mount
 
 from portfolio_monitor.config import PortfolioMonitorConfig
@@ -26,15 +25,12 @@ def create_api_app(config: PortfolioMonitorConfig) -> Starlette:
         ],
     )
 
-    # Dashboard sub-app with session auth
-    dashboard_app = DashboardApp(config)
+    # Dashboard sub-app — serves React SPA
+    dashboard_app = DashboardApp()
 
-    app = Starlette(
+    return Starlette(
         routes=[
             Mount("/api", app=api_app),
             Mount("/", app=dashboard_app),
         ],
     )
-    app.add_middleware(SessionMiddleware, secret_key=config.auth_key)
-
-    return app
