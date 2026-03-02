@@ -144,12 +144,7 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
     await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
 
     # Start API server
-    assert config.auth_key is not None, "Auth key is required"
-    assert config.dashboard_username is not None, "Username is required"
-    assert config.dashboard_password is not None, "Password is required"
-    api_app: Starlette = create_api_app(
-        config.auth_key, config.dashboard_username, config.dashboard_password
-    )
+    api_app: Starlette = create_api_app(config)
     uvicorn_config = uvicorn.Config(
         api_app,
         host=config.host,

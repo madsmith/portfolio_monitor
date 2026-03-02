@@ -37,6 +37,7 @@ dependencies = [
 
 [project.scripts]
 portfolio-monitor = "portfolio_monitor.service.main:main"
+portfolio-manager = "portfolio_monitor.cli.main:main"
 
 [project.optional-dependencies]
 dev = [
@@ -52,7 +53,7 @@ build-backend = "setuptools.build_meta"
 version = {attr = "portfolio_monitor.__version__"}
 
 [tool.setuptools.package-data]
-portfolio_monitor = ["py.typed", "service/api/templates/*.html", "service/dev/control_panel/templates/*.html"]
+portfolio_monitor = ["py.typed", "service/dashboard/templates/*.html", "service/dev/control_panel/templates/*.html"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
