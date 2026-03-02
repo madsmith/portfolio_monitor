@@ -42,11 +42,12 @@ class SMADeviationDetector(TimeRangeDetectorBase[float]):
         current_price = aggregate.close
         mean = np.mean(close_history)
 
-        deviation = abs(current_price - mean) / mean
+        signed_deviation = (current_price - mean) / mean
+        deviation = abs(signed_deviation)
 
-        if abs(deviation) >= self.threshold:
-            direction = "above" if deviation > 0 else "below"
-            msg = f"{aggregate.symbol}: Price {direction} {self.period} simple moving average by {abs(deviation) * 100:.2f}%"
+        if deviation >= self.threshold:
+            direction = "above" if signed_deviation > 0 else "below"
+            msg = f"{aggregate.symbol}: Price {direction} {self.period} simple moving average by {deviation * 100:.2f}%"
             extra = {
                 "deviation_percent": float(deviation * 100),
                 "simple_moving_average": float(mean),
