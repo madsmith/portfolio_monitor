@@ -55,7 +55,7 @@ class Aggregate:
             "low": round(self.low, p),
             "close": round(self.close, p),
             "volume": round(self.volume, 2),
-            "timespan_sec": self.timespan.total_seconds(),
+            "timespan_sec": round(self.timespan.total_seconds()),
         }
 
     @property
