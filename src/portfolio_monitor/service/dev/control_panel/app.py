@@ -6,9 +6,8 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
-from starlette.templating import Jinja2Templates
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.aggregate_cache import AggregateCache
@@ -23,7 +22,7 @@ from portfolio_monitor.service.dev.synthetic_source import SyntheticDataSource
 
 logger = logging.getLogger(__name__)
 
-TEMPLATES_DIR = Path(__file__).parent / "templates"
+DIST_DIR = Path(__file__).resolve().parents[5] / "frontend" / "dist"
 
 
 class ControlPanelApp:
@@ -46,7 +45,6 @@ class ControlPanelApp:
         self._alert_router: AlertRouter = alert_router
         self._cache: AggregateCache = aggregate_cache
         self._portfolios: list[Portfolio] = portfolios
-        self._templates: Jinja2Templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
         # SSE subscriber queues
         self._alert_queues: list[asyncio.Queue] = []
@@ -60,7 +58,7 @@ class ControlPanelApp:
 
         self.app: Starlette = Starlette(
             routes=[
-                Route("/", self.index, methods=["GET"]),
+                Route("/api/state", self.get_state, methods=["GET"]),
                 Route("/api/bias", self.set_bias, methods=["POST"]),
                 Route("/api/pause", self.toggle_pause, methods=["POST"]),
                 Route("/api/regime", self.set_regime, methods=["POST"]),
@@ -76,6 +74,8 @@ class ControlPanelApp:
                 Route("/sse/alerts", self.sse_alerts, methods=["GET"]),
                 Route("/sse/prices", self.sse_prices, methods=["GET"]),
                 Route("/sse/tick-progress", self.sse_tick_progress, methods=["GET"]),
+                # Catch-all: serve built SPA or not-built fallback
+                Route("/{path:path}", self.serve_spa, methods=["GET"]),
             ],
         )
 
@@ -84,10 +84,29 @@ class ControlPanelApp:
         self._shutdown.set()
 
     # ------------------------------------------------------------------
-    # Pages
+    # SPA serving
     # ------------------------------------------------------------------
 
-    async def index(self, request: Request) -> HTMLResponse:
+    async def serve_spa(self, request: Request) -> Response:
+        path = request.path_params.get("path", "")
+        if path:
+            file = DIST_DIR / path
+            if file.is_file():
+                return FileResponse(file)
+        html = DIST_DIR / "control-panel.html"
+        if html.is_file():
+            return FileResponse(html)
+        return HTMLResponse(
+            "<h1>Frontend not built</h1>"
+            "<p>Run: <code>cd frontend &amp;&amp; pnpm install &amp;&amp; pnpm build</code></p>",
+            status_code=503,
+        )
+
+    # ------------------------------------------------------------------
+    # API endpoints
+    # ------------------------------------------------------------------
+
+    async def get_state(self, request: Request) -> JSONResponse:
         all_symbols = list(
             {asset.symbol for p in self._portfolios for asset in p.assets()}
         )
@@ -108,21 +127,15 @@ class ControlPanelApp:
                 if d.name not in detector_names:
                     detector_names.append(d.name)
 
-        return self._templates.TemplateResponse(
-            request,
-            "dev_dashboard.html",
-            context={
+        return JSONResponse(
+            {
                 "symbols": symbols_data,
                 "detectors": detector_names,
-                "disabled_detectors": list(self._alert_router.suppressed_detectors),
+                "suppressed_detectors": list(self._alert_router.suppressed_detectors),
                 "tick_interval": self._source.tick_interval,
                 "paused": self._source.paused,
-            },
+            }
         )
-
-    # ------------------------------------------------------------------
-    # API endpoints
-    # ------------------------------------------------------------------
 
     async def set_bias(self, request: Request) -> JSONResponse:
         body = await request.json()
