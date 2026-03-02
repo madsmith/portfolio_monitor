@@ -264,7 +264,7 @@ def main() -> None:
         args = parser.parse_args(["run"])
 
     # Dev mode — synthetic data, no Polygon API
-    if getattr(args, "dev", False):
+    if args.dev:
         from portfolio_monitor.service.dev import run_dev_service
         from portfolio_monitor.service.dev.config import DevConfig
 
