@@ -13,8 +13,11 @@ stocks:
   - ticker: "GOOGL"
     lots: []  # Monitoring only
 
-currencies:
-  - ticker: "X:BTCUSD"
+cryptos:
+  - ticker: "BTC"
     lots:
-      - amount: 0.5
-        price: 40000.00
+      - quantity: 0.5
+        price: 40000.00 USDC
+        fees: 100.00 USDC
+        rebate: 25.00 USDC
+        date: 10/09/25 13:45:00
