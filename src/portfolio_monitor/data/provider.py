@@ -176,6 +176,9 @@ class PolygonDataProvider(DataProvider):
             return None
 
         if isinstance(trade, list):
+            if len(trade) == 0:
+                logger.warning("No previous close data for %s", symbol.lookup_symbol)
+                return None
             trade = trade[0]
         if isinstance(trade, PreviousCloseAgg):
             if (
