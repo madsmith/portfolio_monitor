@@ -170,7 +170,15 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
 }
 
 function AssetTable({ assets }: { assets: Asset[] }) {
-  const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
+  const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
+
+  function toggleTicker(ticker: string) {
+    setExpandedTickers((prev) => {
+      const next = new Set(prev);
+      next.has(ticker) ? next.delete(ticker) : next.add(ticker);
+      return next;
+    });
+  }
 
   return (
     <table className="w-full text-sm border-collapse">
@@ -197,12 +205,12 @@ function AssetTable({ assets }: { assets: Asset[] }) {
       </thead>
       <tbody>
         {assets.map((a) => {
-          const isExpanded = expandedTicker === a.ticker;
+          const isExpanded = expandedTickers.has(a.ticker);
           const hasLots = a.lots.length > 0;
           return (
             <React.Fragment key={a.ticker}>
               <tr
-                onClick={() => hasLots && setExpandedTicker(isExpanded ? null : a.ticker)}
+                onClick={() => hasLots && toggleTicker(a.ticker)}
                 className={[
                   "border-b border-[#2a2d3a] transition-colors",
                   !isExpanded ? "last:border-b-0" : "",

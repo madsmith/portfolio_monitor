@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from sortedcontainers import SortedDict
 
+from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 # Price decimal places by asset type for JSON serialization
@@ -432,6 +433,19 @@ class AggregateCache:
         cache = self._memory_cache[symbol]
 
         return [cache[ts_ms] for ts_ms in cache.irange(from_ms, to_ms)]
+
+    def get_close(self, symbol: AssetSymbol, date: datetime) -> "Aggregate | None":
+        """Return the cached aggregate for the trading session that closes on *date*.
+
+        Searches the range [midnight UTC on the close day, market close time] and
+        returns the last aggregate found.  Returns None if nothing is cached for
+        that session.
+        """
+        close_time = MarketInfo.get_market_close(symbol, date)
+        # Session window: midnight UTC on the close day → close_time
+        session_start = close_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        aggregates = self.get_range(symbol, session_start, close_time)
+        return aggregates[-1] if aggregates else None
 
 
 class MemoryOnlyAggregateCache(AggregateCache):

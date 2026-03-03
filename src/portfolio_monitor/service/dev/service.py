@@ -8,6 +8,7 @@ import uvicorn
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.aggregate_cache import MemoryOnlyAggregateCache
 from portfolio_monitor.data.events import AggregateUpdated
+from portfolio_monitor.data.provider import PolygonDataProvider
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.loader import load_portfolios
@@ -22,8 +23,9 @@ from portfolio_monitor.service.api.app import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.types import AssetSymbol
 
-from .config import SEED_PRICES, DevConfig
+from .config import DevConfig
 from .data_provider import DevDataProvider
+from .seed_price_provider import SeedPriceProvider
 from .synthetic_source import SyntheticDataSource
 
 logger = logging.getLogger(__name__)
@@ -99,11 +101,16 @@ async def run_dev_service(config: DevConfig) -> None:
         for name, args in detector_configs.items():
             detection_engine.add_detector(symbol, {"name": name, "args": args})
 
-    # 5. SyntheticDataSource
+    # 5. SyntheticDataSource — seed from Polygon previous-close prices
+    seed_price_provider = SeedPriceProvider(
+        portfolios=portfolios,
+        data_provider=PolygonDataProvider(config=config, aggregate_cache=aggregate_cache),
+    )
+    await seed_price_provider.load()
     synthetic_source = SyntheticDataSource(
         bus=bus,
         symbols=all_symbols,
-        seed_prices=SEED_PRICES,
+        seed_price_provider=seed_price_provider,
         tick_interval=config.tick_interval,
     )
 

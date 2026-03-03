@@ -14,6 +14,7 @@ from portfolio_monitor.data.aggregate_cache import (
     Aggregate,
     AggregateCache,
 )
+from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.service.types import AssetSymbol
 
 logger = logging.getLogger(__name__)
@@ -150,9 +151,17 @@ class PolygonDataProvider(DataProvider):
     ) -> Aggregate | None:
         """Fetch the previous trading day's OHLCV aggregate for a symbol.
 
+        Checks the aggregate cache first; only calls Polygon if not found.
+
         Returns:
             Aggregate with timespan of one trading session, or None on error.
         """
+        now = datetime.now(ZoneInfo("UTC"))
+        prev_close_dt = MarketInfo.get_previous_market_close(symbol, now)
+        cached = self._aggregate_cache.get_close(symbol, prev_close_dt)
+        if cached is not None:
+            return cached
+
         try:
             trade = self._polygon_client.get_previous_close_agg(
                 ticker=symbol.lookup_symbol
@@ -188,7 +197,7 @@ class PolygonDataProvider(DataProvider):
                 trade.low,
                 trade.close,
                 trade.volume,
-                timedelta(hours=6, minutes=30),
+                MarketInfo.get_market_day_timespan(symbol),
             )
             if cache_write:
                 await self._aggregate_cache.add(aggregate)

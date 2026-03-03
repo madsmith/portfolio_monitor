@@ -9,6 +9,7 @@ from portfolio_monitor.data.events import AggregateUpdated
 from portfolio_monitor.service.types import AssetSymbol
 
 from .price_generator import PriceGenerator, Regime
+from .seed_price_provider import SeedPriceProvider
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class SyntheticDataSource:
         self,
         bus: EventBus,
         symbols: list[AssetSymbol],
-        seed_prices: dict[str, float],
+        seed_price_provider: SeedPriceProvider,
         tick_interval: float = 5.0,
     ) -> None:
         self._bus: EventBus = bus
@@ -38,6 +39,7 @@ class SyntheticDataSource:
         self._tick_count: int = 0
         self._interval_changed: asyncio.Event = asyncio.Event()
 
+        seed_prices = seed_price_provider.get_prices()
         for symbol in symbols:
             price = seed_prices.get(symbol.ticker, 100.0)
             self._generator.register_symbol(symbol.ticker, price)

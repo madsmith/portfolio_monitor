@@ -44,31 +44,3 @@ class DevConfig(PortfolioMonitorConfig):
         cls, config_path: Path, args: argparse.Namespace
     ) -> "DevConfig":
         return cls(config_path, args)
-
-
-# Approximate prices for all portfolio symbols (Feb 2026)
-SEED_PRICES: dict[str, float] = {
-    # Stocks
-    "AMD": 120.0,
-    "AMZN": 225.0,
-    "AAPL": 240.0,
-    "APLD": 10.0,
-    "DELL": 120.0,
-    "META": 620.0,
-    "MU": 95.0,
-    "MSFT": 430.0,
-    "NVDA": 140.0,
-    "PLTR": 100.0,
-    "RIVN": 15.0,
-    "SBUX": 100.0,
-    "STNE": 15.0,
-    "TSM": 200.0,
-    "WOLF": 8.0,
-    # Crypto
-    "XRP": 2.50,
-    "BTC": 95000.0,
-    "ETH": 3200.0,
-    "ATOM": 8.0,
-    "USDT": 1.00,
-    "SOL": 200.0,
-}
