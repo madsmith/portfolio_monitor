@@ -1,6 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 import { api, clearToken, type Asset, type Lot, type PortfolioDetail, type PortfolioSummary } from "../api/client";
+import { type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
+
+function toWsSymbol(a: { ticker: string; asset_type: string }): WsAssetSymbol {
+  return { ticker: a.ticker, type: a.asset_type };
+}
 
 // ---------------------------------------------------------------------------
 // Formatters
@@ -29,6 +34,36 @@ function plColor(v: number | null): string {
 function lotPlColor(v: number | null): string {
   if (v === null || v === 0) return "text-slate-500";
   return v > 0 ? "text-[#3a7040]" : "text-[#8c3838]";
+}
+
+// ---------------------------------------------------------------------------
+// Price-update helpers
+// ---------------------------------------------------------------------------
+
+function applyPriceUpdate(detail: PortfolioDetail, ticker: string, price: number): PortfolioDetail {
+  function updateAsset(asset: Asset): Asset {
+    if (asset.ticker !== ticker) return asset;
+    const qty = parseFloat(asset.total_quantity);
+    const currentValue = price * qty;
+    const profitLoss = asset.cost_basis !== null ? currentValue - asset.cost_basis : null;
+    const profitLossPct =
+      asset.cost_basis !== null && asset.cost_basis !== 0
+        ? (profitLoss! / asset.cost_basis) * 100
+        : null;
+    return { ...asset, current_price: price, current_value: currentValue, profit_loss: profitLoss, profit_loss_percentage: profitLossPct };
+  }
+
+  const stocks = detail.stocks.map(updateAsset);
+  const currencies = detail.currencies.map(updateAsset);
+  const crypto = detail.crypto.map(updateAsset);
+  const allAssets = [...stocks, ...currencies, ...crypto];
+  const totalValue = allAssets.reduce((sum, a) => sum + (a.current_value ?? 0), 0);
+  const totalPL = detail.total_cost_basis !== null ? totalValue - detail.total_cost_basis : null;
+  const plPct =
+    detail.total_cost_basis !== null && detail.total_cost_basis !== 0
+      ? (totalPL! / detail.total_cost_basis) * 100
+      : null;
+  return { ...detail, stocks, currencies, crypto, total_value: totalValue, total_profit_loss: totalPL, profit_loss_percentage: plPct };
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +361,49 @@ export default function Dashboard() {
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+
+  const wsRef = useRef<PortfolioWebSocket | null>(null);
+
+  // Connect WebSocket on mount, close on unmount
+  useEffect(() => {
+    const ws = new PortfolioWebSocket();
+    wsRef.current = ws;
+    ws.connect();
+    const unsub = ws.onPriceUpdate((msgs) => {
+      setDetail((prev) => prev ? msgs.reduce((d, { symbol, price }) => applyPriceUpdate(d, symbol.ticker, price), prev) : null);
+    });
+    return () => {
+      unsub();
+      ws.close();
+      wsRef.current = null;
+    };
+  }, []);
+
+  // Subscribe to active portfolio's tickers whenever the loaded detail changes portfolio
+  // (depends on detail.id, not detail itself, so price ticks don't re-trigger subscriptions)
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (!ws || !detail) return;
+    const symbols = [
+      ...detail.stocks.map(toWsSymbol),
+      ...detail.currencies.map(toWsSymbol),
+      ...detail.crypto.map(toWsSymbol),
+    ];
+    ws.subscribe(symbols);
+    return () => ws.unsubscribe(symbols);
+  }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep portfolio summary in sync with the live detail totals
+  useEffect(() => {
+    if (!detail) return;
+    setPortfolios((prev) =>
+      prev.map((p) =>
+        p.id === detail.id
+          ? { ...p, total_value: detail.total_value, total_profit_loss: detail.total_profit_loss, profit_loss_percentage: detail.profit_loss_percentage }
+          : p
+      )
+    );
+  }, [detail]);
 
   // Fetch portfolio list once — preserved across tab switches since component stays mounted
   useEffect(() => {

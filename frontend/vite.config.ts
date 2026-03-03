@@ -21,8 +21,8 @@ export default defineConfig({
         target: "http://localhost:8401",
         rewrite: (path) => path.replace(/^\/ctl/, ""),
       },
-      // Dashboard API — forward to main API server
-      "/api": "http://localhost:8400",
+      // Dashboard API + WebSocket — forward to main API server
+      "/api": { target: "http://localhost:8400", ws: true },
     },
   },
 });
