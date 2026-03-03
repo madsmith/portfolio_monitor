@@ -4,7 +4,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 
-def make_login_handler(auth_key: str, username: str, password: str):
+def login_handler(auth_key: str, username: str, password: str):
     """Return a login route handler closed over the server credentials."""
 
     async def login(request: Request) -> JSONResponse:

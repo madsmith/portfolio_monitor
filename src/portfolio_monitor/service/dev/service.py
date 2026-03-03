@@ -19,6 +19,7 @@ from portfolio_monitor.service.alerts import (
     OpenClawGatewayWsDelivery,
 )
 from portfolio_monitor.service.api.app import create_api_app
+from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.types import AssetSymbol
 
 from .config import SEED_PRICES, DevConfig
@@ -35,6 +36,7 @@ async def run_dev_service(config: DevConfig) -> None:
         logging.getLogger().setLevel(logging.DEBUG)
 
     # 1. Load portfolios (same as production)
+    assert config.portfolio_path, "portfolio_path is required"
     portfolios = load_portfolios(config.portfolio_path)
 
     if config.debug:
@@ -118,7 +120,7 @@ async def run_dev_service(config: DevConfig) -> None:
         detection_engine=detection_engine,
         data_provider=dev_data_provider,
     )
-    portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)  # noqa: F841
+    portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)
     alert_router = AlertRouter(bus=bus)
     # Suppress all alert delivery by default in dev mode;
     # detectors still process data and build history.
@@ -131,6 +133,8 @@ async def run_dev_service(config: DevConfig) -> None:
     }
     alert_router.add_target(LoggingAlertDelivery())
     if config.openclaw_alert_enable_http:
+        assert config.openclaw_auth_key, "openclaw_auth_key is required for HTTP delivery"
+        assert config.openclaw_agent_id, "openclaw_agent_id is required for HTTP delivery"
         alert_router.add_target(
             OpenClawAgentHttpDelivery(
                 config.openclaw_host,
@@ -145,6 +149,7 @@ async def run_dev_service(config: DevConfig) -> None:
     if config.openclaw_alert_enable_ws and (
         config.openclaw_gateway_token or config.openclaw_gateway_password
     ):
+        assert config.openclaw_agent_id, "openclaw_agent_id is required for WS delivery"
         alert_router.add_target(
             OpenClawGatewayWsDelivery(
                 config.openclaw_host,
@@ -184,7 +189,8 @@ async def run_dev_service(config: DevConfig) -> None:
     )
 
     # 10. Production API server (auth workflow, dashboard, API endpoints)
-    api_app = create_api_app(config)
+    ctx = PortfolioMonitorContext(config=config, portfolio_service=portfolio_service)
+    api_app = create_api_app(ctx)
 
     # 11. Start both servers
     dev_uvicorn_config = uvicorn.Config(

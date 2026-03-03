@@ -30,6 +30,7 @@ from portfolio_monitor.service.alerts import (
     OpenClawGatewayWsDelivery,
 )
 from portfolio_monitor.service.api import create_api_app
+from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.types import AssetSymbol
 
@@ -102,7 +103,7 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
         detection_engine=detection_engine,
         data_provider=data_provider,
     )
-    portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)  # noqa: F841
+    portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)
     alert_router = AlertRouter(bus=bus)
     alert_router.add_target(LoggingAlertDelivery())
     # TODO: make configurable or state driven.
@@ -144,7 +145,8 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
     await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
 
     # Start API server
-    api_app: Starlette = create_api_app(config)
+    ctx = PortfolioMonitorContext(config=config, portfolio_service=portfolio_service)
+    api_app: Starlette = create_api_app(ctx)
     uvicorn_config = uvicorn.Config(
         api_app,
         host=config.host,

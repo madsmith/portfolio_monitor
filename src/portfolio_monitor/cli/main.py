@@ -1,6 +1,7 @@
 import argparse
 
 from portfolio_monitor.cli.commands.login import add_login_parser
+from portfolio_monitor.cli.commands.portfolio import add_portfolio_parser
 
 
 def get_arg_parser() -> argparse.ArgumentParser:
@@ -24,6 +25,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
     subparsers.required = True
 
     add_login_parser(subparsers)
+    add_portfolio_parser(subparsers)
 
     return parser
 

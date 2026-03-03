@@ -31,9 +31,14 @@ class PortfolioService:
     def get_portfolios(self) -> list[Portfolio]:
         return self._portfolios
 
-    def get_portfolio(self, name: str) -> Portfolio | None:
+    def get_portfolio(self, name: str | None, id: str | None = None) -> Portfolio | None:
+        if name is None and id is None:
+            raise ValueError("Either name or id must be provided")
+        
         for p in self._portfolios:
-            if p.name == name:
+            if name is not None and p.name == name:
+                return p
+            if id is not None and p.id == id:
                 return p
         return None
 

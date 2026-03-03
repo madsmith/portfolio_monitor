@@ -3,6 +3,7 @@ Portfolio module for Nexus Portfolio Monitor.
 Contains classes for portfolios, assets and lots.
 """
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -216,9 +217,14 @@ class Portfolio:
     """
 
     name: str
+    id: str = ""
     stocks: list[Asset] = field(default_factory=list)
     currencies: list[Asset] = field(default_factory=list)
     crypto: list[Asset] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = hashlib.sha256(self.name.encode()).hexdigest()[:16]
 
     def assets(self) -> list[Asset]:
         """Return all assets in this portfolio."""
@@ -269,7 +275,7 @@ class Portfolio:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Portfolio":
         """Create a Portfolio from a dictionary."""
-        portfolio = cls(name=data["name"])
+        portfolio = cls(name=data["name"], id=data.get("id", ""))
 
         # Map asset types to their corresponding attribute names in Portfolio
         asset_type_map = (
