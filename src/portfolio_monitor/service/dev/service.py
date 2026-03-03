@@ -107,6 +107,7 @@ async def run_dev_service(config: DevConfig) -> None:
         data_provider=PolygonDataProvider(config=config, aggregate_cache=aggregate_cache),
     )
     await seed_price_provider.load()
+    seed_aggregates = seed_price_provider.get_aggregates()
     synthetic_source = SyntheticDataSource(
         bus=bus,
         symbols=all_symbols,
@@ -119,6 +120,7 @@ async def run_dev_service(config: DevConfig) -> None:
         aggregate_cache=aggregate_cache,
         price_generator=synthetic_source.generator,
         symbols=all_symbols,
+        seed_aggregates=seed_aggregates,
     )
 
     # 7. Services (identical to production)
@@ -170,12 +172,27 @@ async def run_dev_service(config: DevConfig) -> None:
             )
         )
 
-    # 8. Prime with synthetic history
-    logger.info(
-        "Priming detection engine with %d minutes of synthetic history...",
-        config.prime_history_minutes,
-    )
-    history = synthetic_source.generate_history(config.prime_history_minutes)
+    # 8. Prime with synthetic history starting from the seed point (previous close).
+    # Seed aggregates go into the cache first so get_previous_close() has a real
+    # timestamp to anchor to. Then synthetic minute bars fill in from that point
+    # to now, giving detectors a continuous price history.
+    for agg in seed_aggregates.values():
+        await aggregate_cache.add(agg)
+
+    if seed_aggregates:
+        seed_start = min(agg.date_open for agg in seed_aggregates.values())
+        logger.info(
+            "Priming detection engine from seed point %s to now...",
+            seed_start.isoformat(),
+        )
+        history = synthetic_source.generate_history(start=seed_start)
+    else:
+        logger.info(
+            "No seed aggregates available; priming with %d minutes of synthetic history",
+            config.prime_history_minutes,
+        )
+        history = synthetic_source.generate_history(config.prime_history_minutes)
+
     for agg in history:
         await aggregate_cache.add(agg)
         detection_engine.detect(agg)

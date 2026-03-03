@@ -18,7 +18,8 @@ function fmtMoney(v: number | null): string {
 
 function fmtPct(v: number | null): string {
   if (v === null) return "—";
-  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+  const formatted = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(v));
+  return `${v >= 0 ? "+" : "-"}${formatted}%`;
 }
 
 function fmtDate(iso: string | null): string {
@@ -44,6 +45,27 @@ function lotPlColor(v: number | null): string {
 
 function prevCloseKey(a: { ticker: string; asset_type: string }): string {
   return `${a.ticker}:${a.asset_type}`;
+}
+
+type TodayChange = { value: number; pct: number };
+
+function computeTodayChange(detail: PortfolioDetail, prevClose: Record<string, number>): TodayChange | null {
+  const allAssets = [...detail.stocks, ...detail.currencies, ...detail.crypto];
+  let totalChgValue = 0;
+  let prevTotalValue = 0;
+  let hasAny = false;
+  for (const a of allAssets) {
+    const pc = prevClose[prevCloseKey(a)] ?? null;
+    if (pc !== null && a.current_price !== null) {
+      const qty = parseFloat(a.total_quantity);
+      totalChgValue += (a.current_price - pc) * qty;
+      prevTotalValue += pc * qty;
+      hasAny = true;
+    }
+  }
+  return hasAny && prevTotalValue !== 0
+    ? { value: totalChgValue, pct: (totalChgValue / prevTotalValue) * 100 }
+    : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,11 +127,13 @@ function Overview({
   loading,
   error,
   onSelect,
+  todayChange,
 }: {
   portfolios: PortfolioSummary[];
   loading: boolean;
   error: string | null;
   onSelect: (id: string) => void;
+  todayChange: Record<string, TodayChange>;
 }) {
   if (loading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;
   if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;
@@ -123,6 +147,7 @@ function Overview({
             [
               ["Portfolio", "text-left"],
               ["Value", "text-right"],
+              ["Today's Chg", "text-right"],
               ["Cost Basis", "text-right"],
               ["P&L", "text-right"],
               ["P&L %", "text-right"],
@@ -139,24 +164,27 @@ function Overview({
         </tr>
       </thead>
       <tbody>
-        {portfolios.map((p) => (
-          <tr
-            key={p.id}
-            onClick={() => onSelect(p.id)}
-            className="border-b border-[#2a2d3a] hover:bg-[#252a40] cursor-pointer transition-colors last:border-b-0"
-          >
-            <td className="px-3 py-3 font-semibold text-slate-100">{p.name}</td>
-            <td className="px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_value)}</td>
-            <td className="px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_cost_basis)}</td>
-            <td className={`px-3 py-3 text-right tabular-nums font-medium ${plColor(p.total_profit_loss)}`}>
-              {fmtMoney(p.total_profit_loss)}
-            </td>
-            <td className={`px-3 py-3 text-right tabular-nums ${plColor(p.profit_loss_percentage)}`}>
-              {fmtPct(p.profit_loss_percentage)}
-            </td>
-            <td className="px-3 py-3 text-right text-slate-600 text-base">→</td>
-          </tr>
-        ))}
+        {portfolios.map((p) => {
+          const chg = todayChange[p.id] ?? null;
+          return (
+            <tr
+              key={p.id}
+              onClick={() => onSelect(p.id)}
+              className="border-b border-[#2a2d3a] hover:bg-[#252a40] cursor-pointer transition-colors last:border-b-0"
+            >
+              <td className="px-3 py-3 font-semibold text-slate-100">{p.name}</td>
+              <td className="px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_value)}</td>
+              <td className={`px-3 py-3 text-right tabular-nums ${plColor(chg?.value ?? null)}`}>
+                {chg ? `${fmtChg(chg.value)} (${fmtPct(chg.pct)})` : "—"}
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_cost_basis)}</td>
+              <td className={`px-3 py-3 text-right tabular-nums font-medium ${plColor(p.total_profit_loss)}`}>
+                {fmtMoney(p.total_profit_loss)} ({fmtPct(p.profit_loss_percentage)})
+              </td>
+              <td className="px-3 py-3 text-right text-slate-600 text-base">→</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -216,7 +244,7 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
 
 function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<string, number> }) {
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
-  const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("dollar");
+  const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [valueChgMode, setValueChgMode] = useState<"dollar" | "percent">("dollar");
 
   function toggleTicker(ticker: string) {
@@ -346,9 +374,11 @@ function PortfolioDetailContent({
   if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;
   if (!detail) return null;
 
+  const todayChg = computeTodayChange(detail, prevClose);
+
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         {(
           [
             ["Value", fmtMoney(detail.total_value), null],
@@ -356,18 +386,27 @@ function PortfolioDetailContent({
             ["P&L", fmtMoney(detail.total_profit_loss), detail.total_profit_loss],
             ["P&L %", fmtPct(detail.profit_loss_percentage), detail.profit_loss_percentage],
           ] as [string, string, number | null][]
-        ).map(([label, value, colorVal]) => (
-          <div key={label} className="bg-[#131928] border border-[#404868] rounded-md px-4 py-3">
-            <div className="text-[0.65rem] uppercase tracking-wide text-slate-500 mb-1">{label}</div>
-            <div
-              className={`text-base font-semibold tabular-nums ${
-                colorVal !== null ? plColor(colorVal) : "text-slate-100"
-              }`}
-            >
-              {value}
+        ).reduce<React.ReactNode[]>((acc, [label, value, colorVal], i) => {
+          if (i === 1) {
+            acc.push(
+              <div key="today-chg" className="bg-[#131928] border border-[#404868] rounded-md px-4 py-3">
+                <div className="text-[0.65rem] uppercase tracking-wide text-slate-500 mb-1">Today&apos;s Chg</div>
+                <div className={`text-base font-semibold tabular-nums ${plColor(todayChg?.value ?? null)}`}>
+                  {todayChg ? <>{fmtChg(todayChg.value)} ({fmtPct(todayChg.pct)})</> : "—"}
+                </div>
+              </div>
+            );
+          }
+          acc.push(
+            <div key={label} className="bg-[#131928] border border-[#404868] rounded-md px-4 py-3">
+              <div className="text-[0.65rem] uppercase tracking-wide text-slate-500 mb-1">{label}</div>
+              <div className={`text-base font-semibold tabular-nums ${colorVal !== null ? plColor(colorVal) : "text-slate-100"}`}>
+                {value}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+          return acc;
+        }, [])}
       </div>
       <AssetSection title="Stocks" assets={detail.stocks} prevClose={prevClose} />
       <AssetSection title="Currencies" assets={detail.currencies} prevClose={prevClose} />
@@ -393,6 +432,7 @@ export default function Dashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [prevClose, setPrevClose] = useState<Record<string, number>>({});
+  const [portfolioTodayChange, setPortfolioTodayChange] = useState<Record<string, TodayChange>>({});
 
   const wsRef = useRef<PortfolioWebSocket | null>(null);
 
@@ -437,11 +477,35 @@ export default function Dashboard() {
     );
   }, [detail]);
 
-  // Fetch portfolio list once — preserved across tab switches since component stays mounted
+  // Fetch portfolio list once — preserved across tab switches since component stays mounted.
+  // Also kicks off background detail+prevClose fetches for all portfolios so the overview
+  // "Today's Chg" column is populated without requiring the user to visit each tab.
   useEffect(() => {
     api
       .getPortfolios()
-      .then(setPortfolios)
+      .then((list) => {
+        setPortfolios(list);
+        // Background: compute today's change for every portfolio
+        for (const p of list) {
+          api.getPortfolio(p.id).then((d) => {
+            const allAssets = [...d.stocks, ...d.currencies, ...d.crypto];
+            Promise.allSettled(
+              allAssets.map((a) =>
+                api.getPreviousClose(a.asset_type, a.ticker).then((data) => ({ key: prevCloseKey(a), price: data.price }))
+              )
+            ).then((results) => {
+              const closes: Record<string, number> = {};
+              for (const r of results) {
+                if (r.status === "fulfilled") closes[r.value.key] = r.value.price;
+              }
+              const chg = computeTodayChange(d, closes);
+              if (chg !== null) {
+                setPortfolioTodayChange((prev) => ({ ...prev, [d.id]: chg }));
+              }
+            });
+          }).catch(() => {});
+        }
+      })
       .catch((e: Error) => {
         if (e.message === "401") { clearToken(); navigate("/login"); return; }
         setPortfoliosError("Failed to load portfolios");
@@ -463,6 +527,10 @@ export default function Dashboard() {
         if (r.status === "fulfilled") closes[r.value.key] = r.value.price;
       }
       setPrevClose(closes);
+      const chg = computeTodayChange(detail, closes);
+      if (chg !== null) {
+        setPortfolioTodayChange((prev) => ({ ...prev, [detail.id]: chg }));
+      }
     });
   }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -483,7 +551,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#0f1117] text-slate-300 pt-8 px-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
 
         {/* Compact app header — scoped to the content container */}
         <div className="flex items-baseline justify-between mb-4 px-1">
@@ -519,6 +587,7 @@ export default function Dashboard() {
               loading={portfoliosLoading}
               error={portfoliosError}
               onSelect={(id) => navigate(`/portfolio/${id}`)}
+              todayChange={portfolioTodayChange}
             />
           ) : (
             <PortfolioDetailContent

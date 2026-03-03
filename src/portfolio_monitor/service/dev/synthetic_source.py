@@ -192,22 +192,33 @@ class SyntheticDataSource:
     # History generation for priming
     # ------------------------------------------------------------------
 
-    def generate_history(self, minutes: int) -> list[Aggregate]:
+    def generate_history(
+        self, minutes: int = 120, *, start: datetime | None = None
+    ) -> list[Aggregate]:
         """Pre-generate minute-bar history for detector priming.
+
+        If *start* is given, generates bars from *start* to now (ignoring
+        *minutes*). Otherwise generates the last *minutes* bars ending at now.
 
         Returns aggregates in chronological order. Does NOT publish
         them to the bus.
         """
-        all_aggs: list[Aggregate] = []
         now = datetime.now(ZoneInfo("UTC"))
-        start = now - timedelta(minutes=minutes)
+        if start is not None:
+            history_start = start
+            n_minutes = max(1, int((now - start).total_seconds() / 60))
+        else:
+            n_minutes = minutes
+            history_start = now - timedelta(minutes=minutes)
+
+        all_aggs: list[Aggregate] = []
 
         # Temporarily use 1-minute dt
         saved_interval = self._generator.tick_interval
         self._generator.tick_interval = 60
 
-        for i in range(minutes):
-            t = start + timedelta(minutes=i)
+        for i in range(n_minutes):
+            t = history_start + timedelta(minutes=i)
             for symbol in self._symbols:
                 open_, high, low, close, volume = self._generator.tick(symbol.ticker)
                 agg = Aggregate(

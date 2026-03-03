@@ -1,5 +1,6 @@
 import logging
 
+from portfolio_monitor.data.aggregate_cache import Aggregate
 from portfolio_monitor.data.provider import PolygonDataProvider
 from portfolio_monitor.portfolio.portfolio import Portfolio
 from portfolio_monitor.service.types import AssetSymbol
@@ -23,6 +24,7 @@ class SeedPriceProvider:
         self._portfolios: list[Portfolio] = portfolios
         self._data_provider: PolygonDataProvider = data_provider
         self._prices: dict[str, float] = {}
+        self._aggregates: dict[str, Aggregate] = {}
 
     async def load(self) -> None:
         """Fetch previous close for every unique asset symbol across all portfolios."""
@@ -37,6 +39,7 @@ class SeedPriceProvider:
                 agg = await self._data_provider.get_previous_close(symbol)
                 if agg is not None:
                     self._prices[symbol.ticker] = agg.close
+                    self._aggregates[symbol.ticker] = agg
                     logger.debug("Seed price %s = %.4f", symbol.ticker, agg.close)
                 else:
                     logger.warning(
@@ -58,3 +61,7 @@ class SeedPriceProvider:
     def get_prices(self) -> dict[str, float]:
         """Return the loaded seed prices. Ensure load() has been awaited first."""
         return dict(self._prices)
+
+    def get_aggregates(self) -> dict[str, Aggregate]:
+        """Return the loaded seed aggregates. Ensure load() has been awaited first."""
+        return dict(self._aggregates)

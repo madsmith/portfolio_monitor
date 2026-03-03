@@ -25,6 +25,16 @@ export type PreviousCloseMessage = {
   timestamp: string;
 };
 
+export type AuthenticatedMessage = {
+  type: "authenticated";
+};
+
+type IncomingMessage =
+  | AuthenticatedMessage
+  | PriceUpdateMessage
+  | PriceMessage
+  | PreviousCloseMessage;
+
 /** Called once per animation frame with all price updates received since the last flush. */
 type PriceUpdateHandler = (msgs: PriceUpdateMessage[]) => void;
 type PriceHandler = (msg: PriceMessage) => void;
@@ -75,17 +85,17 @@ export class PortfolioWebSocket {
 
     ws.onmessage = ({ data }: MessageEvent) => {
       try {
-        const msg = JSON.parse(data as string) as { type: string } & Partial<PriceUpdateMessage>;
+        const msg = JSON.parse(data as string) as IncomingMessage;
         if (msg.type === "authenticated") {
           if (this.subscriptions.size > 0) {
             ws.send(JSON.stringify({ type: "subscribe", symbols: [...this.subscriptions.values()] }));
           }
         } else if (msg.type === "price") {
-          for (const h of this.priceHandlers) h(msg as PriceMessage);
+          for (const h of this.priceHandlers) h(msg);
         } else if (msg.type === "previous_close") {
-          for (const h of this.previousCloseHandlers) h(msg as PreviousCloseMessage);
+          for (const h of this.previousCloseHandlers) h(msg);
         } else if (msg.type === "price_update") {
-          this.pendingUpdates.push(msg as PriceUpdateMessage);
+          this.pendingUpdates.push(msg);
           if (this.rafHandle === null) {
             this.rafHandle = requestAnimationFrame(() => {
               this.rafHandle = null;

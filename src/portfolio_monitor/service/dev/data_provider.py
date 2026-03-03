@@ -1,6 +1,5 @@
 import logging
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
 from portfolio_monitor.data.provider import DataProvider
@@ -23,35 +22,26 @@ class DevDataProvider(DataProvider):
         aggregate_cache: AggregateCache,
         price_generator: PriceGenerator,
         symbols: list[AssetSymbol],
+        seed_aggregates: dict[str, Aggregate] | None = None,
     ) -> None:
         self._cache: AggregateCache = aggregate_cache
         self._generator: PriceGenerator = price_generator
         self._symbol_lookup: dict[str, AssetSymbol] = {s.ticker: s for s in symbols}
+        self._seed_aggregates: dict[str, Aggregate] = seed_aggregates or {}
 
     async def get_aggregate(
         self, symbol: AssetSymbol, *, cache_write: bool = False
     ) -> Aggregate | None:
-        """Generate a fresh synthetic tick and return it as an Aggregate."""
-        now = datetime.now(ZoneInfo("UTC"))
-        open_, high, low, close, volume = self._generator.tick(symbol.ticker)
-        agg = Aggregate(
-            symbol=symbol,
-            date_open=now,
-            open=open_,
-            high=high,
-            low=low,
-            close=close,
-            volume=volume,
-            timespan=timedelta(seconds=self._generator.tick_interval),
-        )
-        if cache_write:
-            await self._cache.add(agg)
-        return agg
+        """Return the most recently cached aggregate for the symbol."""
+        return self._cache.get_current(symbol)
 
     async def get_previous_close(
         self, symbol: AssetSymbol, *, cache_write: bool = False
     ) -> Aggregate | None:
-        """Return the most recent cached aggregate for the symbol."""
+        """Return the seed aggregate (Polygon previous close) for the symbol."""
+        seed = self._seed_aggregates.get(symbol.ticker)
+        if seed is not None:
+            return seed
         return self._cache.get_current(symbol)
 
     async def get_range(
