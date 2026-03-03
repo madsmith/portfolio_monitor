@@ -145,7 +145,7 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
     await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
 
     # Start API server
-    ctx = PortfolioMonitorContext(config=config, portfolio_service=portfolio_service, bus=bus)
+    ctx = PortfolioMonitorContext(config=config, portfolio_service=portfolio_service, bus=bus, data_provider=data_provider)
     api_app: Starlette = create_api_app(ctx)
     uvicorn_config = uvicorn.Config(
         api_app,

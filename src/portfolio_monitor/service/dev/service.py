@@ -196,7 +196,12 @@ async def run_dev_service(config: DevConfig) -> None:
     )
 
     # 10. Production API server (auth workflow, dashboard, API endpoints)
-    ctx = PortfolioMonitorContext(config=config, portfolio_service=portfolio_service, bus=bus)
+    ctx = PortfolioMonitorContext(
+        config=config,
+        portfolio_service=portfolio_service,
+        bus=bus,
+        data_provider=dev_data_provider
+    )
     api_app = create_api_app(ctx)
 
     # 11. Start both servers

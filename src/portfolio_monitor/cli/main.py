@@ -3,6 +3,7 @@ import os
 
 from portfolio_monitor.cli.commands.login import add_login_parser
 from portfolio_monitor.cli.commands.portfolio import add_portfolio_parser
+from portfolio_monitor.cli.commands.prices import add_price_parser
 
 
 def get_arg_parser() -> argparse.ArgumentParser:
@@ -27,6 +28,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
     add_login_parser(subparsers)
     add_portfolio_parser(subparsers)
+    add_price_parser(subparsers)
 
     return parser
 

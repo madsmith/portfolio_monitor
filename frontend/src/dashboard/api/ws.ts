@@ -11,8 +11,24 @@ export type PriceUpdateMessage = {
   price: number;
 };
 
+export type PriceMessage = {
+  type: "price";
+  symbol: AssetSymbol;
+  price: number;
+  timestamp: string;
+};
+
+export type PreviousCloseMessage = {
+  type: "previous_close";
+  symbol: AssetSymbol;
+  price: number;
+  timestamp: string;
+};
+
 /** Called once per animation frame with all price updates received since the last flush. */
 type PriceUpdateHandler = (msgs: PriceUpdateMessage[]) => void;
+type PriceHandler = (msg: PriceMessage) => void;
+type PreviousCloseHandler = (msg: PreviousCloseMessage) => void;
 
 /**
  * Manages a WebSocket connection to /api/v1/ws.
@@ -28,6 +44,8 @@ type PriceUpdateHandler = (msgs: PriceUpdateMessage[]) => void;
 export class PortfolioWebSocket {
   private ws: WebSocket | null = null;
   private handlers: PriceUpdateHandler[] = [];
+  private priceHandlers: PriceHandler[] = [];
+  private previousCloseHandlers: PreviousCloseHandler[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
   // Keyed by "ticker:type" to provide O(1) dedup
@@ -62,6 +80,10 @@ export class PortfolioWebSocket {
           if (this.subscriptions.size > 0) {
             ws.send(JSON.stringify({ type: "subscribe", symbols: [...this.subscriptions.values()] }));
           }
+        } else if (msg.type === "price") {
+          for (const h of this.priceHandlers) h(msg as PriceMessage);
+        } else if (msg.type === "previous_close") {
+          for (const h of this.previousCloseHandlers) h(msg as PreviousCloseMessage);
         } else if (msg.type === "price_update") {
           this.pendingUpdates.push(msg as PriceUpdateMessage);
           if (this.rafHandle === null) {
@@ -99,6 +121,32 @@ export class PortfolioWebSocket {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: "unsubscribe", symbols }));
     }
+  }
+
+  requestPrice(symbol: AssetSymbol): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "get_price", symbol }));
+    }
+  }
+
+  requestPreviousClose(symbol: AssetSymbol): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "get_previous_close", symbol }));
+    }
+  }
+
+  onPrice(handler: PriceHandler): () => void {
+    this.priceHandlers.push(handler);
+    return () => {
+      this.priceHandlers = this.priceHandlers.filter((h) => h !== handler);
+    };
+  }
+
+  onPreviousClose(handler: PreviousCloseHandler): () => void {
+    this.previousCloseHandlers.push(handler);
+    return () => {
+      this.previousCloseHandlers = this.previousCloseHandlers.filter((h) => h !== handler);
+    };
   }
 
   onPriceUpdate(handler: PriceUpdateHandler): () => void {

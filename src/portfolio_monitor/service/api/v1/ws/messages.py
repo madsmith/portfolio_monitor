@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
@@ -40,8 +41,24 @@ class UnsubscribeAssetSymbolMessage(BaseModel):
     symbols: list[AssetSymbolParam]
 
 
+class GetPriceMessage(BaseModel):
+    type: Literal["get_price"]
+    symbol: AssetSymbolParam
+
+
+class GetPreviousCloseMessage(BaseModel):
+    type: Literal["get_previous_close"]
+    symbol: AssetSymbolParam
+
+
 ClientMessage = Annotated[
-    Union[AuthenticateMessage, SubscribeAssetSymbolMessage, UnsubscribeAssetSymbolMessage],
+    Union[
+        AuthenticateMessage,
+        SubscribeAssetSymbolMessage,
+        UnsubscribeAssetSymbolMessage,
+        GetPriceMessage,
+        GetPreviousCloseMessage,
+    ],
     Field(discriminator="type"),
 ]
 
@@ -60,7 +77,21 @@ class PriceUpdateMessage(BaseModel):
     price: float
 
 
-ServerMessage = AuthenticatedMessage | PriceUpdateMessage
+class PriceMessage(BaseModel):
+    type: Literal["price"] = "price"
+    symbol: AssetSymbolParam
+    price: float
+    timestamp: datetime
+
+
+class PreviousCloseMessage(BaseModel):
+    type: Literal["previous_close"] = "previous_close"
+    symbol: AssetSymbolParam
+    price: float
+    timestamp: datetime
+
+
+ServerMessage = AuthenticatedMessage | PriceUpdateMessage | PriceMessage | PreviousCloseMessage
 
 
 def to_socket(msg: ServerMessage) -> str:

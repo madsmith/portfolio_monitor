@@ -31,9 +31,19 @@ function plColor(v: number | null): string {
   return v > 0 ? "text-[#3fb950]" : "text-[#f85149]";
 }
 
+function fmtChg(v: number | null): string {
+  if (v === null) return "—";
+  const s = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);
+  return v > 0 ? `+${s}` : s;
+}
+
 function lotPlColor(v: number | null): string {
   if (v === null || v === 0) return "text-slate-500";
   return v > 0 ? "text-[#3a7040]" : "text-[#8c3838]";
+}
+
+function prevCloseKey(a: { ticker: string; asset_type: string }): string {
+  return `${a.ticker}:${a.asset_type}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,8 +214,10 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
   );
 }
 
-function AssetTable({ assets }: { assets: Asset[] }) {
+function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<string, number> }) {
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
+  const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("dollar");
+  const [valueChgMode, setValueChgMode] = useState<"dollar" | "percent">("dollar");
 
   function toggleTicker(ticker: string) {
     setExpandedTickers((prev) => {
@@ -215,23 +227,30 @@ function AssetTable({ assets }: { assets: Asset[] }) {
     });
   }
 
+  const headers: [string, string, (() => void) | undefined][] = [
+    ["Ticker", "text-left", undefined],
+    ["Qty", "text-right", undefined],
+    ["Price", "text-right", undefined],
+    [`Price Chg ${priceChgMode === "dollar" ? "$" : "%"}`, "text-right", () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar"))],
+    ["Value", "text-right", undefined],
+    [`Value Chg ${valueChgMode === "dollar" ? "$" : "%"}`, "text-right", () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar"))],
+    ["P&L", "text-right", undefined],
+    ["P&L %", "text-right", undefined],
+  ];
+
   return (
     <table className="w-full text-sm border-collapse">
       <thead>
         <tr>
-          {(
-            [
-              ["Ticker", "text-left"],
-              ["Qty", "text-right"],
-              ["Price", "text-right"],
-              ["Value", "text-right"],
-              ["P&L", "text-right"],
-              ["P&L %", "text-right"],
-            ] as [string, string][]
-          ).map(([label, align]) => (
+          {headers.map(([label, align, onToggle], i) => (
             <th
-              key={label}
-              className={`${align} text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2 border-b border-[#404868]`}
+              key={i}
+              onClick={onToggle}
+              className={[
+                align,
+                "text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2 border-b border-[#404868]",
+                onToggle ? "cursor-pointer hover:text-slate-300 select-none" : "",
+              ].join(" ")}
             >
               {label}
             </th>
@@ -242,6 +261,10 @@ function AssetTable({ assets }: { assets: Asset[] }) {
         {assets.map((a) => {
           const isExpanded = expandedTickers.has(a.ticker);
           const hasLots = a.lots.length > 0;
+          const pc = prevClose[prevCloseKey(a)] ?? null;
+          const dayChgPrice = a.current_price !== null && pc !== null ? a.current_price - pc : null;
+          const dayChgValue = dayChgPrice !== null ? dayChgPrice * parseFloat(a.total_quantity) : null;
+          const dayChgPct = dayChgPrice !== null && pc !== null && pc !== 0 ? (dayChgPrice / pc) * 100 : null;
           return (
             <React.Fragment key={a.ticker}>
               <tr
@@ -265,7 +288,13 @@ function AssetTable({ assets }: { assets: Asset[] }) {
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
+                <td className={`px-3 py-2 text-right tabular-nums ${plColor(dayChgPrice)}`}>
+                  {priceChgMode === "dollar" ? fmtChg(dayChgPrice) : fmtPct(dayChgPct)}
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
+                <td className={`px-3 py-2 text-right tabular-nums ${plColor(dayChgValue)}`}>
+                  {valueChgMode === "dollar" ? fmtChg(dayChgValue) : fmtPct(dayChgPct)}
+                </td>
                 <td className={`px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
                   {fmtMoney(a.profit_loss)}
                 </td>
@@ -275,7 +304,7 @@ function AssetTable({ assets }: { assets: Asset[] }) {
               </tr>
               {isExpanded && (
                 <tr className="border-b border-[#2a2d3a] last:border-b-0">
-                  <td colSpan={6} className="px-0 py-0 bg-[#181c28]">
+                  <td colSpan={8} className="px-0 py-0 bg-[#181c28]">
                     <LotTable lots={a.lots} currentPrice={a.current_price} />
                   </td>
                 </tr>
@@ -288,7 +317,7 @@ function AssetTable({ assets }: { assets: Asset[] }) {
   );
 }
 
-function AssetSection({ title, assets }: { title: string; assets: Asset[] }) {
+function AssetSection({ title, assets, prevClose }: { title: string; assets: Asset[]; prevClose: Record<string, number> }) {
   if (assets.length === 0) return null;
   return (
     <div className="mb-5 last:mb-0">
@@ -296,7 +325,7 @@ function AssetSection({ title, assets }: { title: string; assets: Asset[] }) {
         {title}
       </h3>
       <div className="border border-[#404868] rounded-md overflow-hidden">
-        <AssetTable assets={assets} />
+        <AssetTable assets={assets} prevClose={prevClose} />
       </div>
     </div>
   );
@@ -306,10 +335,12 @@ function PortfolioDetailContent({
   detail,
   loading,
   error,
+  prevClose,
 }: {
   detail: PortfolioDetail | null;
   loading: boolean;
   error: string | null;
+  prevClose: Record<string, number>;
 }) {
   if (loading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;
   if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;
@@ -338,9 +369,9 @@ function PortfolioDetailContent({
           </div>
         ))}
       </div>
-      <AssetSection title="Stocks" assets={detail.stocks} />
-      <AssetSection title="Currencies" assets={detail.currencies} />
-      <AssetSection title="Crypto" assets={detail.crypto} />
+      <AssetSection title="Stocks" assets={detail.stocks} prevClose={prevClose} />
+      <AssetSection title="Currencies" assets={detail.currencies} prevClose={prevClose} />
+      <AssetSection title="Crypto" assets={detail.crypto} prevClose={prevClose} />
     </div>
   );
 }
@@ -361,6 +392,7 @@ export default function Dashboard() {
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [prevClose, setPrevClose] = useState<Record<string, number>>({});
 
   const wsRef = useRef<PortfolioWebSocket | null>(null);
 
@@ -416,6 +448,23 @@ export default function Dashboard() {
       })
       .finally(() => setPortfoliosLoading(false));
   }, [navigate]);
+
+  // Fetch previous-close prices for all assets whenever the active portfolio changes
+  useEffect(() => {
+    if (!detail) { setPrevClose({}); return; }
+    const allAssets = [...detail.stocks, ...detail.currencies, ...detail.crypto];
+    Promise.allSettled(
+      allAssets.map((a) =>
+        api.getPreviousClose(a.asset_type, a.ticker).then((data) => ({ key: prevCloseKey(a), price: data.price }))
+      )
+    ).then((results) => {
+      const closes: Record<string, number> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled") closes[r.value.key] = r.value.price;
+      }
+      setPrevClose(closes);
+    });
+  }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-fetch detail whenever the active portfolio changes
   useEffect(() => {
@@ -476,6 +525,7 @@ export default function Dashboard() {
               detail={detail}
               loading={detailLoading}
               error={detailError}
+              prevClose={prevClose}
             />
           )}
         </div>
