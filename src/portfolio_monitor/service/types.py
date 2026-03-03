@@ -1,9 +1,12 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
 from portfolio_monitor.core.currency import Currency
+
+logger = logging.getLogger(__name__)
 
 
 class AssetTypes(Enum):
@@ -16,6 +19,15 @@ class AssetTypes(Enum):
 class AssetSymbol:
     ticker: str
     asset_type: AssetTypes
+
+    def __post_init__(self) -> None:
+        if isinstance(self.asset_type, str):
+            logger.warning(
+                "AssetSymbol received a primitive string for asset_type=%r; "
+                "upconverting to AssetTypes. Use AssetTypes directly.",
+                self.asset_type,
+            )
+            object.__setattr__(self, "asset_type", AssetTypes(self.asset_type))
 
     @property
     def symbol(self) -> str:
