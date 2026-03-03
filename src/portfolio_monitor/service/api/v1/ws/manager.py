@@ -51,6 +51,8 @@ class WebSocketManager:
         try:
             first_text = await asyncio.wait_for(ws.receive_text(), timeout=_AUTH_TIMEOUT)
             msg = _client_message.validate_json(first_text)
+        except WebSocketDisconnect:
+            return
         except (asyncio.TimeoutError, ValidationError, ValueError, Exception):
             await ws.close(code=1008)
             return
