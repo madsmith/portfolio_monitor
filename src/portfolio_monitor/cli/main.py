@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from portfolio_monitor.cli.commands.login import add_login_parser
 from portfolio_monitor.cli.commands.portfolio import add_portfolio_parser
@@ -33,7 +34,11 @@ def main() -> None:
     parser = get_arg_parser()
 
     args = parser.parse_args()
-    
+
+    if args.token is None:
+        # Allow token to be passed via environment variable for convenience
+        args.token = os.getenv("PORTFOLIO_MANAGER_TOKEN")
+
     args.func(args)
 
 

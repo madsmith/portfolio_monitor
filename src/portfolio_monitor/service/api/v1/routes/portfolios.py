@@ -2,7 +2,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core.currency import Currency
-from portfolio_monitor.portfolio.portfolio import Asset, Portfolio
+from portfolio_monitor.portfolio.portfolio import Asset, Lot, Portfolio
 from portfolio_monitor.portfolio.service import PortfolioService
 
 
@@ -10,8 +10,24 @@ def _currency_val(c: Currency | None) -> float | None:
     return float(c._value) if c is not None else None
 
 
+def _lot_dict(lot: Lot) -> dict:
+    return {
+        "date": lot.date.isoformat() if lot.date is not None else None,
+        "quantity": str(lot.quantity),
+        "price": _currency_val(lot.price),
+        "cost_basis": _currency_val(lot.cost_basis()),
+        "fees": _currency_val(lot.fees),
+        "rebates": _currency_val(lot.rebates),
+    }
+
+
 def _asset_dict(asset: Asset) -> dict:
     pl_pct = asset.profit_loss_percentage
+    sorted_lots = sorted(
+        asset.lots,
+        key=lambda lot: (lot.date is None, lot.date),
+        reverse=True,
+    )
     return {
         "ticker": asset.symbol.ticker,
         "asset_type": asset.asset_type,
@@ -21,6 +37,7 @@ def _asset_dict(asset: Asset) -> dict:
         "current_value": _currency_val(asset.current_value),
         "profit_loss": _currency_val(asset.profit_loss),
         "profit_loss_percentage": float(pl_pct) if pl_pct is not None else None,
+        "lots": [_lot_dict(lot) for lot in sorted_lots],
     }
 
 
