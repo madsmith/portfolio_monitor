@@ -73,7 +73,12 @@ export default function Dashboard() {
     setPortfolios((prev) =>
       prev.map((p) =>
         p.id === detail.id
-          ? { ...p, total_value: detail.total_value, total_profit_loss: detail.total_profit_loss, profit_loss_percentage: detail.profit_loss_percentage }
+          ? {
+              ...p,
+              total_value: detail.total_value,
+              total_profit_loss: detail.total_profit_loss,
+              profit_loss_percentage: detail.profit_loss_percentage
+            }
           : p
       )
     );
