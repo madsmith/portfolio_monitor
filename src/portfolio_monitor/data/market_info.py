@@ -23,8 +23,39 @@ class MarketInfo:
         local_time = at_time.astimezone(_EASTERN)
         if local_time.weekday() >= 5:  # Saturday or Sunday
             return False
+
         return _MARKET_PRE_OPEN_TIME <= local_time.time() < _MARKET_AFTER_CLOSE_TIME
-    
+
+    @classmethod
+    def is_market_pre_trading(cls, symbol: AssetSymbol, at_time: datetime | None = None) -> bool:
+        """Return True if the market for *symbol* is in pre-open phase at *at_time*."""
+        if at_time is None:
+            at_time = datetime.now(tz=_UTC)
+
+        if symbol.asset_type == AssetTypes.Crypto:
+            return False
+
+        local_time = at_time.astimezone(_EASTERN)
+        if local_time.weekday() >= 5:  # Saturday or Sunday
+            return False
+
+        return _MARKET_PRE_OPEN_TIME <= local_time.time() < _MARKET_OPEN_TIME
+
+    @classmethod
+    def is_market_after_trading(cls, symbol: AssetSymbol, at_time: datetime | None = None) -> bool:
+        """Return True if the market for *symbol* is in after-hours phase at *at_time*."""
+        if at_time is None:
+            at_time = datetime.now(tz=_UTC)
+
+        if symbol.asset_type == AssetTypes.Crypto:
+            return False
+
+        local_time = at_time.astimezone(_EASTERN)
+        if local_time.weekday() >= 5:  # Saturday or Sunday
+            return False
+
+        return _MARKET_CLOSE_TIME <= local_time.time() < _MARKET_AFTER_CLOSE_TIME
+
     @classmethod
     def get_previous_close_datetime(cls) -> datetime:
         """Return the datetime of the most recent market close (4:00 PM Eastern)."""
