@@ -91,9 +91,9 @@ export class PortfolioWebSocket {
             ws.send(JSON.stringify({ type: "subscribe", symbols: [...this.subscriptions.values()] }));
           }
         } else if (msg.type === "price") {
-          for (const h of this.priceHandlers) h(msg);
+          for (const handler of this.priceHandlers) handler(msg);
         } else if (msg.type === "previous_close") {
-          for (const h of this.previousCloseHandlers) h(msg);
+          for (const handler of this.previousCloseHandlers) handler(msg);
         } else if (msg.type === "price_update") {
           this.pendingUpdates.push(msg);
           if (this.rafHandle === null) {
@@ -101,7 +101,7 @@ export class PortfolioWebSocket {
               this.rafHandle = null;
               const batch = this.pendingUpdates.splice(0);
               if (batch.length > 0) {
-                for (const h of this.handlers) h(batch);
+                for (const handler of this.handlers) handler(batch);
               }
             });
           }
