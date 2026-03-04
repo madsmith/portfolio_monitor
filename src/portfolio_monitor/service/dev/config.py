@@ -31,14 +31,6 @@ class DevConfig(PortfolioMonitorConfig):
         "portfolio_monitor.dev.prime_history_minutes", default=120
     )
 
-    # OpenClaw alert delivery is opt-in in dev (suppressed by default)
-    openclaw_alert_enable_http = BindDefault[bool](
-        "portfolio_monitor.openclaw.alert_enable_http", default=False
-    )
-    openclaw_alert_enable_ws = BindDefault[bool](
-        "portfolio_monitor.openclaw.alert_enable_ws", default=True
-    )
-
     @classmethod
     def from_config_file(
         cls, config_path: Path, args: argparse.Namespace

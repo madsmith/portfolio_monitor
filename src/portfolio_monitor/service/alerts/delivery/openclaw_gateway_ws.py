@@ -54,6 +54,7 @@ class OpenClawGatewayWsDelivery:
         "to": "to",
         "thinking": "thinking",
         "timeout_seconds": "timeout",
+        "extra_prompt": "extraSystemPrompt",
     }
 
     def __init__(
@@ -72,6 +73,7 @@ class OpenClawGatewayWsDelivery:
         to: str | None = None,
         thinking: str | None = None,
         timeout_seconds: int | None = None,
+        extra_prompt: str | None = None
     ) -> None:
         if not gateway_token and not gateway_password:
             raise ValueError(
@@ -96,6 +98,7 @@ class OpenClawGatewayWsDelivery:
         for kwarg, json_key in self._OPTIONAL_FIELDS.items():
             value = kwargs[kwarg]
             if value is not None:
+                # Gateway expects sessionKey in the format "agent:{agent_id}:{session_key}"
                 if json_key == "sessionKey":
                     value = f"agent:{agent_id}:{value}"
                 self._agent_params_base[json_key] = value
@@ -198,6 +201,7 @@ class OpenClawGatewayWsDelivery:
             logger.info(
                 "Sending Gateway Alert: [%s] %s", alert.ticker.ticker, alert.kind
             )
+            print(f"!!!!Sending Gateway Alert: {frame}")
             await self._ws.send(json.dumps(frame))
         except Exception as exc:
             logger.warning("Failed to send alert frame: %s", exc)

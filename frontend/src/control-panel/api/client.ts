@@ -3,13 +3,14 @@
 // from the control panel server so no prefix is needed.
 const BASE = import.meta.env.DEV ? "/ctl" : "";
 
-export type SymbolData = { ticker: string; asset_type: string; price: number };
+export type SymbolData = { ticker: string; asset_type: string; price: number | null };
 
 export type StateResponse = {
+  synthetic: boolean;
   symbols: SymbolData[];
   detectors: string[];
   suppressed_detectors: string[];
-  tick_interval: number;
+  tick_interval: number | null;
   paused: boolean;
 };
 

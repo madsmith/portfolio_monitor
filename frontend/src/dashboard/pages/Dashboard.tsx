@@ -43,6 +43,31 @@ export default function Dashboard() {
 
   const wsRef = useRef<PortfolioWebSocket | null>(null);
 
+  // Promise caches — deduplicate requests across background + foreground effects
+  // and across React StrictMode's double-invocation.
+  const detailCacheRef = useRef<Record<string, Promise<PortfolioDetail>>>({});
+  const prevCloseCacheRef = useRef<Record<string, Promise<Record<string, number>>>>({});
+
+  function cachedDetail(id: string): Promise<PortfolioDetail> {
+    detailCacheRef.current[id] ??= api.getPortfolio(id);
+    return detailCacheRef.current[id];
+  }
+
+  function cachedPrevClose(d: PortfolioDetail): Promise<Record<string, number>> {
+    prevCloseCacheRef.current[d.id] ??= Promise.allSettled(
+      [...d.stocks, ...d.currencies, ...d.crypto].map((a) =>
+        api.getPreviousClose(a.asset_type, a.ticker).then((data) => ({ key: prevCloseKey(a), price: data.price }))
+      )
+    ).then((results) => {
+      const closes: Record<string, number> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled") closes[r.value.key] = r.value.price;
+      }
+      return closes;
+    });
+    return prevCloseCacheRef.current[d.id];
+  }
+
   // Connect WebSocket on mount, close on unmount
   useEffect(() => {
     const ws = new PortfolioWebSocket();
@@ -87,22 +112,16 @@ export default function Dashboard() {
   // Fetch portfolio list once. Also kicks off background detail+prevClose fetches for all
   // portfolios so the overview "Today's Chg" column is populated immediately.
   useEffect(() => {
-    api
-      .getPortfolios()
+    let active = true;
+    api.getPortfolios()
       .then((list) => {
+        if (!active) return;
         setPortfolios(list);
         for (const p of list) {
-          api.getPortfolio(p.id).then((d) => {
-            const allAssets = [...d.stocks, ...d.currencies, ...d.crypto];
-            Promise.allSettled(
-              allAssets.map((a) =>
-                api.getPreviousClose(a.asset_type, a.ticker).then((data) => ({ key: prevCloseKey(a), price: data.price }))
-              )
-            ).then((results) => {
-              const closes: Record<string, number> = {};
-              for (const r of results) {
-                if (r.status === "fulfilled") closes[r.value.key] = r.value.price;
-              }
+          cachedDetail(p.id).then((d) => {
+            if (!active) return;
+            cachedPrevClose(d).then((closes) => {
+              if (!active) return;
               const chg = computeTodayChange(d, closes);
               if (chg !== null) setPortfolioTodayChange((prev) => ({ ...prev, [d.id]: chg }));
             });
@@ -110,45 +129,43 @@ export default function Dashboard() {
         }
       })
       .catch((e: Error) => {
+        if (!active) return;
         if (e.message === "401") { clearToken(); navigate("/login"); return; }
         setPortfoliosError("Failed to load portfolios");
       })
-      .finally(() => setPortfoliosLoading(false));
-  }, [navigate]);
+      .finally(() => { if (active) setPortfoliosLoading(false); });
+    return () => { active = false; };
+  }, [navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch previous-close prices for the active portfolio
   useEffect(() => {
     if (!detail) { setPrevClose({}); return; }
-    const allAssets = [...detail.stocks, ...detail.currencies, ...detail.crypto];
-    Promise.allSettled(
-      allAssets.map((a) =>
-        api.getPreviousClose(a.asset_type, a.ticker).then((data) => ({ key: prevCloseKey(a), price: data.price }))
-      )
-    ).then((results) => {
-      const closes: Record<string, number> = {};
-      for (const r of results) {
-        if (r.status === "fulfilled") closes[r.value.key] = r.value.price;
-      }
+    let active = true;
+    cachedPrevClose(detail).then((closes) => {
+      if (!active) return;
       setPrevClose(closes);
       const chg = computeTodayChange(detail, closes);
       if (chg !== null) setPortfolioTodayChange((prev) => ({ ...prev, [detail.id]: chg }));
     });
+    return () => { active = false; };
   }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-fetch detail whenever the active portfolio changes
+  // Load detail whenever the active portfolio changes
   useEffect(() => {
     if (!activeId) { setDetail(null); return; }
+    let active = true;
     setDetailLoading(true);
     setDetailError(null);
-    api
-      .getPortfolio(activeId)
-      .then(setDetail)
+    cachedDetail(activeId)
+      .then((d) => { if (active) setDetail(d); })
       .catch((e: Error) => {
+        if (!active) return;
         if (e.message === "401") { clearToken(); navigate("/login"); return; }
         setDetailError(e.message === "404" ? "Portfolio not found" : "Failed to load portfolio");
       })
-      .finally(() => setDetailLoading(false));
-  }, [activeId, navigate]);
+      .finally(() => { if (active) setDetailLoading(false); });
+    return () => { active = false; };
+  }, [activeId, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-[#0f1117] text-slate-300 pt-8 px-4">

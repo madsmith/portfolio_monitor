@@ -141,6 +141,7 @@ async def run_dev_service(config: DevConfig) -> None:
         for d in detectors
     }
     alert_router.add_target(LoggingAlertDelivery())
+    print("HTTP", config.openclaw_alert_enable_http, config.openclaw_auth_key, config.openclaw_agent_id)
     if config.openclaw_alert_enable_http:
         assert config.openclaw_auth_key, "openclaw_auth_key is required for HTTP delivery"
         assert config.openclaw_agent_id, "openclaw_agent_id is required for HTTP delivery"
@@ -155,6 +156,7 @@ async def run_dev_service(config: DevConfig) -> None:
             )
         )
 
+    print("WS", config.openclaw_alert_enable_ws, (config.openclaw_gateway_token or config.openclaw_gateway_password), config.openclaw_agent_id)
     if config.openclaw_alert_enable_ws and (
         config.openclaw_gateway_token or config.openclaw_gateway_password
     ):
@@ -169,6 +171,7 @@ async def run_dev_service(config: DevConfig) -> None:
                 device_identity_file=config.openclaw_gateway_device_identity_file,
                 name="Portfolio Alert",
                 session_key=config.openclaw_session_key,
+                extra_prompt=config.openclaw_alert_extra_prompt,
             )
         )
 

@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
+
 import logfire
 import uvicorn
 from appconf.omegaconf.errors import PrivateConfigError
@@ -42,7 +44,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def run_service(config: PortfolioMonitorConfig) -> None:
+async def _start_vite() -> asyncio.subprocess.Process:
+    return await asyncio.create_subprocess_exec("pnpm", "dev", cwd=str(_FRONTEND_DIR))
+
+
+async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -> None:
     """Run the monitor service until interrupted"""
 
     if config.debug:
@@ -105,9 +111,20 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
     )
     portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)
     alert_router = AlertRouter(bus=bus)
+    if is_dev:
+        # Suppress all alert delivery by default in dev mode;
+        # detectors still process data and build history.
+        alert_router.suppressed_detectors = {
+            d.name for d in detection_engine.default_detectors
+        } | {
+            d.name
+            for detectors in detection_engine.asset_detectors.values()
+            for d in detectors
+        }
     alert_router.add_target(LoggingAlertDelivery())
     # TODO: make configurable or state driven.
-    if config.openclaw_auth_key and config.openclaw_agent_id:
+    print("HTTP", config.openclaw_alert_enable_http, config.openclaw_auth_key, config.openclaw_agent_id)
+    if config.openclaw_alert_enable_http and config.openclaw_auth_key and config.openclaw_agent_id:
         alert_router.add_target(
             OpenClawAgentHttpDelivery(
                 config.openclaw_host,
@@ -118,7 +135,8 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
                 session_key=config.openclaw_session_key,
             )
         )
-    if (config.openclaw_gateway_token or config.openclaw_gateway_password) and config.openclaw_agent_id:
+    print("WS", config.openclaw_alert_enable_ws, (config.openclaw_gateway_token or config.openclaw_gateway_password), config.openclaw_agent_id)
+    if config.openclaw_alert_enable_ws and (config.openclaw_gateway_token or config.openclaw_gateway_password) and config.openclaw_agent_id:
         alert_router.add_target(
             OpenClawGatewayWsDelivery(
                 config.openclaw_host,
@@ -129,6 +147,7 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
                 device_identity_file=config.openclaw_gateway_device_identity_file,
                 name="Portfolio Alert",
                 session_key=config.openclaw_session_key,
+                extra_prompt=config.openclaw_alert_extra_prompt,
             )
         )
 
@@ -142,7 +161,7 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
     all_symbols: list[AssetSymbol] = list(
         {asset.symbol for portfolio in portfolios for asset in portfolio.assets()}
     )
-    await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
+    await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")), limit=config.polygon_prime_limit)
 
     # Start API server
     ctx = PortfolioMonitorContext(config=config, portfolio_service=portfolio_service, bus=bus, data_provider=data_provider)
@@ -155,16 +174,59 @@ async def run_service(config: PortfolioMonitorConfig) -> None:
     )
     api_server: Server = uvicorn.Server(uvicorn_config)
 
+    # Build control panel for dev-live mode (synthetic_source=None disables sim controls)
+    cp_server: Server | None = None
+    if is_dev:
+        from portfolio_monitor.service.dev.control_panel.app import ControlPanelApp
+
+        control_panel = ControlPanelApp(
+            bus=bus,
+            synthetic_source=None,
+            detection_engine=detection_engine,
+            detection_service=detection_service,
+            alert_router=alert_router,
+            aggregate_cache=aggregate_cache,
+            portfolios=portfolios,
+        )
+        cp_uvicorn_config = uvicorn.Config(
+            control_panel.app,
+            host=config.host,
+            port=config.control_panel_port,
+            log_level="debug" if config.debug else "info",
+        )
+        cp_server = uvicorn.Server(cp_uvicorn_config)
+
+        def _initiate_shutdown() -> None:
+            control_panel.shutdown()
+            cp_server.should_exit = True  # type: ignore[union-attr]
+            api_server.should_exit = True
+
+        control_panel._stop_callback = _initiate_shutdown
+
+    vite_proc: asyncio.subprocess.Process | None = None
     try:
         await alert_router.connect_all()
         await monitor.start()
-        await api_server.serve()
+        if is_dev:
+            vite_proc = await _start_vite()
+            print(f"\nControl:   http://{config.host}:{config.control_panel_port}/")
+            print(f"Dashboard: http://{config.host}:{config.port}/")
+            print(f"Frontend:  http://127.0.0.1:5173/")
+            print(f"API:       http://{config.host}:{config.port}/api/v1/health\n")
+        if cp_server is not None:
+            await asyncio.gather(api_server.serve(), cp_server.serve())
+        else:
+            await api_server.serve()
     except asyncio.CancelledError:
         logger.info("Main task cancelled, initiating graceful shutdown...")
     except Exception as e:
         logger.error("Error in service: %s", e)
         raise
     finally:
+        if vite_proc is not None and vite_proc.returncode is None:
+            vite_proc.terminate()
+            await vite_proc.wait()
+
         try:
             if monitor.running:
                 await monitor.stop()
@@ -231,6 +293,11 @@ def arg_parser() -> argparse.ArgumentParser:
         help="Run in dev mode with synthetic data (no API keys needed)",
     )
     run_parser.add_argument(
+        "--dev-live",
+        action="store_true",
+        help="Run with live Polygon data but start Vite dev server for frontend development",
+    )
+    run_parser.add_argument(
         "--tick-interval",
         type=float,
         default=5.0,
@@ -260,6 +327,7 @@ def main() -> None:
     if args.command is None:
         args = parser.parse_args(["run"])
 
+
     # Dev mode — synthetic data, no Polygon API
     if args.dev:
         from portfolio_monitor.service.dev import run_dev_service
@@ -280,6 +348,9 @@ def main() -> None:
         else:
             raise e
 
+    if args.dev_live:
+        config.dev_console = True
+
     if not config.auth_key:
         return _auth_key_exit()
 
@@ -290,7 +361,7 @@ def main() -> None:
     logfire.configure(service_name="Portfolio Monitor")
 
     try:
-        asyncio.run(run_service(config))
+        asyncio.run(run_service(config, is_dev=config.dev_console))
     except KeyboardInterrupt:
         logger.info("Shutting down [Ctrl+C]")
 

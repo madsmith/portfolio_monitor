@@ -1,4 +1,4 @@
-.PHONY: install-dev frontend dev run clean build
+.PHONY: install-dev frontend dev dev-live run clean build
 
 install-dev: frontend/node_modules
 	uv pip install -e '.[dev]'
@@ -14,6 +14,9 @@ frontend/node_modules: frontend/package.json
 
 dev: frontend/node_modules
 	portfolio-monitor run --dev
+
+dev-live: frontend/node_modules
+	portfolio-monitor run --dev-live
 
 run: frontend
 	portfolio-monitor

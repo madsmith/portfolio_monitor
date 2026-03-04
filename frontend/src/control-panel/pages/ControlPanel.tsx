@@ -107,6 +107,7 @@ function Btn({
 export default function ControlPanel() {
   const [loaded, setLoaded] = useState(false);
   const [stopped, setStopped] = useState(false);
+  const [synthetic, setSynthetic] = useState(true);
 
   const [symbols, setSymbols] = useState<SymbolData[]>([]);
   const [symbolPrices, setSymbolPrices] = useState<Record<string, number>>({});
@@ -133,9 +134,12 @@ export default function ControlPanel() {
   // Load initial state
   useEffect(() => {
     api.getState().then((state) => {
+      setSynthetic(state.synthetic);
       setSymbols(state.symbols);
       const prices: Record<string, number> = {};
-      for (const s of state.symbols) prices[s.ticker] = s.price;
+      for (const s of state.symbols) {
+        if (s.price !== null) prices[s.ticker] = s.price;
+      }
       setSymbolPrices(prices);
       setDetectors(
         state.detectors.map((name) => ({
@@ -145,8 +149,9 @@ export default function ControlPanel() {
       );
       setPaused(state.paused);
       pausedRef.current = state.paused;
-      setTickInterval(state.tick_interval);
-      tickIntervalRef.current = state.tick_interval;
+      const interval = state.tick_interval ?? 5.0;
+      setTickInterval(interval);
+      tickIntervalRef.current = interval;
       setLoaded(true);
     });
   }, []);
@@ -304,28 +309,33 @@ export default function ControlPanel() {
   }
 
   const allExpanded = symbols.length > 0 && expandedTickers.size === symbols.length;
+  const numCols = synthetic ? 6 : 5;
 
   return (
     <div className="bg-[#0d1117] text-[#c9d1d9] text-sm min-h-screen">
-      {/* Tick progress bar */}
-      <div
-        ref={tickBarRef}
-        style={{ width: "0%", transition: "width 0.1s linear" }}
-        className="fixed top-0 left-0 h-[3px] bg-[#58a6ff] z-50"
-      />
+      {/* Tick progress bar — synthetic only */}
+      {synthetic && (
+        <div
+          ref={tickBarRef}
+          style={{ width: "0%", transition: "width 0.1s linear" }}
+          className="fixed top-0 left-0 h-[3px] bg-[#58a6ff] z-50"
+        />
+      )}
 
       {/* Header */}
-      <header className="bg-[#161b22] border-b border-[#30363d] px-6 py-3 flex justify-between items-center mt-[3px]">
+      <header className={`bg-[#161b22] border-b border-[#30363d] px-6 py-3 flex justify-between items-center ${synthetic ? "mt-[3px]" : ""}`}>
         <h1 className="text-base font-semibold text-[#58a6ff]">
-          Portfolio Monitor — Dev Mode
+          Portfolio Monitor — {synthetic ? "Dev Mode" : "Live Mode"}
         </h1>
-        <div className="text-xs text-[#8b949e]">
-          Tick <span className="text-[#58a6ff]">{tickCount}</span>
-          {" · "}
-          <span>{regime}</span>
-          {" · "}
-          <span>{paused ? "Paused" : "Running"}</span>
-        </div>
+        {synthetic && (
+          <div className="text-xs text-[#8b949e]">
+            Tick <span className="text-[#58a6ff]">{tickCount}</span>
+            {" · "}
+            <span>{regime}</span>
+            {" · "}
+            <span>{paused ? "Paused" : "Running"}</span>
+          </div>
+        )}
       </header>
 
       {/* Main grid: content | sidebar */}
@@ -335,49 +345,59 @@ export default function ControlPanel() {
       >
         {/* Left column */}
         <div className="bg-[#0d1117] p-4 flex flex-col gap-4">
-          {/* Controls */}
-          <Panel header="Controls">
-            <div className="flex flex-wrap gap-2 items-center p-3">
-              <Btn active={paused} onClick={handleTogglePause}>
-                {paused ? "Resume" : "Pause"}
-              </Btn>
-
-              <label className="flex items-center gap-2 text-xs text-[#8b949e] flex-1 min-w-0">
-                Tick
-                <input
-                  type="range"
-                  min="0.5"
-                  max="300"
-                  step="0.5"
-                  value={tickInterval}
-                  onChange={(e) => handleTickIntervalInput(parseFloat(e.target.value))}
-                  className="flex-1 min-w-0 accent-[#58a6ff]"
-                />
-                <span className="text-[#58a6ff] min-w-[3em] tabular-nums">
-                  {tickInterval}s
-                </span>
-              </label>
-
-              <Btn active={regime === "CALM"} onClick={() => handleSetRegime("CALM")}>
-                Calm
-              </Btn>
-              <Btn
-                active={regime === "VOLATILE"}
-                onClick={() => handleSetRegime("VOLATILE")}
-              >
-                Volatile
-              </Btn>
-
-              <span className="ml-auto flex gap-2">
-                <Btn danger onClick={handleReset}>
-                  Reset
+          {/* Controls — synthetic mode only */}
+          {synthetic ? (
+            <Panel header="Controls">
+              <div className="flex flex-wrap gap-2 items-center p-3">
+                <Btn active={paused} onClick={handleTogglePause}>
+                  {paused ? "Resume" : "Pause"}
                 </Btn>
+
+                <label className="flex items-center gap-2 text-xs text-[#8b949e] flex-1 min-w-0">
+                  Tick
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="300"
+                    step="0.5"
+                    value={tickInterval}
+                    onChange={(e) => handleTickIntervalInput(parseFloat(e.target.value))}
+                    className="flex-1 min-w-0 accent-[#58a6ff]"
+                  />
+                  <span className="text-[#58a6ff] min-w-[3em] tabular-nums">
+                    {tickInterval}s
+                  </span>
+                </label>
+
+                <Btn active={regime === "CALM"} onClick={() => handleSetRegime("CALM")}>
+                  Calm
+                </Btn>
+                <Btn
+                  active={regime === "VOLATILE"}
+                  onClick={() => handleSetRegime("VOLATILE")}
+                >
+                  Volatile
+                </Btn>
+
+                <span className="ml-auto flex gap-2">
+                  <Btn danger onClick={handleReset}>
+                    Reset
+                  </Btn>
+                  <Btn danger onClick={handleStopServer}>
+                    Stop Server
+                  </Btn>
+                </span>
+              </div>
+            </Panel>
+          ) : (
+            <Panel header="Controls">
+              <div className="flex gap-2 p-3">
                 <Btn danger onClick={handleStopServer}>
                   Stop Server
                 </Btn>
-              </span>
-            </div>
-          </Panel>
+              </div>
+            </Panel>
+          )}
 
           {/* Securities table */}
           <Panel
@@ -401,12 +421,12 @@ export default function ControlPanel() {
                       ["Type", "text-left"],
                       ["Price", "text-right"],
                       ["Change", "text-right"],
-                      ["Bias", "text-left"],
+                      ...(synthetic ? [["Bias", "text-left"]] : []),
                       ["", "text-right"],
                     ] as [string, string][]
                   ).map(([label, align]) => (
                     <th
-                      key={label}
+                      key={label || "_expand"}
                       className={`${align} text-[0.8rem] uppercase tracking-wide text-[#8b949e] font-semibold px-2 py-1.5 border-b border-[#30363d]`}
                     >
                       {label}
@@ -416,7 +436,7 @@ export default function ControlPanel() {
               </thead>
               <tbody>
                 {symbols.map((s) => {
-                  const price = symbolPrices[s.ticker] ?? s.price;
+                  const price = symbolPrices[s.ticker] ?? s.price ?? null;
                   const change = symbolChanges[s.ticker] ?? null;
                   const expanded = expandedTickers.has(s.ticker);
                   return (
@@ -434,7 +454,7 @@ export default function ControlPanel() {
                           </span>
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums">
-                          {formatPrice(price)}
+                          {price !== null ? formatPrice(price) : "—"}
                         </td>
                         <td
                           className={`px-2 py-1.5 text-right tabular-nums ${
@@ -449,34 +469,36 @@ export default function ControlPanel() {
                             ? "—"
                             : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
                         </td>
-                        <td
-                          className="px-2 py-1.5"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex gap-0.5">
-                            {BIAS_STEPS.map((step) => (
-                              <button
-                                key={step}
-                                onClick={() => api.setBias(s.ticker, step)}
-                                className={`text-[0.8rem] px-1 py-0.5 rounded border border-[#30363d] bg-[#21262d] cursor-pointer font-[inherit] ${
-                                  step < 0
-                                    ? "text-[#f85149] hover:bg-[#f8514922]"
-                                    : "text-[#3fb950] hover:bg-[#3fb95022]"
-                                }`}
-                              >
-                                {step > 0 ? "+" : ""}
-                                {step}%
-                              </button>
-                            ))}
-                          </div>
-                        </td>
+                        {synthetic && (
+                          <td
+                            className="px-2 py-1.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex gap-0.5">
+                              {BIAS_STEPS.map((step) => (
+                                <button
+                                  key={step}
+                                  onClick={() => api.setBias(s.ticker, step)}
+                                  className={`text-[0.8rem] px-1 py-0.5 rounded border border-[#30363d] bg-[#21262d] cursor-pointer font-[inherit] ${
+                                    step < 0
+                                      ? "text-[#f85149] hover:bg-[#f8514922]"
+                                      : "text-[#3fb950] hover:bg-[#3fb95022]"
+                                  }`}
+                                >
+                                  {step > 0 ? "+" : ""}
+                                  {step}%
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                        )}
                         <td className="w-6 text-center text-[#484f58] text-3xl pr-2">
                           {expanded ? "▾" : "▸"}
                         </td>
                       </tr>
                       {expanded && (
                         <tr className="border-b border-[#30363d]">
-                          <td colSpan={6} className="px-2 py-1 bg-[#090d12]">
+                          <td colSpan={numCols} className="px-2 py-1 bg-[#090d12]">
                             <Sparkline prices={priceHistory[s.ticker] ?? []} />
                           </td>
                         </tr>

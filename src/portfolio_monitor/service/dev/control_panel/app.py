@@ -18,7 +18,7 @@ from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.portfolio import Portfolio
 from portfolio_monitor.service.alerts.router import AlertRouter
 from portfolio_monitor.service.dev.price_generator import Regime
-from portfolio_monitor.service.dev.synthetic_source import SyntheticDataSource
+from portfolio_monitor.service.dev.synthetic_source import SyntheticDataSource  # noqa: TC001
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class ControlPanelApp:
     def __init__(
         self,
         bus: EventBus,
-        synthetic_source: SyntheticDataSource,
+        synthetic_source: SyntheticDataSource | None,
         detection_engine: DeviationEngine,
         detection_service: DetectionService,
         alert_router: AlertRouter,
@@ -39,7 +39,7 @@ class ControlPanelApp:
         portfolios: list[Portfolio],
     ) -> None:
         self._bus: EventBus = bus
-        self._source: SyntheticDataSource = synthetic_source
+        self._source: SyntheticDataSource | None = synthetic_source
         self._engine: DeviationEngine = detection_engine
         self._detection_service: DetectionService = detection_service
         self._alert_router: AlertRouter = alert_router
@@ -112,7 +112,11 @@ class ControlPanelApp:
         )
         symbols_data = []
         for symbol in sorted(all_symbols, key=lambda s: s.ticker):
-            price = self._source.generator.get_price(symbol.ticker)
+            if self._source is not None:
+                price = self._source.generator.get_price(symbol.ticker)
+            else:
+                agg = self._cache.get_current(symbol)
+                price = agg.close if agg is not None else None
             symbols_data.append(
                 {
                     "ticker": symbol.ticker,
@@ -129,15 +133,18 @@ class ControlPanelApp:
 
         return JSONResponse(
             {
+                "synthetic": self._source is not None,
                 "symbols": symbols_data,
                 "detectors": detector_names,
                 "suppressed_detectors": list(self._alert_router.suppressed_detectors),
-                "tick_interval": self._source.tick_interval,
-                "paused": self._source.paused,
+                "tick_interval": self._source.tick_interval if self._source is not None else None,
+                "paused": self._source.paused if self._source is not None else False,
             }
         )
 
     async def set_bias(self, request: Request) -> JSONResponse:
+        if self._source is None:
+            return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
         body = await request.json()
         ticker = body["ticker"]
         bias_pct = float(body["bias_pct"])
@@ -145,6 +152,8 @@ class ControlPanelApp:
         return JSONResponse({"ok": True, "ticker": ticker, "bias_pct": bias_pct})
 
     async def toggle_pause(self, request: Request) -> JSONResponse:
+        if self._source is None:
+            return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
         if self._source.paused:
             self._source.resume()
         else:
@@ -152,12 +161,16 @@ class ControlPanelApp:
         return JSONResponse({"ok": True, "paused": self._source.paused})
 
     async def set_regime(self, request: Request) -> JSONResponse:
+        if self._source is None:
+            return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
         body = await request.json()
         regime = Regime(body["regime"].lower())
         self._source.set_regime(regime)
         return JSONResponse({"ok": True, "regime": regime.value})
 
     async def set_tick_interval(self, request: Request) -> JSONResponse:
+        if self._source is None:
+            return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
         body = await request.json()
         interval = float(body["interval"])
         self._source.tick_interval = interval
@@ -175,6 +188,8 @@ class ControlPanelApp:
 
     async def reset(self, request: Request) -> JSONResponse:
         """Clear detector state and cooldowns, re-prime with fresh history."""
+        if self._source is None:
+            return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
         # Clear cooldowns
         self._engine.clear_cooldowns()
 
@@ -261,22 +276,25 @@ class ControlPanelApp:
                 while not self._shutdown.is_set():
                     if await request.is_disconnected():
                         break
-                    data = {
-                        "paused": self._source.paused,
-                        "tick_interval": self._source.tick_interval,
-                        "tick_count": self._source.tick_count,
-                        "last_tick": (
-                            self._source.last_tick_time.isoformat()
-                            if self._source.last_tick_time
-                            else None
-                        ),
-                        "next_tick": (
-                            self._source.next_tick_time.isoformat()
-                            if self._source.next_tick_time
-                            else None
-                        ),
-                    }
-                    yield f"data: {json.dumps(data)}\n\n"
+                    if self._source is not None:
+                        data = {
+                            "paused": self._source.paused,
+                            "tick_interval": self._source.tick_interval,
+                            "tick_count": self._source.tick_count,
+                            "last_tick": (
+                                self._source.last_tick_time.isoformat()
+                                if self._source.last_tick_time
+                                else None
+                            ),
+                            "next_tick": (
+                                self._source.next_tick_time.isoformat()
+                                if self._source.next_tick_time
+                                else None
+                            ),
+                        }
+                        yield f"data: {json.dumps(data)}\n\n"
+                    else:
+                        yield ": keepalive\n\n"
                     await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 pass

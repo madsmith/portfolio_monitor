@@ -35,16 +35,21 @@ class DetectionService:
 
         self._bus.subscribe(AggregateUpdated, self._on_aggregate_updated)
 
-    async def prime(self, symbols: list[AssetSymbol], end: datetime) -> None:
+    async def prime(self, symbols: list[AssetSymbol], end: datetime, limit: int | None = None) -> None:
         """Fetch historical data to warm up detectors, then clear cooldowns."""
         if self._data_provider is None:
             raise RuntimeError("Cannot prime without a DataProvider")
 
+        time_step = timedelta(minutes=1)
+
         start: datetime | None = self._detection_engine.preload_data_age(
-            end, timedelta(minutes=1)
+            end, time_step
         )
         if start is None:
             return
+
+        if limit is not None:
+            start = max(start, end - time_step * limit)
 
         logger.info("Priming detection engine: %s to %s", start, end)
         for symbol in symbols:
