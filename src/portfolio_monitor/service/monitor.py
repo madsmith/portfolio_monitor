@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from portfolio_monitor.core.events import EventBus
@@ -60,67 +60,46 @@ class MonitorService:
         logger.info("Monitor stopped")
 
     async def _run(self) -> None:
-        update_interval: int = 60
-        stock_update_interval: int = 24 * 60 * 60
+        update_interval = timedelta(seconds=60)
 
-        stocks: dict[AssetSymbol, AssetUpdateRecord] = {}
-        crypto: dict[AssetSymbol, AssetUpdateRecord] = {}
-
-        # Initialize update records
-        for portfolio in self._portfolios:
-            for asset in portfolio.assets():
-                record: AssetUpdateRecord = AssetUpdateRecord(asset.symbol)
-                if asset.asset_type == "stock":
-                    stocks[asset.symbol] = record
-                elif asset.asset_type == "crypto":
-                    crypto[asset.symbol] = record
+        all_symbols: dict[AssetSymbol, AssetUpdateRecord] = {
+            asset.symbol: AssetUpdateRecord(asset.symbol)
+            for portfolio in self._portfolios
+            for asset in portfolio.assets()
+        }
 
         try:
             while self.running:
-                # Fetch stocks (daily granularity)
-                for record in stocks.values():
-                    previous_close: datetime = MarketInfo.get_previous_close_datetime()
+                now: datetime = datetime.now(ZoneInfo("UTC"))
+                next_update = now + update_interval
+
+                # TODO: add option to offset data by configurable delay to support limited access to realtime data (e.g. 15-minute delayed data from Polygon free tier)
+                for record in all_symbols.values():
                     symbol: AssetSymbol = record.symbol
 
-                    if (
-                        record.time_updated
-                        and (previous_close - record.time_updated).total_seconds()
-                        < stock_update_interval
-                    ):
+                    if not MarketInfo.is_market_open(symbol, now):
+                        continue
+
+                    if record.time_updated and now <= record.time_updated + update_interval:
                         logger.debug("Skipping update for %s - too soon", symbol)
+                        next_update = min(next_update, record.time_updated + update_interval)
                         continue
 
-                    logger.debug("Updating stock %s", symbol)
-                    aggregate: (
-                        Aggregate | None
-                    ) = await self._data_provider.get_previous_close(symbol)
+                    logger.debug("Updating %s", symbol)
+                    aggregate: Aggregate | None = await self._data_provider.get_aggregate(symbol)
                     if aggregate:
-                        record.time_updated = aggregate.date_open
+                        record.time_updated = aggregate.date_open + aggregate.timespan
+                        next_update = min(next_update, record.time_updated + update_interval)
                         await self._bus.publish(
                             AggregateUpdated(symbol=symbol, aggregate=aggregate)
                         )
 
-                # Fetch crypto (minute granularity) via DataProvider
-                for record in crypto.values():
-                    now: datetime = datetime.now(ZoneInfo("UTC"))
-                    symbol = record.symbol
-
-                    if (
-                        record.time_updated
-                        and (now - record.time_updated).total_seconds()
-                        < update_interval
-                    ):
-                        continue
-
-                    logger.debug("Updating crypto %s", symbol)
-                    aggregate = await self._data_provider.get_aggregate(symbol)
-                    if aggregate:
-                        record.time_updated = aggregate.date_open
-                        await self._bus.publish(
-                            AggregateUpdated(symbol=symbol, aggregate=aggregate)
-                        )
-
-                await asyncio.sleep(update_interval)
+                sleep_seconds = max(
+                    (next_update - now).total_seconds(),
+                    update_interval.total_seconds() / 2,
+                )
+                logger.debug("Monitor sleeping %.1f seconds", sleep_seconds)
+                await asyncio.sleep(sleep_seconds)
 
         except asyncio.CancelledError:
             logger.debug("Monitor loop cancelled")
