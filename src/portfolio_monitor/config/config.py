@@ -36,6 +36,7 @@ class PortfolioMonitorConfig(AppConfig):
     monitors = BindDefault[dict[str, dict[str, Any]]](
         "portfolio_monitor.monitors", default={"default": {}}
     )
+    alert_cooldown = BindDefault[int]("portfolio_monitor.monitors.cooldown", default=15)
 
     debug = BindDefault[bool]("portfolio_monitor.debug", default=False)
     dev_console = BindDefault[bool]("portfolio_monitor.dev_console", arg_key="dev", default=False)

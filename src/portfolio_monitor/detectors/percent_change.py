@@ -3,51 +3,9 @@ from datetime import datetime, timedelta
 
 from portfolio_monitor.core.datetime import parse_period
 from portfolio_monitor.data.aggregate_cache import Aggregate
+from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.detectors import Alert, Detector, DetectorRegistry
 from portfolio_monitor.service.types import AssetSymbol
-
-
-@DetectorRegistry.register
-class PercentChangeFromPreviousCloseDetector(Detector):
-    @property
-    def name(self) -> str:
-        return "percent_change_previous_close"
-
-    def __init__(self, threshold: float = 0.03):
-        """Detector for significant percentage changes from previous close price
-
-        Args:
-            threshold: Percent change threshold that triggers an alert (default: 0.03 for 3%)
-        """
-        self.threshold = threshold
-        self.previous_closes: dict[AssetSymbol, float] = {}
-
-    def update(self, aggregate: Aggregate) -> Alert | None:
-        ticker = aggregate.symbol
-        if ticker not in self.previous_closes:
-            self.previous_closes[ticker] = aggregate.close
-            return None
-
-        prev_close = self.previous_closes[ticker]
-        pct = (aggregate.close - prev_close) / prev_close
-
-        # Update previous close for next time
-        self.previous_closes[ticker] = aggregate.close
-
-        if abs(pct) >= self.threshold:
-            msg = f"{ticker}: {pct * 100:.2f}% vs previous close ({prev_close:.4f})"
-            extra = {"percent_change": pct * 100}
-            return Alert(ticker, self.name, msg, extra, aggregate.date_open, aggregate)
-        return None
-
-    def preload_data_age(
-        self, current_time: datetime, sample_interval: timedelta
-    ) -> datetime | None:
-        """
-        This detector only needs one previous data point to function.
-        """
-        # Need one previous data point
-        return current_time - sample_interval
 
 
 @dataclass
@@ -83,7 +41,8 @@ class PercentChangeDetector(Detector):
 
         pct = (aggregate.close - prev_close) / prev_close
         if abs(pct) >= self.threshold:
-            msg = f"{symbol}: {pct * 100:.2f}% vs previous close ({prev_close:.4f}) [{self.period} ago]"
+            reference_label = "previous session close" if self.period == "1d" else f"{self.period} ago"
+            msg = f"{symbol}: {pct * 100:.2f}% vs previous close ({prev_close:.4f}) [{reference_label}]"
             extra = {"percent_change": pct * 100}
             return Alert(symbol, self.name, msg, extra, aggregate.date_open, aggregate)
         return None
@@ -143,18 +102,28 @@ class PercentChangeDetector(Detector):
 
     def _get_reference_close(self, aggregate: Aggregate) -> float | None:
         """
-        For the given ticker, return the previous close price for the set period.
+        For the given ticker, return the reference close price.
+
+        For period="1d", uses MarketInfo to find the actual previous session close
+        datetime and returns the most recent history entry at or before that boundary.
+        For all other periods, returns the oldest entry in the rolling window.
         """
         symbol = aggregate.symbol
-        if symbol not in self._price_history:
+        history = self._price_history.get(symbol)
+        if not history or len(history) < 2:
             return None
 
-        # Need at least 2 prices to calculate a percentage change
-        if len(self._price_history[symbol]) < 2:
-            return None
+        if self.period == "1d":
+            prev_session_close = MarketInfo.get_previous_market_close(symbol, aggregate.date_open)
+            reference: PreviousClose | None = None
+            for pc in history:
+                if pc.date <= prev_session_close:
+                    reference = pc
+                else:
+                    break
+            return reference.close if reference is not None else None
 
-        oldest_close = self._price_history[symbol][0]
-        return oldest_close.close
+        return history[0].close
 
     def preload_data_age(
         self, current_time: datetime, sample_interval: timedelta

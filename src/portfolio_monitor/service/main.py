@@ -3,7 +3,7 @@ import asyncio
 import logging
 import secrets
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -91,17 +91,23 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     default_detectors = [
         {"name": name, "args": args} for name, args in default_detectors_config.items()
     ]
-    detection_engine = DeviationEngine(default_detectors=default_detectors)
+    detection_engine = DeviationEngine(
+        default_detectors=default_detectors,
+        cooldown=timedelta(minutes=config.alert_cooldown)
+    )
 
     # Register per-asset detectors
-    for ticker, detector_configs in monitors_config.items():
-        if ticker == "default":
+    for key, value in monitors_config.items():
+        if key == "default":
             continue
-        for name, args in detector_configs.items():
-            detection_engine.add_detector(
-                _resolve_symbol(portfolios, ticker),
-                {"name": name, "args": args},
-            )
+        if isinstance(value, dict):
+            detector_configs = value
+            for name, args in detector_configs.items():
+                ticker = key
+                detection_engine.add_detector(
+                    _resolve_symbol(portfolios, ticker),
+                    {"name": name, "args": args},
+                )
 
     # Create services — subscriptions happen in constructors
     detection_service = DetectionService(
@@ -123,7 +129,6 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         }
     alert_router.add_target(LoggingAlertDelivery())
     # TODO: make configurable or state driven.
-    print("HTTP", config.openclaw_alert_enable_http, config.openclaw_auth_key, config.openclaw_agent_id)
     if config.openclaw_alert_enable_http and config.openclaw_auth_key and config.openclaw_agent_id:
         alert_router.add_target(
             OpenClawAgentHttpDelivery(
@@ -135,7 +140,6 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
                 session_key=config.openclaw_session_key,
             )
         )
-    print("WS", config.openclaw_alert_enable_ws, (config.openclaw_gateway_token or config.openclaw_gateway_password), config.openclaw_agent_id)
     if config.openclaw_alert_enable_ws and (config.openclaw_gateway_token or config.openclaw_gateway_password) and config.openclaw_agent_id:
         alert_router.add_target(
             OpenClawGatewayWsDelivery(

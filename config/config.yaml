@@ -18,6 +18,7 @@ portfolio_monitor:
     zscore_volume: {}
 
   monitors:
+    cooldown: 15
     default:
 
   openclaw:

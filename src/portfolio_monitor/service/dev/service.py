@@ -1,4 +1,5 @@
 import asyncio
+from datetime import timedelta
 import logging
 import signal
 from pathlib import Path
@@ -79,7 +80,10 @@ async def run_dev_service(config: DevConfig) -> None:
             "No detectors in config — using all %d registered detectors",
             len(default_detectors),
         )
-    detection_engine = DeviationEngine(default_detectors=default_detectors)
+    detection_engine = DeviationEngine(
+        default_detectors=default_detectors,
+        cooldown=timedelta(minutes=config.alert_cooldown)
+    )
 
     # Per-asset detectors
     all_symbols: list[AssetSymbol] = list(
@@ -100,8 +104,7 @@ async def run_dev_service(config: DevConfig) -> None:
             continue
         for name, args in detector_configs.items():
             detection_engine.add_detector(symbol, {"name": name, "args": args})
-
-    # 5. SyntheticDataSource — seed from Polygon previous-close prices
+    
     seed_price_provider = SeedPriceProvider(
         portfolios=portfolios,
         data_provider=PolygonDataProvider(config=config, aggregate_cache=aggregate_cache),
@@ -141,7 +144,6 @@ async def run_dev_service(config: DevConfig) -> None:
         for d in detectors
     }
     alert_router.add_target(LoggingAlertDelivery())
-    print("HTTP", config.openclaw_alert_enable_http, config.openclaw_auth_key, config.openclaw_agent_id)
     if config.openclaw_alert_enable_http:
         assert config.openclaw_auth_key, "openclaw_auth_key is required for HTTP delivery"
         assert config.openclaw_agent_id, "openclaw_agent_id is required for HTTP delivery"
@@ -156,7 +158,6 @@ async def run_dev_service(config: DevConfig) -> None:
             )
         )
 
-    print("WS", config.openclaw_alert_enable_ws, (config.openclaw_gateway_token or config.openclaw_gateway_password), config.openclaw_agent_id)
     if config.openclaw_alert_enable_ws and (
         config.openclaw_gateway_token or config.openclaw_gateway_password
     ):

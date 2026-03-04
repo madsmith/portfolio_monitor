@@ -35,12 +35,14 @@ class DeviationEngine:
         if default_detectors:
             for detector in default_detectors:
                 if isinstance(detector, Detector):
+                    logger.debug("Adding default detector %s", detector.name)
                     self.default_detectors.append(detector)
                 elif isinstance(detector, dict):
                     d = DetectorRegistry.create_detector(
                         detector["name"], detector.get("args")
                     )
                     if d is not None:
+                        logger.debug("Adding default detector %s", d.name)
                         self.default_detectors.append(d)
                     else:
                         raise ValueError(f"Invalid detector: {detector}")
@@ -66,6 +68,7 @@ class DeviationEngine:
         elif isinstance(detector, dict):
             d = DetectorRegistry.create_detector(detector["name"], detector.get("args"))
             if d is not None:
+                logger.debug("Adding detector %s for symbol %s", d.name, symbol)
                 self.asset_detectors[symbol].append(d)
             else:
                 raise ValueError(f"Invalid detector: {detector}")
@@ -81,6 +84,19 @@ class DeviationEngine:
         """
         return DetectorRegistry.list_available_detectors()
 
+    def _detectors_for(self, aggregate: Aggregate) -> list[Detector]:
+        """
+        Return the effective detector list for an aggregate.
+
+        Asset-specific detectors take precedence over defaults of the same type:
+        any default detector whose type is already covered by an asset-specific
+        detector is excluded.
+        """
+        asset_specific = self.asset_detectors.get(aggregate.symbol, [])
+        asset_types = {type(d) for d in asset_specific}
+        defaults = [d for d in self.default_detectors if type(d) not in asset_types]
+        return defaults + asset_specific
+
     def detect(self, aggregate: Aggregate) -> list[Alert]:
         """
         Process an aggregate through all applicable detectors and return any alerts.
@@ -91,26 +107,13 @@ class DeviationEngine:
         Returns:
             List of alerts generated (empty if no alerts)
         """
-        ticker = aggregate.symbol
         alerts: list[Alert] = []
-
-        # Process through default detectors (apply to all assets)
-        for detector in self.default_detectors:
+        for detector in self._detectors_for(aggregate):
             if detector.name in self.disabled_detectors:
                 continue
             alert = detector.update(aggregate)
             if alert and self._check_cooldown(alert):
                 alerts.append(alert)
-
-        # Process through asset-specific detectors if any
-        if ticker in self.asset_detectors:
-            for detector in self.asset_detectors[ticker]:
-                if detector.name in self.disabled_detectors:
-                    continue
-                alert = detector.update(aggregate)
-                if alert and self._check_cooldown(alert):
-                    alerts.append(alert)
-
         return alerts
 
     def clear_cooldowns(self):
