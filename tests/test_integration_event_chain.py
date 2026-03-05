@@ -13,9 +13,8 @@ from portfolio_monitor.data.events import AggregateUpdated
 from portfolio_monitor.detectors import (
     DeviationEngine,
     Detector,
-    PercentChangeDetector,
-    PercentChangeFromPreviousCloseDetector,
     AverageTrueRangeMoveDetector,
+    PercentChangeDetector,
     SMADeviationDetector,
     VolumeSpikeDetector,
     ZScoreReturnDetector,
@@ -120,7 +119,7 @@ class TestEventChainIntegration:
 
     @pytest.mark.asyncio
     async def test_aggregate_triggers_alert_delivery(self, symbol: AssetSymbol) -> None:
-        chain = build_chain([PercentChangeFromPreviousCloseDetector(threshold=0.05)])
+        chain = build_chain([PercentChangeDetector(threshold=0.05, period="1m")])
 
         # First aggregate establishes baseline price
         await chain.publish(symbol, make_aggregate(symbol, close=100.0, minutes_offset=0))
@@ -132,12 +131,12 @@ class TestEventChainIntegration:
         chain.mock_target.send_alert.assert_called_once()
         alert = chain.delivered_alerts[0]
         assert alert.ticker == symbol
-        assert alert.kind == "percent_change_previous_close"
+        assert alert.kind == "percent_change"
         assert alert.aggregate.close == 110.0
 
     @pytest.mark.asyncio
     async def test_small_change_no_alert(self, symbol: AssetSymbol) -> None:
-        chain = build_chain([PercentChangeFromPreviousCloseDetector(threshold=0.05)])
+        chain = build_chain([PercentChangeDetector(threshold=0.05, period="1m")])
 
         await chain.publish(symbol, make_aggregate(symbol, close=100.0, minutes_offset=0))
         # 1% move — below 5% threshold
@@ -148,7 +147,7 @@ class TestEventChainIntegration:
     @pytest.mark.asyncio
     async def test_detection_service_logs_alert(self, symbol: AssetSymbol) -> None:
         """DetectionService.get_recent_alerts returns fired alerts."""
-        chain = build_chain([PercentChangeFromPreviousCloseDetector(threshold=0.05)])
+        chain = build_chain([PercentChangeDetector(threshold=0.05, period="1m")])
 
         await chain.publish(symbol, make_aggregate(symbol, close=100.0, minutes_offset=0))
         await chain.publish(symbol, make_aggregate(symbol, close=110.0, minutes_offset=1))
@@ -165,24 +164,6 @@ class TestEventChainIntegration:
 
 class TestAllDetectors:
     """Each detector fires through the full event chain when given extreme data."""
-
-    @pytest.mark.asyncio
-    async def test_percent_change_previous_close(self) -> None:
-        chain = build_chain([PercentChangeFromPreviousCloseDetector()])  # threshold=0.03
-
-        # Baseline
-        await chain.publish(BTC, make_aggregate(BTC, close=100.0, minutes_offset=0))
-        assert len(chain.delivered_alerts) == 0
-
-        # 2% move — below 3% threshold
-        await chain.publish(BTC, make_aggregate(BTC, close=102.0, minutes_offset=1))
-        assert len(chain.delivered_alerts) == 0
-
-        # 5% move from previous (102 → 107.1) — above threshold
-        await chain.publish(BTC, make_aggregate(BTC, close=107.1, minutes_offset=2))
-        assert len(chain.delivered_alerts) == 1
-        assert chain.delivered_alerts[0].kind == "percent_change_previous_close"
-        assert chain.delivered_alerts[0].aggregate.close == 107.1
 
     @pytest.mark.asyncio
     async def test_percent_change(self) -> None:
@@ -329,9 +310,8 @@ class TestAllDetectors:
 
     @pytest.mark.asyncio
     async def test_all_detectors_no_false_positives_on_stable_data(self) -> None:
-        """All 7 detectors wired together produce no alerts on flat data."""
+        """All 6 detectors wired together produce no alerts on flat data."""
         chain = build_chain([
-            PercentChangeFromPreviousCloseDetector(),
             PercentChangeDetector(period="10m"),
             AverageTrueRangeMoveDetector(period=5),
             SMADeviationDetector(period="10m"),
