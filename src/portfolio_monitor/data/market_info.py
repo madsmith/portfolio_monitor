@@ -1,4 +1,5 @@
 from datetime import datetime, time, timedelta
+import enum
 from zoneinfo import ZoneInfo
 
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
@@ -10,6 +11,12 @@ _MARKET_OPEN_TIME = time(9, 30)
 _MARKET_CLOSE_TIME = time(16, 0)
 _MARKET_AFTER_CLOSE_TIME = time(20, 0)
 
+class MarketStatus(enum.Enum):
+    PRE_TRADING = "pre_trading"
+    OPEN = "open"
+    AFTER_TRADING = "after_trading"
+    CLOSE = "close"
+
 class MarketInfo:
     @classmethod
     def is_market_open(cls, symbol: AssetSymbol, at_time: datetime | None = None) -> bool:
@@ -20,11 +27,42 @@ class MarketInfo:
         if symbol.asset_type == AssetTypes.Crypto:
             return True
 
-        local_time = at_time.astimezone(_EASTERN)
-        if local_time.weekday() >= 5:  # Saturday or Sunday
+        market_status = cls.get_market_status(symbol, at_time)
+        return market_status in (MarketStatus.PRE_TRADING, MarketStatus.OPEN, MarketStatus.AFTER_TRADING)
+
+    @classmethod
+    def is_market_closed(cls, symbol: AssetSymbol, at_time: datetime | None = None) -> bool:
+        """Return True if the market for *symbol* is closed at *at_time*."""
+        if at_time is None:
+            at_time = datetime.now(tz=_UTC)
+
+        if symbol.asset_type == AssetTypes.Crypto:
             return False
 
-        return _MARKET_PRE_OPEN_TIME <= local_time.time() < _MARKET_AFTER_CLOSE_TIME
+        market_status = cls.get_market_status(symbol, at_time)
+        return market_status == MarketStatus.CLOSE
+
+    @classmethod
+    def get_market_status(cls, symbol: AssetSymbol, at_time: datetime | None = None) -> MarketStatus:
+        """Return the current market status for *symbol* at *at_time*."""
+        if at_time is None:
+            at_time = datetime.now(tz=_UTC)
+
+        if symbol.asset_type == AssetTypes.Crypto:
+            return MarketStatus.OPEN
+
+        market_local_time = at_time.astimezone(_EASTERN)
+        if market_local_time.weekday() >= 5:  # Saturday or Sunday
+            return MarketStatus.CLOSE
+        if market_local_time.time() < _MARKET_PRE_OPEN_TIME:
+            return MarketStatus.CLOSE
+        if _MARKET_PRE_OPEN_TIME <= market_local_time.time() < _MARKET_OPEN_TIME:
+            return MarketStatus.PRE_TRADING
+        if _MARKET_OPEN_TIME <= market_local_time.time() < _MARKET_CLOSE_TIME:
+            return MarketStatus.OPEN
+        if _MARKET_CLOSE_TIME <= market_local_time.time() < _MARKET_AFTER_CLOSE_TIME:
+            return MarketStatus.AFTER_TRADING
+        return MarketStatus.CLOSE
 
     @classmethod
     def is_market_pre_trading(cls, symbol: AssetSymbol, at_time: datetime | None = None) -> bool:
@@ -35,11 +73,8 @@ class MarketInfo:
         if symbol.asset_type == AssetTypes.Crypto:
             return False
 
-        local_time = at_time.astimezone(_EASTERN)
-        if local_time.weekday() >= 5:  # Saturday or Sunday
-            return False
-
-        return _MARKET_PRE_OPEN_TIME <= local_time.time() < _MARKET_OPEN_TIME
+        market_status = cls.get_market_status(symbol, at_time)
+        return market_status == MarketStatus.PRE_TRADING
 
     @classmethod
     def is_market_after_trading(cls, symbol: AssetSymbol, at_time: datetime | None = None) -> bool:
@@ -50,29 +85,8 @@ class MarketInfo:
         if symbol.asset_type == AssetTypes.Crypto:
             return False
 
-        local_time = at_time.astimezone(_EASTERN)
-        if local_time.weekday() >= 5:  # Saturday or Sunday
-            return False
-
-        return _MARKET_CLOSE_TIME <= local_time.time() < _MARKET_AFTER_CLOSE_TIME
-
-    @classmethod
-    def get_previous_close_datetime(cls) -> datetime:
-        """Return the datetime of the most recent market close (4:00 PM Eastern)."""
-        now: datetime = datetime.now(tz=_EASTERN)
-        market_close_time = time(16, 0)
-
-        if now.weekday() < 5 and now.time() >= market_close_time:
-            return datetime.combine(now.date(), market_close_time, tzinfo=_EASTERN)
-
-        if now.weekday() == 0:
-            base_date = now.date() - timedelta(days=3)
-        elif now.weekday() == 6:
-            base_date = now.date() - timedelta(days=2)
-        else:
-            base_date = now.date() - timedelta(days=1)
-
-        return datetime.combine(base_date, market_close_time, tzinfo=_EASTERN)
+        market_status = cls.get_market_status(symbol, at_time)
+        return market_status == MarketStatus.AFTER_TRADING
 
     @classmethod
     def get_market_close(cls, symbol: AssetSymbol, date: datetime) -> datetime:
@@ -110,8 +124,10 @@ class MarketInfo:
         """Return the close datetime of the session immediately before *date*.
 
         Crypto: 23:59:59.999 UTC of the preceding calendar day.
-        Stocks / currencies: the most recent _MARKET_CLOSE_TIME Eastern strictly
-        before *date*, skipping weekends.
+        Stocks / currencies: _MARKET_CLOSE_TIME Eastern of the most recent trading
+        day before the current session. The session boundary is _MARKET_PRE_OPEN_TIME
+        (4AM): before 4AM the previous calendar day's session is still considered
+        active, so the reference close does not flip until pre-market opens.
         """
         if symbol.asset_type == AssetTypes.Crypto:
             d = date.astimezone(_UTC).date() - timedelta(days=1)
@@ -119,12 +135,9 @@ class MarketInfo:
             return next_midnight - timedelta(milliseconds=1)
 
         dt = date.astimezone(_EASTERN)
-        d = dt.date()
-        close_today = datetime.combine(d, _MARKET_CLOSE_TIME, tzinfo=_EASTERN)
-
-        # If we're strictly past today's close, today's close is the previous close
-        candidate = d if dt > close_today else d - timedelta(days=1)
-        # Step back over weekends
+        # Before pre-market open, we're still in the previous calendar day's session
+        session_date = dt.date() if dt.time() >= _MARKET_PRE_OPEN_TIME else dt.date() - timedelta(days=1)
+        candidate = session_date - timedelta(days=1)
         while candidate.weekday() >= 5:
             candidate -= timedelta(days=1)
         return datetime.combine(candidate, _MARKET_CLOSE_TIME, tzinfo=_EASTERN)

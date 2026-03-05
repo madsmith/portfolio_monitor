@@ -197,11 +197,17 @@ async def run_dev_service(config: DevConfig) -> None:
         )
         history = synthetic_source.generate_history(config.prime_history_minutes)
 
+    last_per_symbol = {}
     for agg in history:
         await aggregate_cache.add(agg)
         detection_engine.detect(agg)
+        last_per_symbol[agg.symbol] = agg
     detection_engine.clear_cooldowns()
     logger.info("Detection engine primed (%d aggregates)", len(history))
+
+    # Seed portfolio prices with the most recent primed aggregate per symbol
+    for agg in last_per_symbol.values():
+        await bus.publish(AggregateUpdated(symbol=agg.symbol, aggregate=agg))
 
     # 9. Control panel
     from .control_panel.app import ControlPanelApp
