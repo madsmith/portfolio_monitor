@@ -1,5 +1,6 @@
 from collections import deque
 from datetime import datetime, timedelta
+import logging
 
 from portfolio_monitor.data.aggregate_cache import Aggregate
 from portfolio_monitor.data.provider import DataProvider
@@ -7,6 +8,7 @@ from portfolio_monitor.detectors import DetectorRegistry
 from portfolio_monitor.detectors.base import DetectorBase
 from portfolio_monitor.service.types import AssetSymbol
 
+logger = logging.getLogger(__name__)
 
 @DetectorRegistry.register
 class AverageTrueRangeMoveDetector(DetectorBase):
@@ -85,6 +87,7 @@ class AverageTrueRangeMoveDetector(DetectorBase):
             # Need period+6 samples (period for ATR + buffer)
             required_time = sample_interval * (self.period + 6)
             from_ = current_time - required_time
+            logger.debug("Prime Range for %s (%s): %d minutes", self.name, symbol, int((current_time - from_).total_seconds() / 60))
             aggs: list[Aggregate] = await data_provider.get_range(symbol, from_, current_time, cache_write=True)
             for agg in aggs:
                 self.update(agg)

@@ -247,6 +247,7 @@ class TimeRangeDetectorBase(DetectorBase, Generic[T]):
         self._priming_symbols.add(symbol)
         try:
             from_ = current_time - self.period_delta
+            logger.debug("Prime Range for %s (%s): %d minutes", self.name, symbol, int((current_time - from_).total_seconds() / 60))
             aggs: list[Aggregate] = await data_provider.get_range(symbol, from_, current_time, cache_write=True)
             for agg in aggs:
                 self.update(agg)

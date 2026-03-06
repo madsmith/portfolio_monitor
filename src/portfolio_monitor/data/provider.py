@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from datetime import datetime, timedelta
 from typing import Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
@@ -16,8 +15,9 @@ from portfolio_monitor.data.aggregate_cache import (
 )
 from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.utils.trace import get_trace_logger
 
-logger = logging.getLogger(__name__)
+logger = get_trace_logger(__name__)
 
 DateRange = tuple[datetime, datetime]
 
@@ -246,11 +246,10 @@ class PolygonDataProvider(DataProvider):
             symbol, from_utc, to_utc
         )
         logger.debug("Fetched %d cached aggregates for %s from %s to %s", len(cached_aggregates), symbol, from_utc, to_utc)
-        logger.info("Fetched %d cached aggregates for %s from %s to %s", len(cached_aggregates), symbol, from_utc, to_utc)
 
         # Check if we have contiguous 1-minute data
         missing_ranges: list[DateRange] = self._find_missing_ranges(
-            cached_aggregates, from_utc, to_utc
+            symbol, cached_aggregates, from_utc, to_utc
         )
 
         # If we have all the data we need, return it
@@ -259,7 +258,7 @@ class PolygonDataProvider(DataProvider):
         else:
             logger.debug("Identified %d missing ranges for %s from %s to %s", len(missing_ranges), symbol, from_utc, to_utc)
             for start, end in missing_ranges:
-                logger.debug("  Missing range for %s to %s", start, end)
+                logger.trace("Missing range for %s %s to %s", symbol, start, end)
 
         if len(missing_ranges) > 6:
             logger.warning("Large number of missing ranges (%d) for %s from %s to %s - Performing full fetch", len(missing_ranges), symbol, from_utc, to_utc)
@@ -279,7 +278,7 @@ class PolygonDataProvider(DataProvider):
         return sorted(all_aggregates, key=lambda x: x.date_open)
 
     def _find_missing_ranges(
-        self, aggregates: list[Aggregate], from_: datetime, to: datetime
+        self, symbol: AssetSymbol, aggregates: list[Aggregate], from_: datetime, to: datetime
     ) -> list[DateRange]:
         """
         Find missing 1-minute ranges in the data.
@@ -300,15 +299,14 @@ class PolygonDataProvider(DataProvider):
         expected_timestamps: set[datetime] = set()
 
         # Advance from_ to next full minute if it has sub-minute components
-        start_time = from_
-        if start_time.microsecond > 0 or start_time.second > 0:
-            start_time = (start_time + timedelta(minutes=1)).replace(
-                second=0, microsecond=0
-            )
+        start_time = from_.replace(second = 0, microsecond=0)
+        if start_time < from_:
+            start_time += timedelta(minutes=1)
 
         current = start_time
         while current <= to:
-            expected_timestamps.add(current)
+            if not MarketInfo.is_market_closed(symbol, current):
+                expected_timestamps.add(current)
             current += timedelta(minutes=1)
 
         # Find missing timestamps

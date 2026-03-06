@@ -183,7 +183,7 @@ class DeviationEngine:
         Runs in parallel by default. Set PRIME_SEQUENTIALLY=True for sequential
         execution (useful when debugging priming order or rate-limit issues).
         """
-        logger.info("Priming detectors for symbols: %s", symbols)
+        logger.info("Priming detectors for symbols: %s", ", ".join(str(s) for s in symbols))
         if PRIME_SEQUENTIALLY:
             for symbol in symbols:
                 for detector in self._detectors_for_symbol(symbol):

@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import logging
+
 from portfolio_monitor.core.datetime import parse_period
 from portfolio_monitor.data.aggregate_cache import Aggregate
 from portfolio_monitor.data.market_info import MarketInfo
@@ -8,6 +10,7 @@ from portfolio_monitor.detectors import DetectorRegistry
 from portfolio_monitor.detectors.base import DetectorBase
 from portfolio_monitor.service.types import AssetSymbol
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class PreviousClose:
@@ -130,6 +133,7 @@ class PercentChangeDetector(DetectorBase):
         self._priming_symbols.add(symbol)
         try:
             from_ = current_time - self._period_delta - sample_interval
+            logger.debug("Prime Range for %s (%s): %d minutes", self.name, symbol, int((current_time - from_).total_seconds() / 60))
             aggs: list[Aggregate] = await data_provider.get_range(symbol, from_, current_time, cache_write=True)
             for agg in aggs:
                 self.update(agg)
