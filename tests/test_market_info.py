@@ -398,3 +398,100 @@ class TestGetPreviousMarketCloseStock:
         prev_et = prev.astimezone(_ET)
         assert prev_et.hour == 16
         assert prev_et.minute == 0
+
+
+# ---------------------------------------------------------------------------
+# is_market_open_during
+# ---------------------------------------------------------------------------
+
+
+class TestIsMarketOpenDuringCrypto:
+    def test_any_range_returns_true(self) -> None:
+        assert MarketInfo.is_market_open_during(BTC, utc(2025, 6, 7, 0), utc(2025, 6, 7, 1)) is True
+
+    def test_weekend_range_returns_true(self) -> None:
+        assert MarketInfo.is_market_open_during(BTC, et(2025, 6, 7, 12), et(2025, 6, 7, 13)) is True
+
+    def test_one_minute_range_returns_true(self) -> None:
+        assert MarketInfo.is_market_open_during(BTC, utc(2025, 6, 10, 0), utc(2025, 6, 10, 0, 1)) is True
+
+
+class TestIsMarketOpenDuringStock:
+    # ── Entirely within session ───────────────────────────────────────────────
+
+    def test_range_during_session_is_true(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 10), et(2025, 6, 10, 11)) is True
+
+    def test_one_minute_during_session_is_true(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 12), et(2025, 6, 10, 12, 1)) is True
+
+    # ── Open boundary: [from_, to) semantics ────────────────────────────────
+
+    def test_from_at_open_is_true(self) -> None:
+        # from_ == session_open, to inside session → overlap
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 9, 30), et(2025, 6, 10, 10)) is True
+
+    def test_to_at_open_is_false(self) -> None:
+        # to == session_open → to > session_open is False → no overlap
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 8), et(2025, 6, 10, 9, 30)) is False
+
+    def test_to_one_second_past_open_is_true(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 8), et(2025, 6, 10, 9, 30, 1)) is True
+
+    # ── Close boundary ───────────────────────────────────────────────────────
+
+    def test_from_at_close_is_false(self) -> None:
+        # from_ == session_close → from_ < session_close is False → no overlap
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 16), et(2025, 6, 10, 17)) is False
+
+    def test_from_one_second_before_close_is_true(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 15, 59, 59), et(2025, 6, 10, 17)) is True
+
+    def test_to_at_close_is_true(self) -> None:
+        # range ends at close — overlap still exists
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 15), et(2025, 6, 10, 16)) is True
+
+    # ── Ranges entirely outside session ──────────────────────────────────────
+
+    def test_range_in_pre_market_only_is_false(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 5), et(2025, 6, 10, 9, 30)) is False
+
+    def test_range_in_after_hours_only_is_false(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 16), et(2025, 6, 10, 20)) is False
+
+    def test_range_entirely_on_weekend_is_false(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 7, 10), et(2025, 6, 7, 15)) is False
+
+    def test_range_spanning_full_weekend_is_false(self) -> None:
+        # Saturday 00:00 → Sunday 23:59 — no trading days
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 7, 0), et(2025, 6, 8, 23, 59)) is False
+
+    # ── Ranges that cross session boundaries ─────────────────────────────────
+
+    def test_range_crossing_open_from_pre_market_is_true(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 8), et(2025, 6, 10, 11)) is True
+
+    def test_range_crossing_close_into_after_hours_is_true(self) -> None:
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 15), et(2025, 6, 10, 17)) is True
+
+    def test_range_spanning_friday_close_to_monday_open_is_true(self) -> None:
+        # Friday 15:00 → Monday 08:00 — hits Friday session
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 6, 15), et(2025, 6, 9, 8)) is True
+
+    def test_range_from_friday_after_close_to_monday_before_open_is_false(self) -> None:
+        # Friday 16:00 → Monday 09:30 — no session overlap
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 6, 16), et(2025, 6, 9, 9, 30)) is False
+
+    def test_multi_day_range_hitting_wednesday_session_is_true(self) -> None:
+        # Tuesday after-close → Thursday pre-market — hits Wednesday session
+        assert MarketInfo.is_market_open_during(AAPL, et(2025, 6, 10, 17), et(2025, 6, 12, 8)) is True
+
+    # ── UTC input ─────────────────────────────────────────────────────────────
+
+    def test_utc_range_during_session_is_true(self) -> None:
+        # 14:00–15:00 UTC = 10:00–11:00 EDT (UTC-4)
+        assert MarketInfo.is_market_open_during(AAPL, utc(2025, 6, 10, 14), utc(2025, 6, 10, 15)) is True
+
+    def test_utc_range_outside_session_is_false(self) -> None:
+        # 01:00–02:00 UTC = 21:00–22:00 EDT — after close
+        assert MarketInfo.is_market_open_during(AAPL, utc(2025, 6, 10, 1), utc(2025, 6, 10, 2)) is False

@@ -120,6 +120,33 @@ class MarketInfo:
         )
 
     @classmethod
+    def is_market_open_during(cls, symbol: AssetSymbol, from_: datetime, to: datetime) -> bool:
+        """Return True if the market is open at any point in [from_, to).
+
+        Open is defined as >= MARKET_OPEN_TIME and < MARKET_CLOSE_TIME (regular
+        session only). Crypto is always open. *from_* and *to* must be
+        timezone-aware.
+        """
+        if symbol.asset_type == AssetTypes.Crypto:
+            return True
+
+        from_eastern = from_.astimezone(_EASTERN)
+        to_eastern = to.astimezone(_EASTERN)
+
+        d = from_eastern.date()
+        end_date = to_eastern.date()
+
+        while d <= end_date:
+            if d.weekday() < 5:  # Monday–Friday
+                session_open = datetime.combine(d, _MARKET_OPEN_TIME, tzinfo=_EASTERN)
+                session_close = datetime.combine(d, _MARKET_CLOSE_TIME, tzinfo=_EASTERN)
+                if from_ < session_close and to > session_open:
+                    return True
+            d += timedelta(days=1)
+
+        return False
+
+    @classmethod
     def get_previous_market_close(cls, symbol: AssetSymbol, date: datetime) -> datetime:
         """Return the close datetime of the session immediately before *date*.
 
