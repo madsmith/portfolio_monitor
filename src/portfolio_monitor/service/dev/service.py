@@ -1,5 +1,4 @@
 import asyncio
-from datetime import timedelta
 import logging
 import signal
 from pathlib import Path
@@ -82,7 +81,6 @@ async def run_dev_service(config: DevConfig) -> None:
         )
     detection_engine = DeviationEngine(
         default_detectors=default_detectors,
-        cooldown=timedelta(minutes=config.alert_cooldown)
     )
 
     # Per-asset detectors
@@ -202,7 +200,7 @@ async def run_dev_service(config: DevConfig) -> None:
         await aggregate_cache.add(agg)
         detection_engine.detect(agg)
         last_per_symbol[agg.symbol] = agg
-    detection_engine.clear_cooldowns()
+    detection_engine.reset_state()
     logger.info("Detection engine primed (%d aggregates)", len(history))
 
     # Seed portfolio prices with the most recent primed aggregate per symbol

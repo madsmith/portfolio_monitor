@@ -3,7 +3,7 @@ import asyncio
 import logging
 import secrets
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -93,7 +93,6 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     ]
     detection_engine = DeviationEngine(
         default_detectors=default_detectors,
-        cooldown=timedelta(minutes=config.alert_cooldown)
     )
 
     # Register per-asset detectors
@@ -165,7 +164,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     all_symbols: list[AssetSymbol] = list(
         {asset.symbol for portfolio in portfolios for asset in portfolio.assets()}
     )
-    await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")), limit=config.polygon_prime_limit)
+    await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
 
     # Seed portfolio prices with the most recent available price (current bar preferred,
     # falling back to previous close when the market is closed and no live bar is available)

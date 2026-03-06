@@ -86,6 +86,7 @@ class PolygonDataProvider(DataProvider):
 
         # Check if we have recent data in cache
         if current and (now - current.date_open) < self._delay:
+            logger.debug("Fetching aggregate for %s from cache", symbol)
             return current
 
         # Otherwise fetch from API
@@ -97,6 +98,7 @@ class PolygonDataProvider(DataProvider):
             aggs = None
             for attempt in range(self._max_retries):
                 try:
+                    logger.debug("Fetching aggregate for %s from API (attempt %d)", symbol, attempt + 1)
                     aggs = self._polygon_client.get_aggs(
                         ticker=symbol.lookup_symbol,
                         multiplier=1,
@@ -138,6 +140,7 @@ class PolygonDataProvider(DataProvider):
                             timedelta(minutes=1),
                         )
                         if cache_write:
+                            logger.debug("Caching aggregate for %s: %s", symbol, aggregate)
                             await self._aggregate_cache.add(aggregate)
                         last_aggregate = aggregate
                 return last_aggregate
@@ -160,9 +163,11 @@ class PolygonDataProvider(DataProvider):
         prev_close_dt = MarketInfo.get_previous_market_close(symbol, now)
         cached = self._aggregate_cache.get_close(symbol, prev_close_dt)
         if cached is not None:
+            logger.debug("Fetching previous close aggregate for %s from cache", symbol)
             return cached
 
         try:
+            logger.debug("Fetching previous close aggregate for %s from API", symbol)
             trade = self._polygon_client.get_previous_close_agg(
                 ticker=symbol.lookup_symbol
             )
@@ -203,7 +208,7 @@ class PolygonDataProvider(DataProvider):
                 MarketInfo.get_market_day_timespan(symbol),
             )
             if cache_write:
-                await self._aggregate_cache.add(aggregate)
+                logger.debug("Caching previous close aggregate for %s: %s", symbol, aggregate)
             return aggregate
 
         logger.warning("Unknown trade type for %s: %s", symbol, type(trade))
@@ -240,6 +245,8 @@ class PolygonDataProvider(DataProvider):
         cached_aggregates: list[Aggregate] = self._aggregate_cache.get_range(
             symbol, from_utc, to_utc
         )
+        logger.debug("Fetched %d cached aggregates for %s from %s to %s", len(cached_aggregates), symbol, from_utc, to_utc)
+        logger.info("Fetched %d cached aggregates for %s from %s to %s", len(cached_aggregates), symbol, from_utc, to_utc)
 
         # Check if we have contiguous 1-minute data
         missing_ranges: list[DateRange] = self._find_missing_ranges(
@@ -249,6 +256,15 @@ class PolygonDataProvider(DataProvider):
         # If we have all the data we need, return it
         if not missing_ranges:
             return sorted(cached_aggregates, key=lambda x: x.date_open)
+        else:
+            logger.debug("Identified %d missing ranges for %s from %s to %s", len(missing_ranges), symbol, from_utc, to_utc)
+            for start, end in missing_ranges:
+                logger.debug("  Missing range for %s to %s", start, end)
+
+        if len(missing_ranges) > 6:
+            logger.warning("Large number of missing ranges (%d) for %s from %s to %s - Performing full fetch", len(missing_ranges), symbol, from_utc, to_utc)
+            fetched = await self._fetch_range(symbol, from_utc, to_utc, cache_write=cache_write)
+            return sorted(fetched, key=lambda x: x.date_open)
 
         # Otherwise fetch the missing ranges
         all_aggregates = list(cached_aggregates)  # Start with what we have
@@ -349,6 +365,7 @@ class PolygonDataProvider(DataProvider):
             # Fetch data from API with retry
             for attempt in range(self._max_retries):
                 try:
+                    logger.debug("Fetching range for %s from API (attempt %d): %s to %s", symbol, attempt + 1, from_, to)
                     aggs = self._polygon_client.get_aggs(
                         ticker=symbol.lookup_symbol,
                         multiplier=1,

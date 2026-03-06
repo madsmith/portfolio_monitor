@@ -33,29 +33,30 @@ class TestZScoreVolumeDetector:
     def test_no_alert_insufficient_data(self):
         detector = ZScoreVolumeDetector(period="30m", threshold=1.0)
         # Single candle: std dev = 0 (not enough history)
-        alert = detector.update(make_agg(100.0, 0, volume=1000.0))
-        assert alert is None
+        detector.update(make_agg(100.0, 0, volume=1000.0))
+        assert detector.get_current_alert(TICKER) is None
 
     def test_no_alert_zero_std_dev(self):
         detector = ZScoreVolumeDetector(period="30m", threshold=1.0)
         # All identical volumes → std dev = 0 → no alert
         for i in range(10):
-            alert = detector.update(make_agg(100.0, i, volume=1000.0))
-        assert alert is None
+            detector.update(make_agg(100.0, i, volume=1000.0))
+        assert detector.get_current_alert(TICKER) is None
 
     def test_no_alert_below_threshold(self):
         detector = ZScoreVolumeDetector(period="30m", threshold=1.0)
         feed_alternating(detector)
         # Volume of 1050 is slightly above mean (~1015), z_score ≈ 0.35 < 1.0
-        alert = detector.update(make_agg(100.0, 9, volume=1050.0))
-        assert alert is None
+        detector.update(make_agg(100.0, 9, volume=1050.0))
+        assert detector.get_current_alert(TICKER) is None
 
     def test_fires_rising(self):
         """Volume spike well above mean triggers alert (rising direction)."""
         detector = ZScoreVolumeDetector(period="30m", threshold=1.0)
         feed_alternating(detector)
         # With baseline std_dev ≈ 100, volume of 5000 gives z_score >> 1
-        alert = detector.update(make_agg(100.0, 9, volume=5000.0))
+        detector.update(make_agg(100.0, 9, volume=5000.0))
+        alert = detector.get_current_alert(TICKER)
         assert alert is not None
         assert alert.kind == "zscore_volume"
         assert alert.ticker == TICKER
@@ -68,5 +69,5 @@ class TestZScoreVolumeDetector:
         detector = ZScoreVolumeDetector(period="30m", threshold=1.0)
         feed_alternating(detector)
         # Volume collapses to 100 → z_score << 0, no alert
-        alert = detector.update(make_agg(100.0, 9, volume=100.0))
-        assert alert is None
+        detector.update(make_agg(100.0, 9, volume=100.0))
+        assert detector.get_current_alert(TICKER) is None

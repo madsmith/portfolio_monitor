@@ -75,14 +75,10 @@ class EventChain:
         return [call.args[0] for call in self.mock_target.send_alert.call_args_list]
 
 
-def build_chain(
-    detectors: list[Detector],
-    *,
-    cooldown: timedelta = timedelta(seconds=0),
-) -> EventChain:
+def build_chain(detectors: list[Detector]) -> EventChain:
     """Wire up EventBus → DetectionService → AlertRouter → mock target."""
     bus = EventBus()
-    engine = DeviationEngine(default_detectors=detectors, cooldown=cooldown)
+    engine = DeviationEngine(default_detectors=detectors)
     data_provider = AsyncMock()
     detection_service = DetectionService(
         bus=bus, detection_engine=engine, data_provider=data_provider

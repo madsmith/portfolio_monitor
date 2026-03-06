@@ -1,12 +1,15 @@
+import dataclasses
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Generic, NamedTuple, Protocol, Type, TypeVar, runtime_checkable
+from uuid import uuid4
 
 from portfolio_monitor.core.datetime import parse_period
 from portfolio_monitor.data.aggregate_cache import Aggregate
+from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.service.types import AssetSymbol
 
 logger = logging.getLogger(__name__)
@@ -14,20 +17,24 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Alert:
+    id: str
     ticker: AssetSymbol
     kind: str
     message: str
     extra: dict[str, Any]
     at: datetime
+    updated_at: datetime
     aggregate: Aggregate  # The price aggregate that triggered the alert
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "id": self.id,
             "ticker": self.ticker.to_dict(),
             "kind": self.kind,
             "message": self.message,
             "extra": _round_floats(self.extra),
             "at": self.at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
             "aggregate": self.aggregate.to_dict(),
         }
 
@@ -49,37 +56,135 @@ class Detector(Protocol):
         """Return the detector's name (used for alert kind)"""
         ...
 
-    def update(self, aggregate: Aggregate) -> Alert | None:
-        """Update the detector with the latest aggregate and return an alert if triggered"""
+    def update(self, aggregate: Aggregate) -> None:
+        """Update the detector with the latest aggregate, updating internal alert state."""
         ...
 
-    def preload_data_age(
-        self, current_time: datetime, sample_interval: timedelta
-    ) -> datetime | None:
-        """Return the earliest timestamp required for the detector to function correctly.
+    def get_current_alert(self, symbol: AssetSymbol) -> Alert | None:
+        """Return the currently active alert for a symbol, or None."""
+        ...
 
-        Args:
-            current_time: The current time or end time for data collection
-            sample_interval: The typical interval between data samples (e.g., 1 minute)
+    def clear(self, symbol: AssetSymbol) -> None:
+        """Clear the active alert state for a symbol, allowing a fresh alert to fire."""
+        ...
 
-        Returns:
-            The earliest datetime needed for detector initialization, or None if no historical data needed
+    def is_primed(self, symbol: AssetSymbol) -> bool:
+        """Return True if the detector has enough historical data to detect properly."""
+        ...
+
+    async def prime(
+        self,
+        symbol: AssetSymbol,
+        data_provider: DataProvider,
+        current_time: datetime,
+        sample_interval: timedelta,
+    ) -> None:
+        """Fetch historical data and warm up this detector for the given symbol.
+
+        Alert creation is suppressed during priming. After completion, is_primed()
+        returns True for this symbol.
         """
+        ...
+
+    def reset(self) -> None:
+        """Clear all per-symbol alert state. Does not clear accumulated history."""
         ...
 
 
 class DetectorBase(ABC, Detector):
+    def __init__(self) -> None:
+        self._current_alerts: dict[AssetSymbol, Alert | None] = {}
+        self._priming_symbols: set[AssetSymbol] = set()
+
     @property
+    @abstractmethod
     def name(self) -> str:
         raise NotImplementedError
 
-    def update(self, aggregate: Aggregate) -> Alert | None:
+    @abstractmethod
+    def update(self, aggregate: Aggregate) -> None:
         raise NotImplementedError
 
-    def preload_data_age(
-        self, current_time: datetime, sample_interval: timedelta
-    ) -> datetime | None:
+    @abstractmethod
+    def is_primed(self, symbol: AssetSymbol) -> bool:
+        """Return True when the detector has accumulated enough history to produce
+        meaningful alerts for this symbol. Must return False while prime() is
+        actively replaying historical data."""
         raise NotImplementedError
+
+    @abstractmethod
+    async def prime(
+        self,
+        symbol: AssetSymbol,
+        data_provider: DataProvider,
+        current_time: datetime,
+        sample_interval: timedelta,
+    ) -> None:
+        raise NotImplementedError
+
+    def get_current_alert(self, symbol: AssetSymbol) -> Alert | None:
+        return self._current_alerts.get(symbol)
+
+    def clear(self, symbol: AssetSymbol) -> None:
+        self._current_alerts.pop(symbol, None)
+
+    def reset(self) -> None:
+        self._current_alerts.clear()
+
+    # ------------------------------------------------------------------
+    # Protected helpers for subclasses
+    # ------------------------------------------------------------------
+
+    def _start_alert(
+        self, symbol: AssetSymbol, message: str, extra: dict[str, Any], aggregate: Aggregate
+    ) -> None:
+        """Begin a new alert occurrence. No-op until is_primed() returns True."""
+        if not self.is_primed(symbol):
+            return
+        now = datetime.now(aggregate.date_open.tzinfo)
+        self._current_alerts[symbol] = Alert(
+            id=uuid4().hex,
+            ticker=symbol,
+            kind=self.name,
+            message=message,
+            extra=extra,
+            at=now,
+            updated_at=now,
+            aggregate=aggregate,
+        )
+
+    def _update_current_alert(
+        self, symbol: AssetSymbol, message: str, extra: dict[str, Any], aggregate: Aggregate
+    ) -> None:
+        """Update an existing alert's data, preserving id and at. No-op until is_primed()."""
+        if not self.is_primed(symbol):
+            return
+        existing = self._current_alerts.get(symbol)
+        if existing is None:
+            # No existing alert — start a new one instead
+            self._start_alert(symbol, message, extra, aggregate)
+            return
+        now = datetime.now(aggregate.date_open.tzinfo)
+        self._current_alerts[symbol] = dataclasses.replace(
+            existing,
+            message=message,
+            extra=extra,
+            updated_at=now,
+            aggregate=aggregate,
+        )
+
+    def _clear_alert(self, symbol: AssetSymbol) -> None:
+        """Clear the active alert for this symbol."""
+        self._current_alerts.pop(symbol, None)
+
+    def _fire_or_update_alert(
+        self, symbol: AssetSymbol, message: str, extra: dict[str, Any], aggregate: Aggregate
+    ) -> None:
+        """Start a new alert or update the existing one — whichever is appropriate."""
+        if self.get_current_alert(symbol) is None:
+            self._start_alert(symbol, message, extra, aggregate)
+        else:
+            self._update_current_alert(symbol, message, extra, aggregate)
 
 
 T = TypeVar("T")
@@ -92,39 +197,35 @@ class HistoryRecord(Generic[T], NamedTuple):
 
 
 class TimeRangeDetectorBase(DetectorBase, Generic[T]):
-    def __init__(self, period: str = "2h"):
+    def __init__(self, period: str = "2h") -> None:
+        super().__init__()
         self.period = period
         self.period_delta = parse_period(period)
         self.histories: dict[AssetSymbol, list[HistoryRecord[T]]] = defaultdict(list)
 
-    def update(self, aggregate: Aggregate) -> Alert | None:
+    def update(self, aggregate: Aggregate) -> None:
         self._append_history(aggregate.date_open, aggregate)
-
-        # Remove old records
         self._history_cleanup(aggregate.symbol, aggregate.date_open)
-
-        return self._check_alert(aggregate)
+        self._compute_alert_state(aggregate)
 
     @abstractmethod
     def _value_from_aggregate(self, aggregate: Aggregate) -> T:
         raise NotImplementedError
 
     @abstractmethod
-    def _check_alert(self, aggregate: Aggregate) -> Alert | None:
+    def _compute_alert_state(self, aggregate: Aggregate) -> None:
+        """Compute and update alert state using _start_alert / _update_current_alert / _clear_alert."""
         raise NotImplementedError
 
     def values(self, symbol: AssetSymbol) -> list[T]:
         return [record.value for record in self.histories[symbol]]
 
-    def alert(self, aggregate: Aggregate, msg: str, extra: dict[str, Any]) -> Alert:
-        return Alert(aggregate.symbol, self.name, msg, extra, aggregate.date_open, aggregate)
-
-    def _append_history(self, timestamp: datetime, aggregate: Aggregate):
+    def _append_history(self, timestamp: datetime, aggregate: Aggregate) -> None:
         value = self._value_from_aggregate(aggregate)
         new_record = HistoryRecord[T](timestamp, value)
         self.histories[aggregate.symbol].append(new_record)
 
-    def _history_cleanup(self, symbol: AssetSymbol, current_time: datetime):
+    def _history_cleanup(self, symbol: AssetSymbol, current_time: datetime) -> None:
         cutoff_time = current_time - self.period_delta
         self.histories[symbol] = [
             record
@@ -132,20 +233,31 @@ class TimeRangeDetectorBase(DetectorBase, Generic[T]):
             if record.timestamp >= cutoff_time
         ]
 
-    def preload_data_age(
-        self, current_time: datetime, sample_interval: timedelta
-    ) -> datetime | None:
-        return current_time - self.period_delta
+    def is_primed(self, symbol: AssetSymbol) -> bool:
+        """Ready once history is non-empty and not actively replaying via prime()."""
+        return symbol not in self._priming_symbols and bool(self.histories.get(symbol))
+
+    async def prime(
+        self,
+        symbol: AssetSymbol,
+        data_provider: DataProvider,
+        current_time: datetime,
+        sample_interval: timedelta,  # noqa: ARG002 — unused here; TimeRange uses period_delta
+    ) -> None:
+        self._priming_symbols.add(symbol)
+        try:
+            from_ = current_time - self.period_delta
+            aggs: list[Aggregate] = await data_provider.get_range(symbol, from_, current_time, cache_write=True)
+            for agg in aggs:
+                self.update(agg)
+        finally:
+            self._priming_symbols.discard(symbol)
 
 
 class SampleRangeDetectorBase(DetectorBase):
-    def __init__(self, samples: int = 60):
+    def __init__(self, samples: int = 60) -> None:
+        super().__init__()
         self.samples = samples
-
-    def preload_data_age(
-        self, current_time: datetime, sample_interval: timedelta
-    ) -> datetime | None:
-        return current_time - sample_interval * self.samples
 
 
 class DetectorRegistry:

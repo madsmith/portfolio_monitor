@@ -1,49 +1,40 @@
 import numpy as np
 
 from portfolio_monitor.data.aggregate_cache import Aggregate
-from portfolio_monitor.detectors import Alert, DetectorRegistry, TimeRangeDetectorBase
+from portfolio_monitor.detectors import DetectorRegistry, TimeRangeDetectorBase
+from portfolio_monitor.service.types import AssetSymbol
 
 
 @DetectorRegistry.register
 class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
     """
     Detector for returns that deviate significantly from historical distribution.
-
-    This detector tracks asset price movements over a specified time period and alerts
-    when the current price movement (return) deviates significantly from the historical
-    distribution of returns, measured in standard deviations (Z-score).
     """
 
     @property
     def name(self) -> str:
         return "zscore_return"
 
-    def __init__(self, period: str = "2h", threshold: float = 2.0):
-        """
-        Initialize the Z-score return detector with specified parameters.
-
-        Args:
-            period: Time period to use for calculating return statistics (e.g. "2h", "1d").
-                    Used for establishing the baseline return distribution.
-            threshold: Z-score threshold that triggers an alert (e.g. 2.0 means
-                return must be at least 2 standard deviations from the mean).
-        """
+    def __init__(self, period: str = "2h", threshold: float = 2.0) -> None:
         super().__init__(period)
         self.threshold = threshold
 
     def _value_from_aggregate(self, aggregate: Aggregate) -> float:
         return aggregate.close
 
-    def _check_alert(self, aggregate: Aggregate) -> Alert | None:
-        close_history = self.values(aggregate.symbol)
+    def _compute_alert_state(self, aggregate: Aggregate) -> None:
+        symbol = aggregate.symbol
+        close_history = self.values(symbol)
 
         if len(close_history) < 3:
-            return None
+            self._clear_alert(symbol)
+            return
 
         return_values = self._calculate_returns(close_history)
 
         if len(return_values) < 2:
-            return None
+            self._clear_alert(symbol)
+            return
 
         previous_close = close_history[-2]
         current_return = (aggregate.close - previous_close) / previous_close
@@ -51,14 +42,18 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
         std_dev = np.std(return_values, ddof=1)
 
         if std_dev == 0:
-            return None
+            self._clear_alert(symbol)
+            return
 
         z_score = (current_return - mean_return) / std_dev
 
         if np.abs(z_score) >= self.threshold:
             direction = "above" if z_score > 0 else "below"
             current_return_percent = current_return * 100
-            msg = f"{aggregate.symbol}: Return of {current_return_percent:.2f}% is {direction} {self.threshold}x standard deviations from {self.period} average return."
+            msg = (
+                f"{symbol}: Return of {current_return_percent:.2f}% is {direction} "
+                f"{self.threshold}x standard deviations from {self.period} average return."
+            )
             extra = {
                 "z_score": float(z_score),
                 "current_return_percent": float(current_return_percent),
@@ -66,20 +61,14 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
                 "standard_deviation": float(std_dev),
                 "period": self.period,
             }
-            return self.alert(aggregate, msg, extra)
-        return None
+            self._fire_or_update_alert(symbol, msg, extra, aggregate)
+        else:
+            self._clear_alert(symbol)
 
     def _calculate_returns(self, close_history: list[float]) -> list[float]:
-        """Calculate percentage returns from price history"""
         if len(close_history) <= 1:
             return []
-
-        returns = []
-
-        for i in range(1, len(close_history)):
-            return_value = (close_history[i] - close_history[i - 1]) / close_history[
-                i - 1
-            ]
-            returns.append(return_value)
-
-        return returns
+        return [
+            (close_history[i] - close_history[i - 1]) / close_history[i - 1]
+            for i in range(1, len(close_history))
+        ]

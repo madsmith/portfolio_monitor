@@ -226,28 +226,34 @@ class TestGetMarketCloseCrypto:
     """Crypto close = 23:59:59.999 UTC on the same calendar date (in UTC) as input."""
 
     def test_weekday_noon_utc(self) -> None:
-        close = MarketInfo.get_market_close(BTC, utc(2025, 6, 10, 12))
+        reference = utc(2025, 6, 10, 12)
+        close = MarketInfo.get_market_close(BTC, reference)
         assert close == utc(2025, 6, 10, 23, 59, 59) + timedelta(milliseconds=999)
 
     def test_midnight_utc(self) -> None:
-        close = MarketInfo.get_market_close(BTC, utc(2025, 6, 10, 0, 0, 0))
+        reference = utc(2025, 6, 10, 0, 0, 0)
+        close = MarketInfo.get_market_close(BTC, reference)
         assert close == utc(2025, 6, 10, 23, 59, 59) + timedelta(milliseconds=999)
 
     def test_just_before_midnight_utc(self) -> None:
-        close = MarketInfo.get_market_close(BTC, utc(2025, 6, 10, 23, 59, 58))
+        reference = utc(2025, 6, 10, 23, 59, 58)
+        close = MarketInfo.get_market_close(BTC, reference)
         assert close == utc(2025, 6, 10, 23, 59, 59) + timedelta(milliseconds=999)
 
     def test_eastern_evening_crosses_utc_date(self) -> None:
         # 23:00 EDT (UTC-4) = 03:00 UTC next day → close falls on the next UTC date
-        close = MarketInfo.get_market_close(BTC, et(2025, 6, 10, 23, 0, 0))
+        reference = et(2025, 6, 10, 23, 0, 0)
+        close = MarketInfo.get_market_close(BTC, reference)
         assert close == utc(2025, 6, 11, 23, 59, 59) + timedelta(milliseconds=999)
 
     def test_close_precision_is_999ms(self) -> None:
-        close = MarketInfo.get_market_close(BTC, utc(2025, 6, 10, 12))
+        reference = utc(2025, 6, 10, 12)
+        close = MarketInfo.get_market_close(BTC, reference)
         assert close.microsecond == 999_000
 
     def test_weekend_same_as_weekday(self) -> None:
-        close = MarketInfo.get_market_close(BTC, utc(2025, 6, 7, 12))
+        reference = utc(2025, 6, 7, 12)
+        close = MarketInfo.get_market_close(BTC, reference)
         assert close == utc(2025, 6, 7, 23, 59, 59) + timedelta(milliseconds=999)
 
 
@@ -255,31 +261,45 @@ class TestGetMarketCloseStock:
     """Stock close = 16:00 ET on the nearest preceding-or-same trading day."""
 
     def test_tuesday_midday_returns_tuesday_close(self) -> None:
-        close = MarketInfo.get_market_close(AAPL, et(2025, 6, 10, 12))
+        reference = et(2025, 6, 10, 12)
+        close = MarketInfo.get_market_close(AAPL, reference)
         assert close == et(2025, 6, 10, 16, 0, 0)
 
     def test_friday_returns_friday_close(self) -> None:
-        close = MarketInfo.get_market_close(AAPL, et(2025, 6, 6, 12))
+        reference = et(2025, 6, 6, 12)
+        close = MarketInfo.get_market_close(AAPL, reference)
         assert close == et(2025, 6, 6, 16, 0, 0)
 
     def test_saturday_steps_back_to_friday(self) -> None:
-        close = MarketInfo.get_market_close(AAPL, et(2025, 6, 7, 12))
+        reference = et(2025, 6, 7, 12)
+        close = MarketInfo.get_market_close(AAPL, reference)
         assert close == et(2025, 6, 6, 16, 0, 0)
 
     def test_sunday_steps_back_to_friday(self) -> None:
-        close = MarketInfo.get_market_close(AAPL, et(2025, 6, 8, 12))
+        reference = et(2025, 6, 8, 12)
+        close = MarketInfo.get_market_close(AAPL, reference)
         assert close == et(2025, 6, 6, 16, 0, 0)
 
     def test_late_friday_et_crosses_saturday_utc_still_friday_close(self) -> None:
         # Friday 23:00 EDT = Saturday 03:00 UTC — UTC date is Saturday, but result is still Friday close
-        close = MarketInfo.get_market_close(AAPL, et(2025, 6, 6, 23, 0, 0))
+        reference = et(2025, 6, 6, 23, 0, 0)
+        close = MarketInfo.get_market_close(AAPL, reference)
         assert close == et(2025, 6, 6, 16, 0, 0)
 
     def test_result_timezone_is_eastern(self) -> None:
-        close = MarketInfo.get_market_close(AAPL, et(2025, 6, 10, 12))
+        reference = et(2025, 6, 10, 12)
+        close = MarketInfo.get_market_close(AAPL, reference)
         close_et = close.astimezone(_ET)
         assert close_et.hour == 16
         assert close_et.minute == 0
+
+    def test_get_previous_close_now(self) -> None:
+        now = datetime.now(tz=_ET)
+        close = MarketInfo.get_previous_market_close(AAPL, now)
+        # Silly test, really it's just a hook to check the previous close value at any givem moment.
+        print("Time Now", now)
+        print("Previous Close Returns", close, close.ctime())
+        assert close.hour == 16
 
 
 # ---------------------------------------------------------------------------

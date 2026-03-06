@@ -39,22 +39,22 @@ class TestZScoreReturnDetector:
         detector = ZScoreReturnDetector(period="30m", threshold=2.0)
         # Fewer than 3 candles → returns array too short
         detector.update(make_agg(100.0, 0))
-        alert = detector.update(make_agg(100.0, 1))
-        assert alert is None
+        detector.update(make_agg(100.0, 1))
+        assert detector.get_current_alert(TICKER) is None
 
     def test_no_alert_zero_std_dev(self):
         detector = ZScoreReturnDetector(period="30m", threshold=2.0)
         # All identical prices → all returns = 0, std dev = 0 → no alert
         for i in range(10):
-            alert = detector.update(make_agg(100.0, i))
-        assert alert is None
+            detector.update(make_agg(100.0, i))
+        assert detector.get_current_alert(TICKER) is None
 
     def test_no_alert_small_return(self):
         detector = ZScoreReturnDetector(period="30m", threshold=2.0)
         feed_alternating(detector)
         # Return of ~1% is within the normal ±1% range (z_score ≈ 1 < 2)
-        alert = detector.update(make_agg(101.0, 9))
-        assert alert is None
+        detector.update(make_agg(101.0, 9))
+        assert detector.get_current_alert(TICKER) is None
 
     def test_fires_rising(self):
         """Large positive return exceeds z-score threshold (rising direction)."""
@@ -62,7 +62,8 @@ class TestZScoreReturnDetector:
         feed_alternating(detector)
         # Previous close is 100.0 (minute 8); return = (120−100)/100 = 20%
         # With std_dev ≈ 0.01, z_score ≈ 20 >> 2 → fires
-        alert = detector.update(make_agg(120.0, 9))
+        detector.update(make_agg(120.0, 9))
+        alert = detector.get_current_alert(TICKER)
         assert alert is not None
         assert alert.kind == "zscore_return"
         assert alert.ticker == TICKER
@@ -76,7 +77,8 @@ class TestZScoreReturnDetector:
         feed_alternating(detector)
         # Previous close is 100.0 (minute 8); return = (80−100)/100 = −20%
         # z_score ≈ −20 → abs >= 2 → fires with negative z_score
-        alert = detector.update(make_agg(80.0, 9))
+        detector.update(make_agg(80.0, 9))
+        alert = detector.get_current_alert(TICKER)
         assert alert is not None
         assert alert.kind == "zscore_return"
         assert alert.ticker == TICKER

@@ -44,18 +44,18 @@ def feed_stable(detector: AverageTrueRangeMoveDetector, n: int = PERIOD) -> None
 
 class TestAverageTrueRangeMoveDetector:
     def test_no_alert_insufficient_data(self):
-        # Fewer than period+1 candles → detector returns None
+        # Fewer than period+1 candles → no alert
         detector = AverageTrueRangeMoveDetector(period=PERIOD, threshold=2.0)
         for i in range(PERIOD):
-            alert = detector.update(make_agg(100.0, i, high=101.0, low=99.0))
-        assert alert is None
+            detector.update(make_agg(100.0, i, high=101.0, low=99.0))
+        assert detector.get_current_alert(TICKER) is None
 
     def test_no_alert_small_range(self):
         detector = AverageTrueRangeMoveDetector(period=PERIOD, threshold=2.0)
         feed_stable(detector)
         # Range of 1.0 equals ATR — ratio = 1.0, below the 2× threshold
-        alert = detector.update(make_agg(100.0, PERIOD, high=100.5, low=99.5))
-        assert alert is None
+        detector.update(make_agg(100.0, PERIOD, high=100.5, low=99.5))
+        assert detector.get_current_alert(TICKER) is None
 
     def test_fires_rising(self):
         """Upward candle with range >> ATR triggers alert (rising direction).
@@ -65,7 +65,8 @@ class TestAverageTrueRangeMoveDetector:
         """
         detector = AverageTrueRangeMoveDetector(period=PERIOD, threshold=2.0)
         feed_stable(detector)
-        alert = detector.update(make_agg(114.0, PERIOD, high=115.0, low=100.0))
+        detector.update(make_agg(114.0, PERIOD, high=115.0, low=100.0))
+        alert = detector.get_current_alert(TICKER)
         assert alert is not None
         assert alert.kind == "average_true_range_move"
         assert alert.ticker == TICKER
@@ -80,7 +81,8 @@ class TestAverageTrueRangeMoveDetector:
         """
         detector = AverageTrueRangeMoveDetector(period=PERIOD, threshold=2.0)
         feed_stable(detector)
-        alert = detector.update(make_agg(87.0, PERIOD, high=101.0, low=86.0))
+        detector.update(make_agg(87.0, PERIOD, high=101.0, low=86.0))
+        alert = detector.get_current_alert(TICKER)
         assert alert is not None
         assert alert.kind == "average_true_range_move"
         assert alert.ticker == TICKER

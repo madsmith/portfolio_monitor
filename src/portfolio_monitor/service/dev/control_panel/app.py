@@ -187,11 +187,9 @@ class ControlPanelApp:
         return JSONResponse({"ok": True, "detector": name, "enabled": enabled})
 
     async def reset(self, request: Request) -> JSONResponse:
-        """Clear detector state and cooldowns, re-prime with fresh history."""
+        """Clear detector state, re-prime with fresh history."""
         if self._source is None:
             return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
-        # Clear cooldowns
-        self._engine.clear_cooldowns()
 
         # Clear detector internal state (duck-type check for histories)
         for detector in self._engine.default_detectors:
@@ -209,7 +207,7 @@ class ControlPanelApp:
         for agg in history:
             await self._cache.add(agg)
             self._engine.detect(agg)
-        self._engine.clear_cooldowns()
+        self._engine.reset_state()
 
         return JSONResponse({"ok": True, "primed_aggregates": len(history)})
 
