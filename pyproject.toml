@@ -43,6 +43,7 @@ portfolio-manager = "portfolio_monitor.cli.main:main"
 dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=0.25.0",
+    "matplotlib>=3.9.0",
 ]
 
 [build-system]
