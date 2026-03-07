@@ -185,11 +185,10 @@ zscore_volume:
 
 Alerts when the current bar's **high-low range** exceeds a multiple of the **Average True Range (ATR)** calculated over a rolling sample window. ATR accounts for overnight gaps by incorporating the previous bar's close in the true-range calculation. Requires `period + 1` samples before it can fire.
 
-> **Note:** Unlike the other detectors, `period` here is a **sample count** (integer), not a time string.
 
 | Parameter   | Type    | Default | Description |
 |-------------|---------|---------|-------------|
-| `period`    | `int`   | `30`    | Number of bars used to calculate the ATR. |
+| `samples`   | `int`   | `30`    | Number of bars used to calculate the ATR. |
 | `threshold` | `float` | `2.0`   | Multiple of ATR that triggers an alert (e.g. `2.0` = current range is ≥2× ATR). |
 
 **Alert extra fields**
@@ -204,6 +203,6 @@ Alerts when the current bar's **high-low range** exceeds a multiple of the **Ave
 
 ```yaml
 average_true_range_move:
-  period: 20        # 20-bar ATR
+  samples: 20        # 20-bar ATR
   threshold: 2.5    # alert when bar range exceeds 2.5× ATR
 ```

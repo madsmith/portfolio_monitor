@@ -41,6 +41,7 @@ class DataProvider(Protocol):
         to: datetime,
         *,
         cache_write: bool = False,
+        cache_read: bool = True,
     ) -> list[Aggregate]: ...
 
 
@@ -221,6 +222,7 @@ class PolygonDataProvider(DataProvider):
         to: datetime,
         *,
         cache_write: bool = False,
+        cache_read: bool = True,
     ) -> list[Aggregate]:
         """
         Get a range of aggregates for a ticker
@@ -241,11 +243,14 @@ class PolygonDataProvider(DataProvider):
         from_utc = from_.astimezone(ZoneInfo("UTC"))
         to_utc = to.astimezone(ZoneInfo("UTC"))
 
-        # Get cached data in this range
-        cached_aggregates: list[Aggregate] = self._aggregate_cache.get_range(
-            symbol, from_utc, to_utc
-        )
-        logger.debug("Fetched %d cached aggregates for %s from %s to %s", len(cached_aggregates), symbol, from_utc, to_utc)
+        if cache_read:
+            # Get cached data in this range
+            cached_aggregates: list[Aggregate] = self._aggregate_cache.get_range(
+                symbol, from_utc, to_utc
+            )
+            logger.debug("Fetched %d cached aggregates for %s from %s to %s", len(cached_aggregates), symbol, from_utc, to_utc)
+        else:
+            cached_aggregates = []
 
         # Check if we have contiguous 1-minute data
         missing_ranges: list[DateRange] = self._find_missing_ranges(

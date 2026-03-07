@@ -9,7 +9,6 @@ from uuid import uuid4
 
 from portfolio_monitor.core.datetime import parse_period
 from portfolio_monitor.data.aggregate_cache import Aggregate
-from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.service.types import AssetSymbol
 
 logger = logging.getLogger(__name__)
@@ -72,18 +71,8 @@ class Detector(Protocol):
         """Return True if the detector has enough historical data to detect properly."""
         ...
 
-    async def prime(
-        self,
-        symbol: AssetSymbol,
-        data_provider: DataProvider,
-        current_time: datetime,
-        sample_interval: timedelta,
-    ) -> None:
-        """Fetch historical data and warm up this detector for the given symbol.
-
-        Alert creation is suppressed during priming. After completion, is_primed()
-        returns True for this symbol.
-        """
+    def prime_age(self) -> timedelta | int:
+        """Return how far back from current_time data is needed to prime this detector."""
         ...
 
     def reset(self) -> None:
@@ -94,7 +83,6 @@ class Detector(Protocol):
 class DetectorBase(ABC, Detector):
     def __init__(self) -> None:
         self._current_alerts: dict[AssetSymbol, Alert | None] = {}
-        self._priming_symbols: set[AssetSymbol] = set()
 
     @property
     @abstractmethod
@@ -113,13 +101,8 @@ class DetectorBase(ABC, Detector):
         raise NotImplementedError
 
     @abstractmethod
-    async def prime(
-        self,
-        symbol: AssetSymbol,
-        data_provider: DataProvider,
-        current_time: datetime,
-        sample_interval: timedelta,
-    ) -> None:
+    def prime_age(self) -> timedelta | int:
+        """Return how far back from current_time data is needed to prime this detector."""
         raise NotImplementedError
 
     def get_current_alert(self, symbol: AssetSymbol) -> Alert | None:
@@ -204,8 +187,8 @@ class TimeRangeDetectorBase(DetectorBase, Generic[T]):
         self.histories: dict[AssetSymbol, list[HistoryRecord[T]]] = defaultdict(list)
 
     def update(self, aggregate: Aggregate) -> None:
-        self._append_history(aggregate.date_open, aggregate)
-        self._history_cleanup(aggregate.symbol, aggregate.date_open)
+        self._append_history(aggregate)
+        self._history_cleanup(aggregate.symbol, aggregate.date_open + aggregate.timespan)
         self._compute_alert_state(aggregate)
 
     @abstractmethod
@@ -220,7 +203,8 @@ class TimeRangeDetectorBase(DetectorBase, Generic[T]):
     def values(self, symbol: AssetSymbol) -> list[T]:
         return [record.value for record in self.histories[symbol]]
 
-    def _append_history(self, timestamp: datetime, aggregate: Aggregate) -> None:
+    def _append_history(self, aggregate: Aggregate) -> None:
+        timestamp = aggregate.date_open + aggregate.timespan
         value = self._value_from_aggregate(aggregate)
         new_record = HistoryRecord[T](timestamp, value)
         self.histories[aggregate.symbol].append(new_record)
@@ -234,25 +218,21 @@ class TimeRangeDetectorBase(DetectorBase, Generic[T]):
         ]
 
     def is_primed(self, symbol: AssetSymbol) -> bool:
-        """Ready once history is non-empty and not actively replaying via prime()."""
-        return symbol not in self._priming_symbols and bool(self.histories.get(symbol))
+        if not self.histories.get(symbol):
+            return False
+        
+        # Check if we have a datapoint old enough to cover the full period.
+        # Since we crop the history on update, we will assum we have enough data
+        # if the date of the olderst record is without 5% of the opening of the period.
+        oldest = self.histories[symbol][0]
+        current = self.histories[symbol][-1]
 
-    async def prime(
-        self,
-        symbol: AssetSymbol,
-        data_provider: DataProvider,
-        current_time: datetime,
-        sample_interval: timedelta,  # noqa: ARG002 — unused here; TimeRange uses period_delta
-    ) -> None:
-        self._priming_symbols.add(symbol)
-        try:
-            from_ = current_time - self.period_delta
-            logger.debug("Prime Range for %s (%s): %d minutes", self.name, symbol, int((current_time - from_).total_seconds() / 60))
-            aggs: list[Aggregate] = await data_provider.get_range(symbol, from_, current_time, cache_write=True)
-            for agg in aggs:
-                self.update(agg)
-        finally:
-            self._priming_symbols.discard(symbol)
+        period_start = current.timestamp - self.period_delta
+        primed_threshold = period_start + self.period_delta * 0.05
+        return oldest.timestamp <= primed_threshold
+
+    def prime_age(self) -> timedelta | int:
+        return self.period_delta
 
 
 class SampleRangeDetectorBase(DetectorBase):

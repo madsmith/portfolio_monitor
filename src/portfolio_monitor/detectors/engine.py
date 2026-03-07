@@ -180,23 +180,45 @@ class DeviationEngine:
     ) -> None:
         """Prime all detectors for all given symbols.
 
-        Runs in parallel by default. Set PRIME_SEQUENTIALLY=True for sequential
-        execution (useful when debugging priming order or rate-limit issues).
+        For each symbol, computes the maximum history age needed across all
+        applicable detectors, fetches that range once, and feeds it to each
+        detector via update(). Calls reset_state() after all symbols are
+        processed so no alerts accumulated during priming are propagated.
+
+        Set PRIME_SEQUENTIALLY=True to fetch symbols one at a time (useful
+        for debugging or when rate-limiting is a concern).
         """
         logger.info("Priming detectors for symbols: %s", ", ".join(str(s) for s in symbols))
+
+        def to_timedelta(age: timedelta | int) -> timedelta:
+            if isinstance(age, timedelta):
+                return age
+            else:
+                return age * sample_interval
+
+        async def prime_symbol(symbol: AssetSymbol) -> None:
+            detectors = self._detectors_for_symbol(symbol)
+            if not detectors:
+                return
+            max_age = max(to_timedelta(d.prime_age()) for d in detectors)
+            from_ = current_time - max_age
+            logger.debug(
+                "Priming %s: fetching %d minutes of history",
+                symbol,
+                int(max_age.total_seconds() / 60),
+            )
+            aggs = await data_provider.get_range(symbol, from_, current_time, cache_write=True, cache_read=False)
+            for agg in aggs:
+                for detector in detectors:
+                    detector.update(agg)
+
         if PRIME_SEQUENTIALLY:
             for symbol in symbols:
-                for detector in self._detectors_for_symbol(symbol):
-                    logger.debug("Priming detector %s for symbol %s", detector.name, symbol)
-                    await detector.prime(symbol, data_provider, current_time, sample_interval)
+                await prime_symbol(symbol)
         else:
-            tasks = [
-                detector.prime(symbol, data_provider, current_time, sample_interval)
-                for symbol in symbols
-                for detector in self._detectors_for_symbol(symbol)
-            ]
-            if tasks:
-                await asyncio.gather(*tasks)
+            await asyncio.gather(*(prime_symbol(symbol) for symbol in symbols))
+
+        self.reset_state()
 
     def _detectors_for_symbol(self, symbol: AssetSymbol) -> list[Detector]:
         """All detectors that would apply to a given symbol (for priming)."""

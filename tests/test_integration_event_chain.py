@@ -182,7 +182,7 @@ class TestAllDetectors:
     @pytest.mark.asyncio
     async def test_average_true_range_move(self) -> None:
         # period=5 so we only need 6 samples before it can fire
-        chain = build_chain([AverageTrueRangeMoveDetector(period=5, threshold=2.0)])
+        chain = build_chain([AverageTrueRangeMoveDetector(samples=5, threshold=2.0)])
 
         # Build up 6 steady bars with narrow range (ATR ≈ 1.0)
         for i in range(6):
@@ -309,7 +309,7 @@ class TestAllDetectors:
         """All 6 detectors wired together produce no alerts on flat data."""
         chain = build_chain([
             PercentChangeDetector(period="10m"),
-            AverageTrueRangeMoveDetector(period=5),
+            AverageTrueRangeMoveDetector(samples=5),
             SMADeviationDetector(period="10m"),
             VolumeSpikeDetector(period="10m"),
             ZScoreReturnDetector(period="10m"),

@@ -50,7 +50,8 @@ class DevDataProvider(DataProvider):
         from_: datetime,
         to: datetime,
         *,
-        cache_write: bool = False,
+        cache_write: bool = False, # ignored as DevDataProvider is only cache
+        cache_read: bool = True,   # ignored as DevDataProvider is only cache
     ) -> list[Aggregate]:
         """Return cached aggregates within the given time range."""
         return self._cache.get_range(symbol, from_, to)

@@ -11,7 +11,7 @@ from sortedcontainers import SortedDict
 
 from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
-from portfolio_monitor.utils.time import datetime_from_ms, ms_from_datetime
+from portfolio_monitor.core.datetime import datetime_from_ms, ms_from_datetime
 
 # Price decimal places by asset type for JSON serialization
 _PRICE_PRECISION: dict[AssetTypes, int] = {
