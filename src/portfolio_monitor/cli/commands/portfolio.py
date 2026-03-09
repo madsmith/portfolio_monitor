@@ -1,18 +1,105 @@
 import argparse
+import json
 import sys
+from typing import Annotated
 
 import httpx
+from pydantic import BaseModel
+
+from portfolio_monitor.cli.display import ColumnMeta, fmt_value, model_to_dict, render_table
 
 _SECTION_TO_TYPE = {"stocks": "stock", "currencies": "currency", "crypto": "crypto"}
 
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
+class PortfolioSummaryRow(BaseModel):
+    id:                Annotated[str,          ColumnMeta("ID")]
+    name:              Annotated[str,          ColumnMeta("Name")]
+    total_value:       Annotated[float | None, ColumnMeta("Value", fmt="currency")]
+    day_change:        Annotated[float | None, ColumnMeta("Day $", fmt="change")]
+    day_change_pct:    Annotated[float | None, ColumnMeta("Day %", fmt="percent")]
+    total_profit_loss: Annotated[float | None, ColumnMeta("P&L", fmt="change")]
+    profit_loss_pct:   Annotated[float | None, ColumnMeta("P&L %", fmt="percent")]
+    # Included in JSON but not rendered as a table column
+    total_cost_basis:  Annotated[float | None, ColumnMeta("Cost Basis", fmt="currency", json_only=True)]
+
+
+class AssetRow(BaseModel):
+    ticker:            Annotated[str,          ColumnMeta("Ticker", min_width=10)]
+    total_quantity:    Annotated[str,          ColumnMeta("Qty", fmt="right")]
+    current_price:     Annotated[float | None, ColumnMeta("Price", fmt="currency")]
+    day_change_pct:    Annotated[float | None, ColumnMeta("Day %", fmt="percent")]
+    current_value:     Annotated[float | None, ColumnMeta("Value", fmt="currency")]
+    day_change:        Annotated[float | None, ColumnMeta("Day $", fmt="change")]
+    profit_loss:       Annotated[float | None, ColumnMeta("P&L", fmt="change")]
+    profit_loss_pct:   Annotated[float | None, ColumnMeta("P&L %", fmt="percent")]
+    # JSON-only — present in model_dump() but not rendered in the table
+    asset_type:        Annotated[str,          ColumnMeta("Type", json_only=True)]
+    cost_basis:        Annotated[float | None, ColumnMeta("Cost Basis", fmt="currency", json_only=True)]
+    lots:              Annotated[list[dict],   ColumnMeta("Lots", json_only=True)]
+
+
+class PortfolioHeader(BaseModel):
+    id: str
+    name: str
+    total_value: float | None
+    total_cost_basis: float | None
+    total_profit_loss: float | None
+    profit_loss_pct: float | None
+
+
+class PortfolioDetailOutput(BaseModel):
+    header: PortfolioHeader
+    stocks: list[AssetRow] = []
+    currencies: list[AssetRow] = []
+    crypto: list[AssetRow] = []
+
+
+# ---------------------------------------------------------------------------
+# Rendering
+# ---------------------------------------------------------------------------
+
+def render_portfolio_detail(output: PortfolioDetailOutput) -> None:
+    h = output.header
+    print(f"Portfolio: {h.name}  (id: {h.id})")
+    print(
+        f"Value: {fmt_value(h.total_value, 'currency')}  "
+        f"Cost basis: {fmt_value(h.total_cost_basis, 'currency')}  "
+        f"P&L: {fmt_value(h.total_profit_loss, 'change')}  "
+        f"({fmt_value(h.profit_loss_pct, 'percent')})"
+    )
+
+    for label, assets in [("Stocks", output.stocks), ("Currencies", output.currencies), ("Crypto", output.crypto)]:
+        if not assets:
+            continue
+        print(f"\n{label}:")
+        render_table(assets, indent="  ")
+
+
+# ---------------------------------------------------------------------------
+# Argument parser
+# ---------------------------------------------------------------------------
 
 def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("portfolio", help="Query portfolio data")
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument("--all", action="store_true", help="List all portfolios")
     group.add_argument("--id", metavar="ID", help="Show details for a specific portfolio")
+    p.add_argument(
+        "--json",
+        dest="json_out",
+        action="store_true",
+        help="Output raw JSON instead of formatted text",
+    )
     p.set_defaults(func=run_portfolio)
 
+
+# ---------------------------------------------------------------------------
+# Command handler
+# ---------------------------------------------------------------------------
 
 def run_portfolio(args: argparse.Namespace) -> None:
     if not args.token:
@@ -23,10 +110,14 @@ def run_portfolio(args: argparse.Namespace) -> None:
     base = args.url.rstrip("/")
 
     if args.all:
-        _list_all(base, headers)
+        _list_all(base, headers, args.json_out)
     else:
-        _get_one(base, headers, args.id)
+        _get_one(base, headers, args.id, args.json_out)
 
+
+# ---------------------------------------------------------------------------
+# HTTP helpers
+# ---------------------------------------------------------------------------
 
 def _get(url: str, headers: dict) -> dict | list:
     try:
@@ -61,35 +152,12 @@ def _fetch_prev_close(base: str, headers: dict, asset_type: str, ticker: str) ->
     return None
 
 
-def _fmt_num(value: float | None, prefix: str = "$") -> str:
-    if value is None:
-        return "—"
-    return f"{prefix}{value:,.2f}"
+# ---------------------------------------------------------------------------
+# Model builders
+# ---------------------------------------------------------------------------
 
-
-def _fmt_pct(value: float | None) -> str:
-    if value is None:
-        return "—"
-    sign = "+" if value >= 0 else ""
-    return f"{sign}{value:.2f}%"
-
-
-def _fmt_change(value: float | None) -> str:
-    if value is None:
-        return "—"
-    sign = "+" if value >= 0 else ""
-    return f"{sign}${value:,.2f}"
-
-
-def _list_all(base: str, headers: dict) -> None:
-    portfolios = _get(f"{base}/api/v1/portfolios", headers)
-    assert isinstance(portfolios, list)
-
-    if not portfolios:
-        print("No portfolios found.")
-        return
-
-    rows = []
+def _build_summary_rows(base: str, headers: dict, portfolios: list) -> list[PortfolioSummaryRow]:
+    rows: list[PortfolioSummaryRow] = []
     for p in portfolios:
         detail = _get(f"{base}/api/v1/portfolio/{p['id']}", headers)
         assert isinstance(detail, dict)
@@ -107,124 +175,97 @@ def _list_all(base: str, headers: dict) -> None:
                     prev_total += qty * prev
                     has_data = True
 
-        day_val = day_change if has_data else None
-        day_pct = (day_change / prev_total * 100) if (has_data and prev_total) else None
+        day_val: float | None = day_change if has_data else None
+        day_pct: float | None = (day_change / prev_total * 100) if (has_data and prev_total) else None
 
-        rows.append((
-            p["id"],
-            p["name"],
-            _fmt_num(p["total_value"]),
-            _fmt_change(day_val),
-            _fmt_pct(day_pct),
-            _fmt_num(p["total_profit_loss"]),
-            _fmt_pct(p["profit_loss_percentage"]),
+        rows.append(PortfolioSummaryRow(
+            id=p["id"],
+            name=p["name"],
+            total_value=p["total_value"],
+            day_change=day_val,
+            day_change_pct=day_pct,
+            total_profit_loss=p["total_profit_loss"],
+            profit_loss_pct=p["profit_loss_percentage"],
+            total_cost_basis=p["total_cost_basis"],
         ))
-
-    col_id    = max(len("ID"),    max(len(r[0]) for r in rows)) + 2
-    col_name  = max(len("Name"),  max(len(r[1]) for r in rows)) + 2
-    col_value = max(len("Value"), max(len(r[2]) for r in rows)) + 2
-    col_dval  = max(len("Day $"), max(len(r[3]) for r in rows)) + 2
-    col_dpct  = max(len("Day %"), max(len(r[4]) for r in rows)) + 2
-    col_pl    = max(len("P&L"),   max(len(r[5]) for r in rows)) + 2
-    col_pct   = max(len("P&L %"), max(len(r[6]) for r in rows)) + 2
-
-    header = (
-        f"{'ID':<{col_id}}"
-        f"{'Name':<{col_name}}"
-        f"{'Value':>{col_value}}"
-        f"{'Day $':>{col_dval}}"
-        f"{'Day %':>{col_dpct}}"
-        f"{'P&L':>{col_pl}}"
-        f"{'P&L %':>{col_pct}}"
-    )
-    print(header)
-    print("-" * len(header))
-
-    for r in rows:
-        print(
-            f"{r[0]:<{col_id}}"
-            f"{r[1]:<{col_name}}"
-            f"{r[2]:>{col_value}}"
-            f"{r[3]:>{col_dval}}"
-            f"{r[4]:>{col_dpct}}"
-            f"{r[5]:>{col_pl}}"
-            f"{r[6]:>{col_pct}}"
-        )
+    return rows
 
 
-def _get_one(base: str, headers: dict, portfolio_id: str) -> None:
+def _build_asset_rows(base: str, headers: dict, assets: list, asset_type: str) -> list[AssetRow]:
+    rows: list[AssetRow] = []
+    for a in assets:
+        prev = _fetch_prev_close(base, headers, asset_type, a["ticker"])
+        cur = a["current_price"]
+        qty = float(a["total_quantity"])
+
+        day_pct: float | None = None
+        day_val: float | None = None
+        if prev is not None and cur is not None:
+            day_pct = (cur - prev) / prev * 100
+            day_val = qty * (cur - prev)
+
+        rows.append(AssetRow(
+            ticker=a["ticker"],
+            total_quantity=a["total_quantity"],
+            current_price=cur,
+            day_change_pct=day_pct,
+            current_value=a["current_value"],
+            day_change=day_val,
+            profit_loss=a["profit_loss"],
+            profit_loss_pct=a["profit_loss_percentage"],
+            asset_type=a["asset_type"],
+            cost_basis=a["cost_basis"],
+            lots=a["lots"],
+        ))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Subcommand implementations
+# ---------------------------------------------------------------------------
+
+def _list_all(base: str, headers: dict, json_out: bool = False) -> None:
+    portfolios = _get(f"{base}/api/v1/portfolios", headers)
+    assert isinstance(portfolios, list)
+
+    rows = _build_summary_rows(base, headers, portfolios)
+
+    if json_out:
+        print(json.dumps([model_to_dict(r) for r in rows], indent=2))
+        return
+
+    if not rows:
+        print("No portfolios found.")
+        return
+
+    render_table(rows)
+
+
+def _get_one(base: str, headers: dict, portfolio_id: str, json_out: bool = False) -> None:
     p = _get(f"{base}/api/v1/portfolio/{portfolio_id}", headers)
     assert isinstance(p, dict)
 
-    print(f"Portfolio: {p['name']}  (id: {p['id']})")
-    print(
-        f"Value: {_fmt_num(p['total_value'])}  "
-        f"Cost basis: {_fmt_num(p['total_cost_basis'])}  "
-        f"P&L: {_fmt_num(p['total_profit_loss'])}  "
-        f"({_fmt_pct(p['profit_loss_percentage'])})"
+    header = PortfolioHeader(
+        id=p["id"],
+        name=p["name"],
+        total_value=p["total_value"],
+        total_cost_basis=p["total_cost_basis"],
+        total_profit_loss=p["total_profit_loss"],
+        profit_loss_pct=p["profit_loss_percentage"],
     )
+    stocks = _build_asset_rows(base, headers, p.get("stocks", []), "stock")
+    currencies = _build_asset_rows(base, headers, p.get("currencies", []), "currency")
+    crypto = _build_asset_rows(base, headers, p.get("crypto", []), "crypto")
+    output = PortfolioDetailOutput(header=header, stocks=stocks, currencies=currencies, crypto=crypto)
 
-    for section in ("stocks", "currencies", "crypto"):
-        assets = p.get(section, [])
-        if not assets:
-            continue
+    if json_out:
+        result = {
+            "header": output.header.model_dump(),
+            "stocks": [model_to_dict(r) for r in output.stocks],
+            "currencies": [model_to_dict(r) for r in output.currencies],
+            "crypto": [model_to_dict(r) for r in output.crypto],
+        }
+        print(json.dumps(result, indent=2))
+        return
 
-        asset_type = _SECTION_TO_TYPE[section]
-
-        rows = []
-        for a in assets:
-            prev = _fetch_prev_close(base, headers, asset_type, a["ticker"])
-            cur = a["current_price"]
-            qty = float(a["total_quantity"])
-
-            day_pct: float | None = None
-            day_val: float | None = None
-            if prev is not None and cur is not None:
-                day_pct = (cur - prev) / prev * 100
-                day_val = qty * (cur - prev)
-
-            rows.append((
-                a["ticker"],
-                a["total_quantity"],
-                _fmt_num(cur),
-                _fmt_pct(day_pct),
-                _fmt_num(a["current_value"]),
-                _fmt_change(day_val),
-                _fmt_num(a["profit_loss"]),
-                _fmt_pct(a["profit_loss_percentage"]),
-            ))
-
-        col_ticker = max(len("Ticker"), max(len(r[0]) for r in rows)) + 2
-        col_qty    = max(len("Qty"),    max(len(r[1]) for r in rows)) + 2
-        col_price  = max(len("Price"),  max(len(r[2]) for r in rows)) + 2
-        col_dpct   = max(len("Day %"),  max(len(r[3]) for r in rows)) + 2
-        col_value  = max(len("Value"),  max(len(r[4]) for r in rows)) + 2
-        col_dval   = max(len("Day $"),  max(len(r[5]) for r in rows)) + 2
-        col_pl     = max(len("P&L"),    max(len(r[6]) for r in rows)) + 2
-        col_pct    = max(len("P&L %"),  max(len(r[7]) for r in rows)) + 2
-
-        header = (
-            f"  {'Ticker':<{col_ticker}}  "
-            f"{'Qty':>{col_qty}}  "
-            f"{'Price':>{col_price}}  "
-            f"{'Day %':>{col_dpct}}  "
-            f"{'Value':>{col_value}}  "
-            f"{'Day $':>{col_dval}}  "
-            f"{'P&L':>{col_pl}}  "
-            f"{'P&L %':>{col_pct}}"
-        )
-        print(f"\n{section.capitalize()}:")
-        print(header)
-        print("  " + "-" * (len(header) - 2))
-
-        for r in rows:
-            print(
-                f"  {r[0]:<{col_ticker}}  "
-                f"{r[1]:>{col_qty}}  "
-                f"{r[2]:>{col_price}}  "
-                f"{r[3]:>{col_dpct}}  "
-                f"{r[4]:>{col_value}}  "
-                f"{r[5]:>{col_dval}}  "
-                f"{r[6]:>{col_pl}}  "
-                f"{r[7]:>{col_pct}}"
-            )
+    render_portfolio_detail(output)

@@ -1,7 +1,20 @@
 import argparse
+import json
 import sys
+from typing import Annotated
 
 import httpx
+from pydantic import BaseModel
+
+from portfolio_monitor.cli.display import ColumnMeta, fmt_value, model_to_dict
+
+
+class PriceRow(BaseModel):
+    ticker:     Annotated[str,   ColumnMeta("Ticker")]
+    asset_type: Annotated[str,   ColumnMeta("Type")]
+    label:      Annotated[str,   ColumnMeta("Label")]
+    price:      Annotated[float, ColumnMeta("Price", fmt="currency")]
+    timestamp:  Annotated[str,   ColumnMeta("As of")]
 
 
 def add_price_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -20,6 +33,12 @@ def add_price_parser(subparsers: argparse._SubParsersAction) -> None:
         dest="previous_close",
         action="store_true",
         help="Return the previous session's closing price instead of the current price",
+    )
+    p.add_argument(
+        "--json",
+        dest="json_out",
+        action="store_true",
+        help="Output raw JSON instead of formatted text",
     )
     p.set_defaults(func=run_price)
 
@@ -55,7 +74,21 @@ def run_price(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     data = response.json()
-    label = "Previous close" if args.previous_close else "Price"
-    price = data["price"]
-    timestamp = data["timestamp"]
-    print(f"{args.ticker.upper()} ({args.asset_type})  {label}: ${price:,.6g}  as of {timestamp}")
+    row = PriceRow(
+        ticker=args.ticker.upper(),
+        asset_type=args.asset_type,
+        label="Previous close" if args.previous_close else "Price",
+        price=data["price"],
+        timestamp=data["timestamp"],
+    )
+
+    if args.json_out:
+        print(json.dumps(model_to_dict(row), indent=2))
+        return
+
+    # Single-line summary — not a columnar table
+    print(
+        f"{row.ticker} ({row.asset_type})  "
+        f"{row.label}: {fmt_value(row.price, 'currency')}  "
+        f"as of {row.timestamp}"
+    )
