@@ -5,13 +5,13 @@ Contains classes for portfolios, assets and lots.
 
 import hashlib
 import logging
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
 from portfolio_monitor.core.currency import Currency, CurrencyType
+from portfolio_monitor.core.datetime import parse_date
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 logger = logging.getLogger(__name__)
@@ -389,59 +389,3 @@ def format_number(value: Any) -> str:
     else:
         # Handle Decimal or other numeric types
         return f"{value:,f}"
-
-
-def parse_date(date_string: str) -> datetime | None:
-    """Parse a date string by first matching its pattern, then applying the correct format.
-
-    Args:
-        date_string: The date string to parse
-
-    Returns:
-        Parsed datetime object or None if parsing fails
-    """
-
-    if not date_string or not isinstance(date_string, str):
-        return None
-
-    # Remove any leading/trailing whitespace
-    date_string = date_string.strip()
-
-    # Define patterns and their corresponding formats
-    patterns = [
-        # YYYY-MM-DD
-        (r"^\d{4}-\d{1,2}-\d{1,2}$", "%Y-%m-%d"),
-        # YYYY/MM/DD
-        (r"^\d{4}/\d{1,2}/\d{1,2}$", "%Y/%m/%d"),
-        # YYYY.MM.DD
-        (r"^\d{4}\.\d{1,2}\.\d{1,2}$", "%Y.%m.%d"),
-        # MM/DD/YYYY - Attempt US variant format first
-        (r"^\d{1,2}/\d{1,2}/\d{4}$", "%m/%d/%Y"),
-        # DD/MM/YYYY
-        (r"^\d{1,2}/\d{1,2}/\d{4}$", "%d/%m/%Y"),
-        # MM-DD-YYYY - Attempt US variant format first
-        (r"^\d{1,2}-\d{1,2}-\d{4}$", "%m-%d-%Y"),
-        # DD-MM-YYYY
-        (r"^\d{1,2}-\d{1,2}-\d{4}$", "%d-%m-%Y"),
-        # MM.DD.YYYY - Attempt US variant format first
-        (r"^\d{1,2}\.\d{1,2}\.\d{4}$", "%m.%d.%Y"),
-        # DD.MM.YYYY
-        (r"^\d{1,2}\.\d{1,2}\.\d{4}$", "%d.%m.%Y"),
-        # MM/DD/YY HH:MM:SS
-        (r"^\d{1,2}/\d{1,2}/\d{2} \d{2}:\d{2}:\d{2}$", "%m/%d/%y %H:%M:%S"),
-        # MM/DD/YYYY HH:MM:SS
-        (r"^\d{1,2}/\d{1,2}/\d{4} \d{2}:\d{2}:\d{2}$", "%m/%d/%Y %H:%M:%S"),
-    ]
-
-    # Try patterns in order, taking first matching pattern
-    for pattern, fmt in patterns:
-        if re.match(pattern, date_string):
-            try:
-                return datetime.strptime(date_string, fmt)
-            except ValueError:
-                # If parsing fails, it might be an invalid date like Feb 30
-                continue
-
-    # If we get here, none of the patterns or formats worked
-    logger.warning(f"Could not parse date '{date_string}' with any known format")
-    return None

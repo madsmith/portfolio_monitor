@@ -1,8 +1,14 @@
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from portfolio_monitor.core.datetime import parse_date, parse_period
 from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
+
+_MAX_HISTORY = timedelta(days=7)
 
 
 def _parse_symbol(request: Request) -> AssetSymbol | None:
@@ -47,3 +53,56 @@ def previous_close_handler(data_provider: DataProvider):
         return JSONResponse(_agg_response(symbol, aggregate))
 
     return get_previous_close
+
+
+def price_history_handler(data_provider: DataProvider):
+    async def get_price_history(request: Request) -> JSONResponse:
+        symbol = _parse_symbol(request)
+        if symbol is None:
+            return JSONResponse({"error": "invalid asset type"}, status_code=400)
+
+        last_str = request.query_params.get("last")
+        if not last_str:
+            return JSONResponse({"error": "missing required parameter: last"}, status_code=400)
+        try:
+            delta = parse_period(last_str)
+        except ValueError:
+            return JSONResponse({"error": f"invalid period: {last_str!r}"}, status_code=400)
+
+        if delta > _MAX_HISTORY:
+            return JSONResponse({"error": "period exceeds maximum of 7 days"}, status_code=400)
+
+        time_str = request.query_params.get("time")
+        if time_str:
+            to_time = parse_date(time_str)
+            if to_time is None:
+                return JSONResponse({"error": f"invalid time: {time_str!r}"}, status_code=400)
+            if to_time.tzinfo is None:
+                to_time = to_time.replace(tzinfo=ZoneInfo("UTC"))
+        else:
+            to_time = datetime.now(ZoneInfo("UTC"))
+
+        from_time = to_time - delta
+        aggregates = await data_provider.get_range(symbol, from_time, to_time, cache_write=True)
+
+        if not aggregates:
+            return JSONResponse({"error": "no data available"}, status_code=404)
+
+        return JSONResponse({
+            "symbol": symbol.to_dict(),
+            "from": from_time.isoformat(),
+            "to": to_time.isoformat(),
+            "aggregates": [
+                {
+                    "timestamp": agg.date_open.isoformat(),
+                    "open": agg.open,
+                    "high": agg.high,
+                    "low": agg.low,
+                    "close": agg.close,
+                    "volume": agg.volume,
+                }
+                for agg in aggregates
+            ],
+        })
+
+    return get_price_history

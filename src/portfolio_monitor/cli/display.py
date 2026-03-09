@@ -33,7 +33,7 @@ from portfolio_monitor.core.currency import Currency, CurrencyType
 
 __all__ = ["ColumnMeta", "fmt_value", "model_to_dict", "render_table"]
 
-_RIGHT_ALIGNED_FORMATS = {"right", "currency", "percent", "change"}
+_RIGHT_ALIGNED_FORMATS = {"right", "currency", "percent", "change", "volume"}
 _PERCENT_PRECISION = 2
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ _PERCENT_PRECISION = 2
 class ColumnMeta:
     title: str
     json_only: bool = False
-    fmt: str = "left"  # left | right | currency | percent | change
+    fmt: str = "left"  # left | right | currency | percent | change | volume
     min_width: int = 0
     currency_type: str | None = None  # e.g. "USD", "BTC" — used for json rounding precision
 
@@ -75,6 +75,9 @@ def fmt_value(value: object, fmt: str) -> str:
         assert isinstance(v, (int, float)), "Format 'percent' requires numeric value"
         sign = "+" if v >= 0 else ""
         return f"{sign}{v:.2f}%"
+    if fmt == "volume":
+        assert isinstance(v, (int, float)), "Format 'volume' requires numeric value"
+        return f"{v:,.2f}"
 
     # left / right — plain string
     return str(value)
