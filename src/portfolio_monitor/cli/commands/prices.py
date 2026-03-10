@@ -18,12 +18,12 @@ class PriceRow(BaseModel):
 
 
 class AggregateRow(BaseModel):
-    timestamp: Annotated[str,   ColumnMeta("Time")]
-    open:      Annotated[float, ColumnMeta("Open",   fmt="currency")]
-    high:      Annotated[float, ColumnMeta("High",   fmt="currency")]
-    low:       Annotated[float, ColumnMeta("Low",    fmt="currency")]
-    close:     Annotated[float, ColumnMeta("Close",  fmt="currency")]
-    volume:    Annotated[float, ColumnMeta("Volume", fmt="volume")]
+    timestamp: Annotated[str,    ColumnMeta("Time")]
+    open:      Annotated[float,  ColumnMeta("Open",   fmt="currency")]
+    high:      Annotated[float,  ColumnMeta("High",   fmt="currency")]
+    low:       Annotated[float,  ColumnMeta("Low",    fmt="currency")]
+    close:     Annotated[float,  ColumnMeta("Close",  fmt="currency")]
+    volume:    Annotated[float,  ColumnMeta("Volume", fmt="volume")]
 
 
 def add_price_parser(subparsers: argparse._SubParsersAction) -> None:
