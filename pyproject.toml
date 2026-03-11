@@ -22,7 +22,7 @@ dependencies = [
     "omegaconf>=2.3.0",
     "polygon-api-client>=1.15.3",
     "sortedcontainers>=2.4.0",
-    "appconf @ git+https://github.com/madsmith/appconf@v1.3.0",
+    "appconf @ git+https://github.com/madsmith/appconf@v1.4.1",
     "numpy>=2.3.2",
     "starlette>=0.45.0",
     "uvicorn[standard]>=0.34.0",

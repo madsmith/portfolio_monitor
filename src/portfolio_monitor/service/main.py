@@ -11,6 +11,7 @@ _FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 
 import logfire
 import uvicorn
+from appconf.omegaconf import OmegaConfig, OmegaConfigLoader
 from appconf.omegaconf.errors import PrivateConfigError
 from omegaconf import OmegaConf
 from starlette.applications import Starlette
@@ -86,8 +87,12 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     data_provider = PolygonDataProvider(config, aggregate_cache)
 
     # Build detection engine from config
-    monitors_config = config.monitors
-    default_detectors_config = monitors_config.get("default", {})
+    try:
+        alert_config = OmegaConfigLoader.load(Path("config/alerts.yaml"))
+    except Exception as e:
+        alert_config = {}
+
+    default_detectors_config = alert_config.get("default", {})
     default_detectors = [
         {"name": name, "args": args} for name, args in default_detectors_config.items()
     ]
@@ -96,7 +101,9 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     )
 
     # Register per-asset detectors
-    for key, value in monitors_config.items():
+    for key, value in alert_config.items():
+        if type(key) is not str:
+            continue
         if key == "default":
             continue
         if isinstance(value, dict):

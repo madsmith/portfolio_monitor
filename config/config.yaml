@@ -7,20 +7,6 @@ portfolio_monitor:
     username: "${private.portfolio_monitor.dashboard.username}"
     password: "${private.portfolio_monitor.dashboard.password}"
 
-  # Define the common set of detectors and give it an anchor
-  all_detectors:
-    average_true_range_move: {}
-    SMA_deviation: {}
-    percent_change_previous_close: {}
-    percent_change: {}
-    volume_spike: {}
-    zscore_return: {}
-    zscore_volume: {}
-
-  monitors:
-    cooldown: 15
-    default:
-
   openclaw:
     agent_id: "main"
     auth_key: "${private.openclaw.auth_key}"

@@ -63,7 +63,6 @@ class OpenClawAgentHttpDelivery:
         self._client: httpx.AsyncClient | None = None
 
     async def send_alert(self, alert: Alert) -> None:
-        print(f"Sending alert to OpenClaw: {alert}")
         if self._client is None:
             logger.warning("OpenClawAgentHttpDelivery not connected, dropping alert")
             return

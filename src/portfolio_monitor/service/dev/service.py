@@ -3,6 +3,7 @@ import logging
 import signal
 from pathlib import Path
 
+from appconf import OmegaConfigLoader
 import uvicorn
 
 from portfolio_monitor.core.events import EventBus
@@ -60,8 +61,12 @@ async def run_dev_service(config: DevConfig) -> None:
     bus.subscribe(AggregateUpdated, _persist_aggregate)
 
     # 4. Detection engine (same build logic as production)
-    monitors_config = config.monitors
-    default_detectors_config = monitors_config.get("default") or {}
+    try:
+        alert_config = OmegaConfigLoader.load(Path("config/alerts_dev.yaml"))
+    except Exception as e:
+        alert_config = {}
+
+    default_detectors_config = alert_config.get("default") or {}
     if default_detectors_config:
         default_detectors = [
             {"name": name, "args": args}
@@ -89,19 +94,21 @@ async def run_dev_service(config: DevConfig) -> None:
     )
     symbol_lookup: dict[str, AssetSymbol] = {s.ticker: s for s in all_symbols}
 
-    for ticker, detector_configs in monitors_config.items():
-        if ticker == "default":
+    for key, value in alert_config.items():
+        if type(key) is not str:
             continue
-        if not detector_configs:
+        if key == "default":
             continue
-        symbol = symbol_lookup.get(ticker)
-        if symbol is None:
-            logger.warning(
-                "Ticker %s from monitors config not found in portfolios", ticker
-            )
-            continue
-        for name, args in detector_configs.items():
-            detection_engine.add_detector(symbol, {"name": name, "args": args})
+        if isinstance(value, dict):
+            ticker = key.upper()
+            symbol = symbol_lookup.get(ticker)
+            if symbol is None:
+                logger.warning(
+                    "Ticker %s from monitors config not found in portfolios", ticker
+                )
+                continue
+            for name, args in value.items():
+                detection_engine.add_detector(symbol, {"name": name, "args": args})
     
     seed_price_provider = SeedPriceProvider(
         portfolios=portfolios,
