@@ -127,9 +127,9 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         # Suppress all alert delivery by default in dev mode;
         # detectors still process data and build history.
         alert_router.suppressed_detectors = {
-            d.name
+            detector.name()
             for detectors in detection_engine.asset_detectors.values()
-            for d in detectors
+            for detector in detectors
         }
     alert_router.add_target(LoggingAlertDelivery())
     # TODO: make configurable or state driven.
@@ -292,7 +292,7 @@ def _build_per_account_engine(
     ] + [(a.username, a.alerts) for a in account_store.get_all()]
 
     # symbol → list of (detector, username) to register
-    sym_detectors: dict[AssetSymbol, list[tuple[object, str]]] = {}
+    symbol_detectors: dict[AssetSymbol, list[tuple[object, str]]] = {}
     detector_accounts: dict[str, list[str]] = {}
 
     for username, alert_config in account_configs:
@@ -301,7 +301,7 @@ def _build_per_account_engine(
 
         default_cfg = alert_config.get("default") or {}
         # ticker → set of kinds with symbol-specific override for this account
-        sym_overrides: defaultdict[str, set[str]] = defaultdict(set)
+        symbol_overrides: defaultdict[str, set[str]] = defaultdict(set)
 
         # Symbol-specific detectors
         for ticker, sym_cfg in alert_config.items():
@@ -318,12 +318,12 @@ def _build_per_account_engine(
             for kind, args in sym_cfg.items():
                 if not isinstance(args, dict):
                     continue
-                d = DetectorRegistry.create_detector(kind, args)
-                if d is None:
+                detector = DetectorRegistry.create_detector(kind, args)
+                if detector is None:
                     continue
-                sym_detectors.setdefault(symbol, []).append((d, username))
-                detector_accounts.setdefault(d.detector_id, []).append(username)
-                sym_overrides[ticker].add(kind)
+                symbol_detectors.setdefault(symbol, []).append((detector, username))
+                detector_accounts.setdefault(detector.detector_id, []).append(username)
+                symbol_overrides[ticker].add(kind)
 
         # Default detectors — expand to per-symbol, excluding overridden kinds
         if not isinstance(default_cfg, dict):
@@ -332,16 +332,16 @@ def _build_per_account_engine(
             if not isinstance(args, dict):
                 continue
             for symbol in all_symbols:
-                if kind in sym_overrides[symbol.ticker]:
+                if kind in symbol_overrides[symbol.ticker]:
                     continue
-                d = DetectorRegistry.create_detector(kind, args)
-                if d is None:
+                detector = DetectorRegistry.create_detector(kind, args)
+                if detector is None:
                     continue
-                sym_detectors.setdefault(symbol, []).append((d, username))
-                detector_accounts.setdefault(d.detector_id, []).append(username)
+                symbol_detectors.setdefault(symbol, []).append((detector, username))
+                detector_accounts.setdefault(detector.detector_id, []).append(username)
 
     engine = DeviationEngine()
-    for symbol, pairs in sym_detectors.items():
+    for symbol, pairs in symbol_detectors.items():
         for detector, _ in pairs:
             engine.add_detector(symbol, detector)  # type: ignore[arg-type]
 

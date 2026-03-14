@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, getRole, getUsername, type AccountSummary, type AlertConfig } from "../api/client";
+import { api, getRole, getUsername, type AccountSummary, type AlertConfig, type DetectorInfo } from "../api/client";
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -17,13 +17,15 @@ function ActionButton({
 }: {
   onClick: () => void;
   disabled?: boolean;
-  variant?: "default" | "danger";
+  variant?: "default" | "danger" | "remove";
   children: React.ReactNode;
 }) {
-  const base = "px-3 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40";
+  const base = "px-3 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40 cursor-pointer";
   const styles =
     variant === "danger"
       ? `${base} bg-[#3a1a1a] text-red-400 hover:bg-[#5a2020] border border-red-900`
+      : variant === "remove"
+      ? "text-red-500 hover:text-red-400 text-xs px-1 cursor-pointer transition-colors"
       : `${base} bg-[#2a2f45] text-slate-300 hover:bg-[#363d58] border border-[#404868]`;
   return (
     <button className={styles} onClick={onClick} disabled={disabled}>
@@ -261,8 +263,7 @@ function AccountsSection() {
 
 type DetectorRow = {
   kind: string;
-  threshold: string;
-  period: string;
+  args: Record<string, string>;
 };
 
 type SymbolOverride = {
@@ -276,13 +277,9 @@ function parseAlertConfig(config: AlertConfig): { defaults: DetectorRow[]; overr
 
   const defaultSection = config["default"] as Record<string, unknown> | undefined;
   if (defaultSection) {
-    for (const [kind, args] of Object.entries(defaultSection)) {
-      const a = args as Record<string, unknown>;
-      defaults.push({
-        kind,
-        threshold: String(a?.threshold ?? ""),
-        period: String(a?.period ?? ""),
-      });
+    for (const [kind, rawArgs] of Object.entries(defaultSection)) {
+      const a = rawArgs as Record<string, unknown>;
+      defaults.push({ kind, args: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, String(v)])) });
     }
   }
 
@@ -290,9 +287,9 @@ function parseAlertConfig(config: AlertConfig): { defaults: DetectorRow[]; overr
     if (key === "default" || key === "templates") continue;
     if (typeof value !== "object" || value === null) continue;
     const rows: DetectorRow[] = [];
-    for (const [kind, args] of Object.entries(value as Record<string, unknown>)) {
-      const a = args as Record<string, unknown>;
-      rows.push({ kind, threshold: String(a?.threshold ?? ""), period: String(a?.period ?? "") });
+    for (const [kind, rawArgs] of Object.entries(value as Record<string, unknown>)) {
+      const a = rawArgs as Record<string, unknown>;
+      rows.push({ kind, args: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, String(v)])) });
     }
     overrides.push({ ticker: key, rows });
   }
@@ -303,15 +300,23 @@ function parseAlertConfig(config: AlertConfig): { defaults: DetectorRow[]; overr
 function buildAlertConfig(defaults: DetectorRow[], overrides: SymbolOverride[]): AlertConfig {
   const config: AlertConfig = {};
 
+  function serializeArgs(args: Record<string, string>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(args)) {
+      if (v === "") continue;
+      const num = parseFloat(v);
+      out[k] = isNaN(num) ? v : num;
+    }
+    return out;
+  }
+
   if (defaults.length > 0) {
-    const defaultSection: Record<string, unknown> = {};
+    const section: Record<string, unknown> = {};
     for (const row of defaults) {
       if (!row.kind) continue;
-      const args: Record<string, unknown> = { threshold: parseFloat(row.threshold) || 0 };
-      if (row.period) args.period = row.period;
-      defaultSection[row.kind] = args;
+      section[row.kind] = serializeArgs(row.args);
     }
-    config["default"] = defaultSection;
+    if (Object.keys(section).length > 0) config["default"] = section;
   }
 
   for (const override of overrides) {
@@ -319,14 +324,58 @@ function buildAlertConfig(defaults: DetectorRow[], overrides: SymbolOverride[]):
     const section: Record<string, unknown> = {};
     for (const row of override.rows) {
       if (!row.kind) continue;
-      const args: Record<string, unknown> = { threshold: parseFloat(row.threshold) || 0 };
-      if (row.period) args.period = row.period;
-      section[row.kind] = args;
+      section[row.kind] = serializeArgs(row.args);
     }
-    config[override.ticker] = section;
+    if (Object.keys(section).length > 0) config[override.ticker] = section;
   }
 
   return config;
+}
+
+function DetectorRowEditor({
+  row,
+  detectors,
+  kindMap,
+  onKindChange,
+  onArgChange,
+  onRemove,
+}: {
+  row: DetectorRow;
+  detectors: DetectorInfo[];
+  kindMap: Record<string, DetectorInfo>;
+  onKindChange: (kind: string) => void;
+  onArgChange: (argName: string, value: string) => void;
+  onRemove: () => void;
+}) {
+  const selectClass = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400";
+  const inputClass = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400 w-20";
+  const argSpecs = kindMap[row.kind]?.args ?? [];
+
+  return (
+    <div className="flex gap-2 items-center mb-1 flex-wrap">
+      <select
+        className={`${selectClass} w-44`}
+        value={row.kind}
+        onChange={(e) => onKindChange(e.target.value)}
+      >
+        <option value="">— select kind —</option>
+        {detectors.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+        {row.kind && !kindMap[row.kind] && <option value={row.kind}>{row.kind}</option>}
+      </select>
+      {argSpecs.map((arg) => (
+        <div key={arg.name} className="flex items-center gap-1">
+          <span className="text-xs text-slate-500 w-16 text-right shrink-0">{arg.name}</span>
+          <input
+            className={inputClass}
+            placeholder={arg.default !== undefined ? String(arg.default) : ""}
+            value={row.args[arg.name] ?? ""}
+            onChange={(e) => onArgChange(arg.name, e.target.value)}
+          />
+        </div>
+      ))}
+      <ActionButton variant="remove" onClick={onRemove}>✕</ActionButton>
+    </div>
+  );
 }
 
 function AlertConfigEditor({
@@ -338,21 +387,31 @@ function AlertConfigEditor({
 }) {
   const [defaults, setDefaults] = useState<DetectorRow[]>([]);
   const [overrides, setOverrides] = useState<SymbolOverride[]>([]);
+  const [detectors, setDetectors] = useState<DetectorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
 
+  const kindMap: Record<string, DetectorInfo> = Object.fromEntries(detectors.map((d) => [d.name, d]));
+
   useEffect(() => {
-    const fetcher = username === "__me__" ? api.getMyAlerts() : api.getAccountAlerts(username);
-    fetcher
-      .then((config) => {
+    const alertsFetch = username === "__me__" ? api.getMyAlerts() : api.getAccountAlerts(username);
+    Promise.all([alertsFetch, api.getDetectors()])
+      .then(([config, dets]) => {
         const parsed = parseAlertConfig(config);
         setDefaults(parsed.defaults);
         setOverrides(parsed.overrides);
+        setDetectors(dets);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [username]);
+
+  function makeDefaultArgs(kind: string): Record<string, string> {
+    return Object.fromEntries(
+      (kindMap[kind]?.args ?? []).map((a) => [a.name, a.default !== undefined ? String(a.default) : ""])
+    );
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -372,12 +431,16 @@ function AlertConfigEditor({
     }
   }
 
-  function updateDefaultRow(i: number, field: keyof DetectorRow, value: string) {
-    setDefaults((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+  function setDefaultKind(i: number, kind: string) {
+    setDefaults((prev) => prev.map((r, idx) => idx === i ? { kind, args: makeDefaultArgs(kind) } : r));
+  }
+
+  function updateDefaultArg(i: number, argName: string, value: string) {
+    setDefaults((prev) => prev.map((r, idx) => idx === i ? { ...r, args: { ...r.args, [argName]: value } } : r));
   }
 
   function addDefaultRow() {
-    setDefaults((prev) => [...prev, { kind: "", threshold: "", period: "" }]);
+    setDefaults((prev) => [...prev, { kind: "", args: {} }]);
   }
 
   function removeDefaultRow(i: number) {
@@ -385,7 +448,7 @@ function AlertConfigEditor({
   }
 
   function addOverride() {
-    setOverrides((prev) => [...prev, { ticker: "", rows: [{ kind: "", threshold: "", period: "" }] }]);
+    setOverrides((prev) => [...prev, { ticker: "", rows: [{ kind: "", args: {} }] }]);
   }
 
   function removeOverride(i: number) {
@@ -396,15 +459,21 @@ function AlertConfigEditor({
     setOverrides((prev) => prev.map((o, idx) => idx === i ? { ...o, ticker } : o));
   }
 
-  function updateOverrideRow(oi: number, ri: number, field: keyof DetectorRow, value: string) {
+  function setOverrideRowKind(oi: number, ri: number, kind: string) {
     setOverrides((prev) => prev.map((o, idx) =>
-      idx === oi ? { ...o, rows: o.rows.map((r, ridx) => ridx === ri ? { ...r, [field]: value } : r) } : o
+      idx === oi ? { ...o, rows: o.rows.map((r, ridx) => ridx === ri ? { kind, args: makeDefaultArgs(kind) } : r) } : o
+    ));
+  }
+
+  function updateOverrideArg(oi: number, ri: number, argName: string, value: string) {
+    setOverrides((prev) => prev.map((o, idx) =>
+      idx === oi ? { ...o, rows: o.rows.map((r, ridx) => ridx === ri ? { ...r, args: { ...r.args, [argName]: value } } : r) } : o
     ));
   }
 
   function addOverrideRow(oi: number) {
     setOverrides((prev) => prev.map((o, idx) =>
-      idx === oi ? { ...o, rows: [...o.rows, { kind: "", threshold: "", period: "" }] } : o
+      idx === oi ? { ...o, rows: [...o.rows, { kind: "", args: {} }] } : o
     ));
   }
 
@@ -416,7 +485,6 @@ function AlertConfigEditor({
 
   if (loading) return <p className="text-sm text-slate-500">Loading…</p>;
 
-  const rowClass = "flex gap-2 items-center mb-1";
   const inputClass = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400";
 
   return (
@@ -425,12 +493,15 @@ function AlertConfigEditor({
 
       <p className="text-xs text-slate-500 mb-1">Default thresholds</p>
       {defaults.map((row, i) => (
-        <div key={i} className={rowClass}>
-          <input className={`${inputClass} w-36`} placeholder="kind (e.g. percent_change)" value={row.kind} onChange={(e) => updateDefaultRow(i, "kind", e.target.value)} />
-          <input className={`${inputClass} w-24`} placeholder="threshold" value={row.threshold} onChange={(e) => updateDefaultRow(i, "threshold", e.target.value)} />
-          <input className={`${inputClass} w-20`} placeholder="period" value={row.period} onChange={(e) => updateDefaultRow(i, "period", e.target.value)} />
-          <button onClick={() => removeDefaultRow(i)} className="text-red-500 hover:text-red-400 text-xs px-1">✕</button>
-        </div>
+        <DetectorRowEditor
+          key={i}
+          row={row}
+          detectors={detectors}
+          kindMap={kindMap}
+          onKindChange={(kind) => setDefaultKind(i, kind)}
+          onArgChange={(argName, value) => updateDefaultArg(i, argName, value)}
+          onRemove={() => removeDefaultRow(i)}
+        />
       ))}
       <ActionButton onClick={addDefaultRow}>+ detector</ActionButton>
 
@@ -439,15 +510,18 @@ function AlertConfigEditor({
         <div key={oi} className="mb-3 pl-3 border-l border-[#404868]">
           <div className="flex gap-2 items-center mb-1">
             <input className={`${inputClass} w-24`} placeholder="ticker" value={o.ticker} onChange={(e) => updateOverrideTicker(oi, e.target.value.toUpperCase())} />
-            <button onClick={() => removeOverride(oi)} className="text-red-500 hover:text-red-400 text-xs px-1">✕ remove</button>
+            <ActionButton variant="remove" onClick={() => removeOverride(oi)}>✕ remove</ActionButton>
           </div>
           {o.rows.map((row, ri) => (
-            <div key={ri} className={rowClass}>
-              <input className={`${inputClass} w-36`} placeholder="kind" value={row.kind} onChange={(e) => updateOverrideRow(oi, ri, "kind", e.target.value)} />
-              <input className={`${inputClass} w-24`} placeholder="threshold" value={row.threshold} onChange={(e) => updateOverrideRow(oi, ri, "threshold", e.target.value)} />
-              <input className={`${inputClass} w-20`} placeholder="period" value={row.period} onChange={(e) => updateOverrideRow(oi, ri, "period", e.target.value)} />
-              <button onClick={() => removeOverrideRow(oi, ri)} className="text-red-500 hover:text-red-400 text-xs px-1">✕</button>
-            </div>
+            <DetectorRowEditor
+              key={ri}
+              row={row}
+              detectors={detectors}
+              kindMap={kindMap}
+              onKindChange={(kind) => setOverrideRowKind(oi, ri, kind)}
+              onArgChange={(argName, value) => updateOverrideArg(oi, ri, argName, value)}
+              onRemove={() => removeOverrideRow(oi, ri)}
+            />
           ))}
           <ActionButton onClick={() => addOverrideRow(oi)}>+ detector</ActionButton>
         </div>

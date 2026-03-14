@@ -6,7 +6,8 @@ from typing import Any, Literal, Sequence
 
 from portfolio_monitor.data.aggregate_cache import Aggregate
 from portfolio_monitor.data.provider import DataProvider
-from portfolio_monitor.detectors import Alert, Detector, DetectorRegistry
+from portfolio_monitor.detectors.base import Alert, Detector
+from portfolio_monitor.detectors.registry import DetectorRegistry
 from portfolio_monitor.service.types import AssetSymbol
 
 DetectorSpec = Detector | dict[str, Any]
@@ -39,14 +40,14 @@ class DeviationEngine:
         if default_detectors:
             for detector in default_detectors:
                 if isinstance(detector, Detector):
-                    logger.debug("Adding default detector %s", detector.name)
+                    logger.debug("Adding default detector %s", detector.name())
                     self.default_detectors.append(detector)
                 elif isinstance(detector, dict):
                     d = DetectorRegistry.create_detector(
                         detector["name"], detector.get("args")
                     )
                     if d is not None:
-                        logger.debug("Adding default detector %s", d.name)
+                        logger.debug("Adding default detector %s", d.name())
                         self.default_detectors.append(d)
                     else:
                         raise ValueError(f"Invalid detector: {detector}")
@@ -69,7 +70,7 @@ class DeviationEngine:
         elif isinstance(detector, dict):
             d = DetectorRegistry.create_detector(detector["name"], detector.get("args"))
             if d is not None:
-                logger.debug("Adding detector %s for symbol %s", d.name, symbol)
+                logger.debug("Adding detector %s for symbol %s", d.name(), symbol)
                 self.asset_detectors[symbol].append(d)
             else:
                 raise ValueError(f"Invalid detector: {detector}")
@@ -92,7 +93,7 @@ class DeviationEngine:
         symbol = aggregate.symbol
 
         for detector in self._detectors_for_symbol(aggregate.symbol):
-            if detector.name in self.disabled_detectors:
+            if detector.name() in self.disabled_detectors:
                 continue
 
             detector.update(aggregate)

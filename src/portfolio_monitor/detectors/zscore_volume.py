@@ -11,8 +11,8 @@ class ZScoreVolumeDetector(TimeRangeDetectorBase[float]):
     Detector for unusual volume spikes based on standard deviation (Z-score).
     """
 
-    @property
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return "zscore_volume"
 
     def __init__(self, period: str = "2h", threshold: float = 1.0) -> None:

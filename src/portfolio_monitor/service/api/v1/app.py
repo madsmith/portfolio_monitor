@@ -3,6 +3,7 @@ from starlette.routing import Route, Router, WebSocketRoute
 from portfolio_monitor.service.context import PortfolioMonitorContext
 
 from .routes.accounts import accounts_handler
+from .routes.detectors import list_detectors
 from .routes.health import health
 from .routes.login import login_handler
 from .routes.me import me_handler
@@ -49,6 +50,7 @@ class APIv1ServiceApp(Router):
         super().__init__(
             routes=[
                 Route("/health", health, methods=["GET"]),
+                Route("/detectors", list_detectors, methods=["GET"]),
                 Route("/login", login, methods=["POST"]),
                 Route("/me", me, methods=["GET"]),
                 Route("/me/alerts", get_my_alerts, methods=["GET"]),

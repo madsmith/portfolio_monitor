@@ -11,8 +11,8 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
     Detector for returns that deviate significantly from historical distribution.
     """
 
-    @property
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return "zscore_return"
 
     def __init__(self, period: str = "2h", threshold: float = 2.0) -> None:

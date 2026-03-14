@@ -1,4 +1,5 @@
 import dataclasses
+import inspect
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -40,6 +41,27 @@ class Alert:
         }
 
 
+@dataclass
+class DetectorArgSpec:
+    """Describes one constructor argument for a Detector class."""
+
+    name: str
+    type: str   # human-readable, e.g. "float", "str", "int"
+    default: Any  # inspect.Parameter.empty when the arg is required
+
+    @property
+    def required(self) -> bool:
+        return self.default is inspect.Parameter.empty
+
+
+@dataclass
+class DetectorInfo:
+    """Describes a detector class: its name and constructor arguments."""
+
+    name: str
+    args: list[DetectorArgSpec]
+
+
 def _round_floats(obj: Any, precision: int = 4) -> Any:
     if isinstance(obj, float):
         return round(obj, precision)
@@ -57,9 +79,14 @@ class Detector(Protocol):
         """Return the unique ID for this detector instance."""
         ...
 
-    @property
-    def name(self) -> str:
-        """Return the detector's name (used for alert kind)"""
+    @classmethod
+    def name(cls) -> str:
+        """Return the detector's name (used for alert kind)."""
+        ...
+
+    @classmethod
+    def detector_info(cls) -> DetectorInfo:
+        """Return the name and constructor arg spec for this detector class."""
         ...
 
     def update(self, aggregate: Aggregate) -> None:
@@ -96,10 +123,27 @@ class DetectorBase(ABC, Detector):
     def detector_id(self) -> str:
         return self._detector_id
 
-    @property
+    @classmethod
     @abstractmethod
-    def name(self) -> str:
+    def name(cls) -> str:
         raise NotImplementedError
+
+    @classmethod
+    def detector_info(cls) -> DetectorInfo:
+        signature = inspect.signature(cls.__init__)
+        args = []
+        for param_name, param in signature.parameters.items():
+            if param_name == "self":
+                continue
+            annotation = param.annotation
+            if annotation is inspect.Parameter.empty:
+                type_str = "any"
+            elif hasattr(annotation, "__name__"):
+                type_str = annotation.__name__
+            else:
+                type_str = str(annotation)
+            args.append(DetectorArgSpec(name=param_name, type=type_str, default=param.default))
+        return DetectorInfo(name=cls.name(), args=args)
 
     @abstractmethod
     def update(self, aggregate: Aggregate) -> None:
@@ -141,7 +185,7 @@ class DetectorBase(ABC, Detector):
             id=uuid4().hex,
             detector_id=self._detector_id,
             ticker=symbol,
-            kind=self.name,
+            kind=self.name(),
             message=message,
             extra=extra,
             at=now,
@@ -184,7 +228,6 @@ class DetectorBase(ABC, Detector):
 
 
 T = TypeVar("T")
-D = TypeVar("D", bound=Detector)
 
 
 class HistoryRecord(Generic[T], NamedTuple):
@@ -253,61 +296,3 @@ class SampleRangeDetectorBase(DetectorBase):
         super().__init__()
         self.samples = samples
 
-
-class DetectorRegistry:
-    """Registry for detector classes that allows creating detectors from kind and config"""
-
-    _registry: dict[str, Type[Detector]] = {}
-
-    @classmethod
-    def register(cls, detector_class: Type[D]) -> Type[D]:
-        """Register a detector class by its name
-
-        Can be used as a decorator:
-        @DetectorRegistry.register
-        class MyDetector(Detector):
-            ...
-        """
-        # Create a temporary instance to get the name
-        temp_instance = detector_class()
-        name = temp_instance.name
-        cls._registry[name] = detector_class
-        return detector_class
-
-    @classmethod
-    def get_detector_class(cls, kind: str) -> Type[Detector] | None:
-        """Get detector class by kind"""
-        return cls._registry.get(kind)
-
-    @classmethod
-    def create_detector(
-        cls, kind: str, config: dict[str, Any] | None = None
-    ) -> Detector | None:
-        """Create a detector instance from kind and config
-
-        Args:
-            kind: The detector kind/name to create
-            config: Configuration parameters to pass to the detector constructor
-
-        Returns:
-            A configured detector instance or None if kind not found
-        """
-        if config is None:
-            config = {}
-
-        detector_class = cls.get_detector_class(kind)
-        if detector_class is None:
-            logger.warning(f"Detector kind {kind} not found")
-            return None
-
-        try:
-            return detector_class(**config)
-        except Exception as e:
-            # Log the error and return None
-            logger.error(f"Error creating detector {kind} with config {config}: {e}")
-            return None
-
-    @classmethod
-    def list_available_detectors(cls) -> list[str]:
-        """List all registered detector kinds"""
-        return list(cls._registry.keys())

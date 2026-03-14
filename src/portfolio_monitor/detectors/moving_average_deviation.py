@@ -11,8 +11,8 @@ class SMADeviationDetector(TimeRangeDetectorBase[float]):
     Detector for price deviations from a Simple Moving Average (SMA).
     """
 
-    @property
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return "SMA_deviation"
 
     def __init__(self, period: str = "2h", threshold: float = 0.05) -> None:

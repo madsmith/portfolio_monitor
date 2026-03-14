@@ -20,8 +20,8 @@ class PreviousClose:
 
 @DetectorRegistry.register
 class PercentChangeDetector(DetectorBase):
-    @property
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return "percent_change"
 
 

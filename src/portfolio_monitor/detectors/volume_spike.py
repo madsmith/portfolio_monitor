@@ -11,8 +11,8 @@ class VolumeSpikeDetector(TimeRangeDetectorBase[float]):
     Detector for unusual spikes in trading volume based on multiples of average volume.
     """
 
-    @property
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return "volume_spike"
 
     def __init__(self, period: str = "2h", threshold: float = 2.0) -> None:

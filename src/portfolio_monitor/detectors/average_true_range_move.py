@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class AverageTrueRangeMoveDetector(DetectorBase):
     """Detector for price moves that exceed a multiple of Average True Range"""
 
-    @property
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return "average_true_range_move"
 
     def __init__(self, samples: int = 30, threshold: float = 2.0) -> None:

@@ -93,6 +93,17 @@ export type AccountSummary = {
 
 export type AlertConfig = Record<string, unknown>;
 
+export type DetectorArgSpec = {
+  name: string;
+  type: string;        // "float", "str", "int", etc.
+  default?: number | string;  // absent means the arg is required
+};
+
+export type DetectorInfo = {
+  name: string;
+  args: DetectorArgSpec[];
+};
+
 export const api = {
   login: async (
     username: string,
@@ -146,4 +157,7 @@ export const api = {
 
   updateAccountAlerts: (username: string, config: AlertConfig): Promise<{ ok: boolean }> =>
     authPut(`/api/v1/accounts/${encodeURIComponent(username)}/alerts`, config),
+
+  getDetectors: (): Promise<DetectorInfo[]> =>
+    authGet("/api/v1/detectors"),
 };
