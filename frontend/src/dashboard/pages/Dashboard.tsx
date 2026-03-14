@@ -190,13 +190,14 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="flex items-end gap-1">
+        <div className="relative flex items-end gap-1">
           <Tab label="Overview" active={!isSettingsActive && activeId === null} onClick={() => navigate("/")} />
           {portfolios.map((p) => (
             <Tab key={p.id} label={p.name} active={p.id === activeId} onClick={() => navigate(`/portfolio/${p.id}`)} />
           ))}
-          <div className="flex-1 border-b-2 border-[#404868]" />
+          <div className="flex-1" />
           <Tab label="Settings" active={isSettingsActive} onClick={() => navigate("/settings")} />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[#404868]" />
         </div>
 
         <div className="bg-[#1e2130] border-2 border-[#404868] rounded-b-lg p-6">
