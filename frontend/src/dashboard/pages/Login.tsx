@@ -17,6 +17,8 @@ export default function Login() {
       const result = await api.login(username, password);
       if (result.token) {
         setToken(result.token);
+        if (result.username) localStorage.setItem("auth_username", result.username);
+        if (result.role) localStorage.setItem("auth_role", result.role);
         navigate("/");
       } else {
         setError(result.error ?? "Invalid credentials");

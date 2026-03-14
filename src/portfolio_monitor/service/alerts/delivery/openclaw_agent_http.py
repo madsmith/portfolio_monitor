@@ -8,11 +8,12 @@ import httpx
 
 from portfolio_monitor.data.aggregate_cache import _PRICE_PRECISION
 from portfolio_monitor.detectors.base import Alert, _round_floats
+from .base import AlertDelivery
 
 logger = logging.getLogger(__name__)
 
 
-class OpenClawAgentHttpDelivery:
+class OpenClawAgentHttpDelivery(AlertDelivery):
     """Deliver alerts to an OpenClaw agent via its HTTP hook endpoint.
 
     Posts to ``http://{host}:{port}/hooks/agent`` with a Bearer token

@@ -18,3 +18,5 @@ config/aggregate_cache.db
 config/device*identity.json
 incoming_frame.json
 tmp/
+config/settings.yaml
+config/sessions.yaml

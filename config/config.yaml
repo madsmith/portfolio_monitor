@@ -1,6 +1,8 @@
 portfolio_monitor:
   portfolio_path: "config/portfolios"
   aggregate_cache_path: "config/aggregate_cache.db"
+  settings_path: "config/settings.yaml"
+  session_store_path: "config/sessions.yaml"
   auth_key: "${private.portfolio_monitor.auth_key}"
 
   dashboard:

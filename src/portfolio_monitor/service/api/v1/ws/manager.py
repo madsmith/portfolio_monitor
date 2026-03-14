@@ -1,5 +1,4 @@
 import asyncio
-import hmac
 import logging
 
 from pydantic import TypeAdapter, ValidationError
@@ -8,6 +7,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.portfolio.events import PriceUpdated
+from portfolio_monitor.service.settings import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 
 from .messages import (
@@ -48,8 +48,8 @@ class WebSocketManager:
       {"type": "previous_close",  "symbol": {...}, "price": 178.00, "timestamp": "..."}
     """
 
-    def __init__(self, bus: EventBus, auth_key: str, data_provider: DataProvider) -> None:
-        self._auth_key: str = auth_key
+    def __init__(self, bus: EventBus, session_store: SessionStore, data_provider: DataProvider) -> None:
+        self._session_store: SessionStore = session_store
         self._data_provider: DataProvider = data_provider
         # Maps each authenticated WebSocket to the set of AssetSymbols it has subscribed to
         self._connections: dict[WebSocket, set[AssetSymbol]] = {}
@@ -67,9 +67,8 @@ class WebSocketManager:
             await ws.close(code=1008)
             return
 
-        if not isinstance(msg, AuthenticateMessage) or not hmac.compare_digest(
-            msg.token, self._auth_key
-        ):
+        if not isinstance(msg, AuthenticateMessage) or self._session_store.get(msg.token) is None:
+            print("Invalid auth token in WS connection attempt", ws.client)
             await ws.close(code=1008)
             return
 

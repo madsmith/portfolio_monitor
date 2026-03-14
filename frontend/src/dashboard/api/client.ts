@@ -1,8 +1,17 @@
 const TOKEN_KEY = "auth_token";
+const USERNAME_KEY = "auth_username";
+const ROLE_KEY = "auth_role";
 
 export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
 export const setToken = (token: string): void => localStorage.setItem(TOKEN_KEY, token);
-export const clearToken = (): void => localStorage.removeItem(TOKEN_KEY);
+export const getUsername = (): string | null => localStorage.getItem(USERNAME_KEY);
+export const getRole = (): string | null => localStorage.getItem(ROLE_KEY);
+
+export const clearToken = (): void => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USERNAME_KEY);
+  localStorage.removeItem(ROLE_KEY);
+};
 
 function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${getToken() ?? ""}` };
@@ -10,6 +19,32 @@ function authHeaders(): HeadersInit {
 
 async function authGet<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: authHeaders() });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
+
+async function authPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "PUT",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
+
+async function authPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
+
+async function authDelete<T>(path: string): Promise<T> {
+  const res = await fetch(path, { method: "DELETE", headers: authHeaders() });
   if (!res.ok) throw new Error(String(res.status));
   return res.json();
 }
@@ -50,11 +85,19 @@ export type PortfolioDetail = PortfolioSummary & {
   crypto: Asset[];
 };
 
+export type AccountSummary = {
+  username: string;
+  role: string;
+  is_default?: boolean;
+};
+
+export type AlertConfig = Record<string, unknown>;
+
 export const api = {
   login: async (
     username: string,
     password: string
-  ): Promise<{ token?: string; error?: string }> => {
+  ): Promise<{ token?: string; username?: string; role?: string; error?: string }> => {
     const res = await fetch("/api/v1/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -62,6 +105,9 @@ export const api = {
     });
     return res.json();
   },
+
+  getMe: (): Promise<{ username: string; role: string }> =>
+    authGet("/api/v1/me"),
 
   getPortfolios: (): Promise<PortfolioSummary[]> =>
     authGet("/api/v1/portfolios"),
@@ -71,4 +117,33 @@ export const api = {
 
   getPreviousClose: (assetType: string, ticker: string): Promise<{ price: number; timestamp: string }> =>
     authGet(`/api/v1/price/${assetType}/${ticker}/previous-close`),
+
+  // Account management (admin only)
+  getAccounts: (): Promise<AccountSummary[]> =>
+    authGet("/api/v1/accounts"),
+
+  createAccount: (username: string, password: string, role: string): Promise<AccountSummary> =>
+    authPost("/api/v1/accounts", { username, password, role }),
+
+  deleteAccount: (username: string): Promise<{ ok: boolean }> =>
+    authDelete(`/api/v1/accounts/${encodeURIComponent(username)}`),
+
+  updateAccountRole: (username: string, role: string): Promise<{ ok: boolean }> =>
+    authPut(`/api/v1/accounts/${encodeURIComponent(username)}`, { role }),
+
+  resetAccountPassword: (username: string, password: string): Promise<{ ok: boolean }> =>
+    authPut(`/api/v1/accounts/${encodeURIComponent(username)}/password`, { password }),
+
+  // Alert configs
+  getMyAlerts: (): Promise<AlertConfig> =>
+    authGet("/api/v1/me/alerts"),
+
+  updateMyAlerts: (config: AlertConfig): Promise<{ ok: boolean }> =>
+    authPut("/api/v1/me/alerts", config),
+
+  getAccountAlerts: (username: string): Promise<AlertConfig> =>
+    authGet(`/api/v1/accounts/${encodeURIComponent(username)}/alerts`),
+
+  updateAccountAlerts: (username: string, config: AlertConfig): Promise<{ ok: boolean }> =>
+    authPut(`/api/v1/accounts/${encodeURIComponent(username)}/alerts`, config),
 };

@@ -16,6 +16,16 @@ class PortfolioMonitorConfig(AppConfig):
         default="./config/aggregate_cache.db",
         converter=Path,
     )
+    settings_path = BindDefault[Path](
+        "portfolio_monitor.settings_path",
+        default="./config/settings.yaml",
+        converter=Path,
+    )
+    session_store_path = BindDefault[Path](
+        "portfolio_monitor.session_store_path",
+        default="./config/sessions.yaml",
+        converter=Path,
+    )
 
     # Polygon.io settings
     polygon_api_key = Bind[str]("polygon.api_key")

@@ -1,5 +1,3 @@
-import hmac
-
 from starlette.authentication import (
     AuthCredentials,
     AuthenticationBackend,
@@ -7,16 +5,18 @@ from starlette.authentication import (
 )
 from starlette.requests import HTTPConnection
 
+from portfolio_monitor.service.settings import SessionStore
 
-class BearerTokenBackend(AuthenticationBackend):
-    """Validates Bearer tokens from the Authorization header.
 
-    Returns a "default" user for valid tokens, or None for
+class SessionBackend(AuthenticationBackend):
+    """Validates Bearer tokens against the in-memory session store.
+
+    Returns the session user (with role scope) for valid tokens, or None for
     missing/invalid tokens (leaving the request unauthenticated).
     """
 
-    def __init__(self, auth_key: str):
-        self.auth_key: str = auth_key
+    def __init__(self, session_store: SessionStore) -> None:
+        self._session_store: SessionStore = session_store
 
     async def authenticate(
         self, conn: HTTPConnection
@@ -26,7 +26,11 @@ class BearerTokenBackend(AuthenticationBackend):
             return None
 
         token = auth_header[7:]
-        if not hmac.compare_digest(token, self.auth_key):
+        session = self._session_store.get(token)
+        if session is None:
             return None
 
-        return AuthCredentials(["authenticated"]), SimpleUser("default")
+        return (
+            AuthCredentials(["authenticated", f"role:{session.role}"]),
+            SimpleUser(session.username),
+        )

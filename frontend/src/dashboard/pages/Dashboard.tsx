@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
-import { api, clearToken, type PortfolioDetail, type PortfolioSummary } from "../api/client";
+import { api, clearToken, getUsername, type PortfolioDetail, type PortfolioSummary } from "../api/client";
 import { type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
 import { applyPriceUpdate, computeTodayChange, prevCloseKey, type TodayChange } from "../lib/formatters";
 import { Overview } from "../components/Overview";
 import { PortfolioDetailContent } from "../components/PortfolioDetail";
+import Settings from "./Settings";
 
 function toWsSymbol(a: { ticker: string; asset_type: string }): WsAssetSymbol {
   return { ticker: a.ticker, type: a.asset_type };
@@ -29,7 +30,10 @@ function Tab({ label, active, onClick }: { label: string; active: boolean; onCli
 export default function Dashboard() {
   const navigate = useNavigate();
   const match = useMatch("/portfolio/:id");
-  const activeId = match?.params.id ?? null;
+  const settingsMatch = useMatch("/settings");
+  const activeId = settingsMatch ? null : (match?.params.id ?? null);
+  const isSettingsActive = settingsMatch !== null;
+  const currentUsername = getUsername();
 
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
   const [portfoliosLoading, setPortfoliosLoading] = useState(true);
@@ -173,24 +177,32 @@ export default function Dashboard() {
 
         <div className="flex items-baseline justify-between mb-4 px-1">
           <span className="text-xl font-semibold text-slate-100 tracking-wide">Portfolio Monitor</span>
-          <button
-            onClick={() => { clearToken(); navigate("/login"); }}
-            className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-3">
+            {currentUsername && (
+              <span className="text-xs text-slate-500">{currentUsername}</span>
+            )}
+            <button
+              onClick={() => { clearToken(); navigate("/login"); }}
+              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
 
         <div className="flex items-end gap-1">
-          <Tab label="Overview" active={activeId === null} onClick={() => navigate("/")} />
+          <Tab label="Overview" active={!isSettingsActive && activeId === null} onClick={() => navigate("/")} />
           {portfolios.map((p) => (
             <Tab key={p.id} label={p.name} active={p.id === activeId} onClick={() => navigate(`/portfolio/${p.id}`)} />
           ))}
           <div className="flex-1 border-b-2 border-[#404868]" />
+          <Tab label="Settings" active={isSettingsActive} onClick={() => navigate("/settings")} />
         </div>
 
         <div className="bg-[#1e2130] border-2 border-[#404868] rounded-b-lg p-6">
-          {activeId === null ? (
+          {isSettingsActive ? (
+            <Settings />
+          ) : activeId === null ? (
             <Overview
               portfolios={portfolios}
               loading={portfoliosLoading}

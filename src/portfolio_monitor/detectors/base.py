@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Alert:
     id: str
+    detector_id: str  # Unique ID of the detector instance that created this alert
     ticker: AssetSymbol
     kind: str
     message: str
@@ -28,6 +29,7 @@ class Alert:
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
+            "detector_id": self.detector_id,
             "ticker": self.ticker.to_dict(),
             "kind": self.kind,
             "message": self.message,
@@ -50,6 +52,11 @@ def _round_floats(obj: Any, precision: int = 4) -> Any:
 
 @runtime_checkable
 class Detector(Protocol):
+    @property
+    def detector_id(self) -> str:
+        """Return the unique ID for this detector instance."""
+        ...
+
     @property
     def name(self) -> str:
         """Return the detector's name (used for alert kind)"""
@@ -82,7 +89,12 @@ class Detector(Protocol):
 
 class DetectorBase(ABC, Detector):
     def __init__(self) -> None:
+        self._detector_id: str = uuid4().hex
         self._current_alerts: dict[AssetSymbol, Alert | None] = {}
+
+    @property
+    def detector_id(self) -> str:
+        return self._detector_id
 
     @property
     @abstractmethod
@@ -127,6 +139,7 @@ class DetectorBase(ABC, Detector):
         now = datetime.now(aggregate.date_open.tzinfo)
         self._current_alerts[symbol] = Alert(
             id=uuid4().hex,
+            detector_id=self._detector_id,
             ticker=symbol,
             kind=self.name,
             message=message,

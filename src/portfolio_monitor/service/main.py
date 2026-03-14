@@ -3,6 +3,7 @@ import asyncio
 import logging
 import secrets
 import sys
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -22,7 +23,7 @@ from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.aggregate_cache import AggregateCache
 from portfolio_monitor.data.events import AggregateUpdated
 from portfolio_monitor.data.provider import PolygonDataProvider
-from portfolio_monitor.detectors import DeviationEngine
+from portfolio_monitor.detectors import DeviationEngine, DetectorRegistry
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.loader import load_portfolios
 from portfolio_monitor.portfolio.service import PortfolioService
@@ -35,6 +36,7 @@ from portfolio_monitor.service.alerts import (
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
+from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 
 # Configure logging
@@ -86,34 +88,29 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     # Create data provider
     data_provider = PolygonDataProvider(config, aggregate_cache)
 
-    # Build detection engine from config
-    try:
-        alert_config = OmegaConfigLoader.load(Path("config/alerts.yaml"))
-    except Exception as e:
-        alert_config = {}
+    # Initialize account and session stores
+    account_store = AccountStore(config.settings_path)
+    account_store.load()
 
-    default_detectors_config = alert_config.get("default", {})
-    default_detectors = [
-        {"name": name, "args": args} for name, args in default_detectors_config.items()
-    ]
-    detection_engine = DeviationEngine(
-        default_detectors=default_detectors,
+    # Seed default admin alerts from alerts.yaml on first run
+    if not account_store.get_default_admin_alerts():
+        try:
+            raw = OmegaConfigLoader.load(Path("config/alerts.yaml"))
+            resolved = OmegaConf.to_container(raw.get("alerts", {}), resolve=True)
+            if isinstance(resolved, dict):
+                account_store.set_default_admin_alerts(resolved)  # type: ignore[arg-type]
+                account_store.save()
+                logger.info("Seeded default admin alerts from config/alerts.yaml")
+        except Exception as e:
+            logger.warning("Could not seed alerts from alerts.yaml: %s", e)
+
+    session_store = SessionStore(config.session_store_path)
+    session_store.load()
+
+    # Build per-account detection engine
+    detection_engine, detector_accounts = _build_per_account_engine(
+        account_store, portfolios, default_admin_username=config.dashboard_username or "default"
     )
-
-    # Register per-asset detectors
-    for key, value in alert_config.items():
-        if type(key) is not str:
-            continue
-        if key == "default":
-            continue
-        if isinstance(value, dict):
-            detector_configs = value
-            for name, args in detector_configs.items():
-                ticker = key
-                detection_engine.add_detector(
-                    _resolve_symbol(portfolios, ticker),
-                    {"name": name, "args": args},
-                )
 
     # Create services — subscriptions happen in constructors
     detection_service = DetectionService(
@@ -123,12 +120,13 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     )
     portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)
     alert_router = AlertRouter(bus=bus)
+    for detector_id, usernames in detector_accounts.items():
+        for username in usernames:
+            alert_router.register_detector_account(detector_id, username)
     if is_dev:
         # Suppress all alert delivery by default in dev mode;
         # detectors still process data and build history.
         alert_router.suppressed_detectors = {
-            d.name for d in detection_engine.default_detectors
-        } | {
             d.name
             for detectors in detection_engine.asset_detectors.values()
             for d in detectors
@@ -182,7 +180,14 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             await bus.publish(AggregateUpdated(symbol=symbol, aggregate=agg))
 
     # Start API server
-    ctx = PortfolioMonitorContext(config=config, portfolio_service=portfolio_service, bus=bus, data_provider=data_provider)
+    ctx = PortfolioMonitorContext(
+        config=config,
+        portfolio_service=portfolio_service,
+        bus=bus,
+        data_provider=data_provider,
+        account_store=account_store,
+        session_store=session_store,
+    )
     api_app: Starlette = create_api_app(ctx)
     uvicorn_config = uvicorn.Config(
         api_app,
@@ -262,13 +267,85 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             logger.error("Error closing aggregate cache: %s", e)
 
 
-def _resolve_symbol(portfolios: list, ticker: str) -> AssetSymbol:
-    """Resolve a ticker string to an AssetSymbol from loaded portfolios."""
-    for portfolio in portfolios:
-        for asset in portfolio.assets():
-            if asset.symbol.ticker == ticker:
-                return asset.symbol
-    raise ValueError(f"Ticker {ticker} not found in portfolios")
+
+def _build_per_account_engine(
+    account_store: AccountStore,
+    portfolios: list,
+    default_admin_username: str = "default",
+) -> tuple[DeviationEngine, dict[str, list[str]]]:
+    """Build a DeviationEngine with one detector per (account × symbol × kind).
+
+    Default configs are expanded into per-symbol detectors for all known symbols,
+    skipping symbols where that account has a symbol-specific override of the same kind.
+
+    Returns:
+        engine: DeviationEngine with all account detectors registered as asset detectors.
+        detector_accounts: mapping of detector_id → list of account usernames.
+    """
+    all_symbols: list[AssetSymbol] = list(
+        {asset.symbol for portfolio in portfolios for asset in portfolio.assets()}
+    )
+    ticker_to_symbol: dict[str, AssetSymbol] = {s.ticker: s for s in all_symbols}
+
+    account_configs: list[tuple[str, dict]] = [
+        (default_admin_username, account_store.get_default_admin_alerts()),
+    ] + [(a.username, a.alerts) for a in account_store.get_all()]
+
+    # symbol → list of (detector, username) to register
+    sym_detectors: dict[AssetSymbol, list[tuple[object, str]]] = {}
+    detector_accounts: dict[str, list[str]] = {}
+
+    for username, alert_config in account_configs:
+        if not isinstance(alert_config, dict) or not alert_config:
+            continue
+
+        default_cfg = alert_config.get("default") or {}
+        # ticker → set of kinds with symbol-specific override for this account
+        sym_overrides: defaultdict[str, set[str]] = defaultdict(set)
+
+        # Symbol-specific detectors
+        for ticker, sym_cfg in alert_config.items():
+            if ticker in ("default", "templates") or not isinstance(sym_cfg, dict):
+                continue
+            symbol = ticker_to_symbol.get(ticker)
+            if symbol is None:
+                logger.warning(
+                    "Alert config for '%s' references unknown ticker '%s', skipping",
+                    username,
+                    ticker,
+                )
+                continue
+            for kind, args in sym_cfg.items():
+                if not isinstance(args, dict):
+                    continue
+                d = DetectorRegistry.create_detector(kind, args)
+                if d is None:
+                    continue
+                sym_detectors.setdefault(symbol, []).append((d, username))
+                detector_accounts.setdefault(d.detector_id, []).append(username)
+                sym_overrides[ticker].add(kind)
+
+        # Default detectors — expand to per-symbol, excluding overridden kinds
+        if not isinstance(default_cfg, dict):
+            continue
+        for kind, args in default_cfg.items():
+            if not isinstance(args, dict):
+                continue
+            for symbol in all_symbols:
+                if kind in sym_overrides[symbol.ticker]:
+                    continue
+                d = DetectorRegistry.create_detector(kind, args)
+                if d is None:
+                    continue
+                sym_detectors.setdefault(symbol, []).append((d, username))
+                detector_accounts.setdefault(d.detector_id, []).append(username)
+
+    engine = DeviationEngine()
+    for symbol, pairs in sym_detectors.items():
+        for detector, _ in pairs:
+            engine.add_detector(symbol, detector)  # type: ignore[arg-type]
+
+    return engine, detector_accounts
 
 
 def generate_auth_key(config_path: Path) -> None:

@@ -56,7 +56,7 @@ class DeviationEngine:
         self.disabled_detectors: set[str] = set()
         self.asset_detectors: dict[AssetSymbol, list[Detector]] = {}
 
-        # Tracks the last known active alert per (symbol, detector_name)
+        # Tracks the last known active alert per (symbol, detector_id)
         self.active_alerts: dict[tuple[AssetSymbol, str], Alert] = {}
 
     def add_detector(self, symbol: AssetSymbol, detector: DetectorSpec) -> None:
@@ -97,7 +97,7 @@ class DeviationEngine:
 
             detector.update(aggregate)
             new_alert = detector.get_current_alert(symbol)
-            key = (symbol, detector.name)
+            key = (symbol, detector.detector_id)
             old_alert = self.active_alerts.get(key)
 
             if old_alert is None and new_alert is not None:
@@ -136,21 +136,21 @@ class DeviationEngine:
         for detector in self._all_detectors():
             detector.reset()
 
-    def clear_alert(self, symbol: AssetSymbol, detector_name: str) -> AlertChange | None:
+    def clear_alert(self, symbol: AssetSymbol, detector_id: str) -> AlertChange | None:
         """
         Externally dismiss an active alert.
 
         Clears the detector's state and removes it from active_alerts.
         Returns an AlertChange("cleared", ...) so the caller can publish AlertCleared.
         """
-        key = (symbol, detector_name)
+        key = (symbol, detector_id)
         existing = self.active_alerts.get(key)
         if existing is None:
             return None
 
         # Find the detector and clear its state
         for detector in self._all_detectors():
-            if detector.name == detector_name:
+            if detector.detector_id == detector_id:
                 detector.clear(symbol)
                 break
 
@@ -221,8 +221,5 @@ class DeviationEngine:
         self.reset_state()
 
     def _detectors_for_symbol(self, symbol: AssetSymbol) -> list[Detector]:
-        """All detectors that would apply to a given symbol (for priming)."""
-        asset_specific = self.asset_detectors.get(symbol, [])
-        asset_types = {type(d) for d in asset_specific}
-        defaults = [d for d in self.default_detectors if type(d) not in asset_types]
-        return defaults + asset_specific
+        """All detectors that would apply to a given symbol."""
+        return self.default_detectors + self.asset_detectors.get(symbol, [])

@@ -22,6 +22,7 @@ from portfolio_monitor.service.alerts import (
 )
 from portfolio_monitor.service.api.app import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
+from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 
 from .config import DevConfig
@@ -63,7 +64,7 @@ async def run_dev_service(config: DevConfig) -> None:
     # 4. Detection engine (same build logic as production)
     try:
         alert_config = OmegaConfigLoader.load(Path("config/alerts_dev.yaml"))
-    except Exception as e:
+    except Exception:
         alert_config = {}
 
     default_detectors_config = alert_config.get("default") or {}
@@ -228,11 +229,17 @@ async def run_dev_service(config: DevConfig) -> None:
     )
 
     # 10. Production API server (auth workflow, dashboard, API endpoints)
+    account_store = AccountStore(config.settings_path)
+    account_store.load()
+    session_store = SessionStore(config.session_store_path)
+    session_store.load()
     ctx = PortfolioMonitorContext(
         config=config,
         portfolio_service=portfolio_service,
         bus=bus,
-        data_provider=dev_data_provider
+        data_provider=dev_data_provider,
+        account_store=account_store,
+        session_store=session_store,
     )
     api_app = create_api_app(ctx)
 

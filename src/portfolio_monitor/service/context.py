@@ -4,6 +4,7 @@ from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.portfolio.service import PortfolioService
+from portfolio_monitor.service.settings import AccountStore, SessionStore
 
 
 @dataclass
@@ -14,3 +15,5 @@ class PortfolioMonitorContext:
     portfolio_service: PortfolioService
     bus: EventBus
     data_provider: DataProvider
+    account_store: AccountStore
+    session_store: SessionStore

@@ -24,6 +24,7 @@ from websockets.asyncio.client import ClientConnection
 
 from portfolio_monitor.detectors.base import Alert
 from portfolio_monitor.service.alerts.delivery.openclaw_agent_http import _compact_alert
+from .base import AlertDelivery
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class ChallengeEvent(BaseModel):
     payload: NoncePayload
 
 
-class OpenClawGatewayWsDelivery:
+class OpenClawGatewayWsDelivery(AlertDelivery):
     """Deliver alerts to an OpenClaw agent via the Gateway WebSocket protocol.
 
     Connects to ``ws://{host}:{port}`` and sends alerts using the gateway's
