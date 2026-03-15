@@ -3,9 +3,9 @@ import json
 import sys
 from typing import Annotated
 
-import httpx
 from pydantic import BaseModel
 
+from portfolio_monitor.cli.request import APIClient, make_client
 from portfolio_monitor.cli.display import ColumnMeta, fmt_value, model_to_dict, render_table
 
 _SECTION_TO_TYPE = {"stocks": "stock", "currencies": "currency", "crypto": "crypto"}
@@ -102,64 +102,21 @@ def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
 # ---------------------------------------------------------------------------
 
 def run_portfolio(args: argparse.Namespace) -> None:
-    if not args.token:
-        print("error: --token is required for portfolio commands", file=sys.stderr)
-        sys.exit(1)
-
-    headers = {"Authorization": f"Bearer {args.token}"}
-    base = args.url.rstrip("/")
-
+    client = make_client(args)
     if args.all:
-        _list_all(base, headers, args.json_out)
+        _list_all(client, args.json_out)
     else:
-        _get_one(base, headers, args.id, args.json_out)
-
-
-# ---------------------------------------------------------------------------
-# HTTP helpers
-# ---------------------------------------------------------------------------
-
-def _get(url: str, headers: dict) -> dict | list:
-    try:
-        response = httpx.get(url, headers=headers)
-    except httpx.ConnectError:
-        print(f"error: could not connect to {url}", file=sys.stderr)
-        sys.exit(1)
-
-    if response.status_code == 401:
-        print("error: unauthorized — check your token", file=sys.stderr)
-        sys.exit(1)
-    if response.status_code == 404:
-        print("error: portfolio not found", file=sys.stderr)
-        sys.exit(1)
-    if response.status_code != 200:
-        print(f"error: server returned {response.status_code}", file=sys.stderr)
-        sys.exit(1)
-
-    return response.json()
-
-
-def _fetch_prev_close(base: str, headers: dict, asset_type: str, ticker: str) -> float | None:
-    try:
-        r = httpx.get(
-            f"{base}/api/v1/price/{asset_type}/{ticker}/previous-close",
-            headers=headers,
-        )
-        if r.status_code == 200:
-            return r.json().get("price")
-    except httpx.ConnectError:
-        pass
-    return None
+        _get_one(client, args.id, args.json_out)
 
 
 # ---------------------------------------------------------------------------
 # Model builders
 # ---------------------------------------------------------------------------
 
-def _build_summary_rows(base: str, headers: dict, portfolios: list) -> list[PortfolioSummaryRow]:
+def _build_summary_rows(client: APIClient, portfolios: list) -> list[PortfolioSummaryRow]:
     rows: list[PortfolioSummaryRow] = []
     for p in portfolios:
-        detail = _get(f"{base}/api/v1/portfolio/{p['id']}", headers)
+        detail = client.get_json(f"/api/v1/portfolio/{p['id']}")
         assert isinstance(detail, dict)
 
         day_change = 0.0
@@ -167,7 +124,8 @@ def _build_summary_rows(base: str, headers: dict, portfolios: list) -> list[Port
         has_data = False
         for section, asset_type in _SECTION_TO_TYPE.items():
             for a in detail.get(section, []):
-                prev = _fetch_prev_close(base, headers, asset_type, a["ticker"])
+                data = client.get_json(f"/api/v1/price/{asset_type}/{a['ticker']}/previous-close")
+                prev = data.get("price") if data else None
                 cur = a["current_price"]
                 if prev is not None and cur is not None:
                     qty = float(a["total_quantity"])
@@ -191,12 +149,13 @@ def _build_summary_rows(base: str, headers: dict, portfolios: list) -> list[Port
     return rows
 
 
-def _build_asset_rows(base: str, headers: dict, assets: list, asset_type: str) -> list[AssetRow]:
+def _build_asset_rows(client: APIClient, assets: list, asset_type: str) -> list[AssetRow]:
     rows: list[AssetRow] = []
-    for a in assets:
-        prev = _fetch_prev_close(base, headers, asset_type, a["ticker"])
-        cur = a["current_price"]
-        qty = float(a["total_quantity"])
+    for asset in assets:
+        data = client.get_json(f"/api/v1/price/{asset_type}/{asset['ticker']}/previous-close")
+        prev = data.get("price") if data else None
+        cur = asset["current_price"]
+        qty = float(asset["total_quantity"])
 
         day_pct: float | None = None
         day_val: float | None = None
@@ -205,17 +164,17 @@ def _build_asset_rows(base: str, headers: dict, assets: list, asset_type: str) -
             day_val = qty * (cur - prev)
 
         rows.append(AssetRow(
-            ticker=a["ticker"],
-            total_quantity=a["total_quantity"],
+            ticker=asset["ticker"],
+            total_quantity=asset["total_quantity"],
             current_price=cur,
             day_change_pct=day_pct,
-            current_value=a["current_value"],
+            current_value=asset["current_value"],
             day_change=day_val,
-            profit_loss=a["profit_loss"],
-            profit_loss_pct=a["profit_loss_percentage"],
-            asset_type=a["asset_type"],
-            cost_basis=a["cost_basis"],
-            lots=a["lots"],
+            profit_loss=asset["profit_loss"],
+            profit_loss_pct=asset["profit_loss_percentage"],
+            asset_type=asset["asset_type"],
+            cost_basis=asset["cost_basis"],
+            lots=asset["lots"],
         ))
     return rows
 
@@ -224,11 +183,11 @@ def _build_asset_rows(base: str, headers: dict, assets: list, asset_type: str) -
 # Subcommand implementations
 # ---------------------------------------------------------------------------
 
-def _list_all(base: str, headers: dict, json_out: bool = False) -> None:
-    portfolios = _get(f"{base}/api/v1/portfolios", headers)
+def _list_all(client: APIClient, json_out: bool = False) -> None:
+    portfolios = client.get_json("/api/v1/portfolios")
     assert isinstance(portfolios, list)
 
-    rows = _build_summary_rows(base, headers, portfolios)
+    rows = _build_summary_rows(client, portfolios)
 
     if json_out:
         print(json.dumps([model_to_dict(r) for r in rows], indent=2))
@@ -241,21 +200,21 @@ def _list_all(base: str, headers: dict, json_out: bool = False) -> None:
     render_table(rows)
 
 
-def _get_one(base: str, headers: dict, portfolio_id: str, json_out: bool = False) -> None:
-    p = _get(f"{base}/api/v1/portfolio/{portfolio_id}", headers)
-    assert isinstance(p, dict)
+def _get_one(client: APIClient, portfolio_id: str, json_out: bool = False) -> None:
+    portfolio = client.get_json(f"/api/v1/portfolio/{portfolio_id}")
+    assert isinstance(portfolio, dict)
 
     header = PortfolioHeader(
-        id=p["id"],
-        name=p["name"],
-        total_value=p["total_value"],
-        total_cost_basis=p["total_cost_basis"],
-        total_profit_loss=p["total_profit_loss"],
-        profit_loss_pct=p["profit_loss_percentage"],
+        id=portfolio["id"],
+        name=portfolio["name"],
+        total_value=portfolio["total_value"],
+        total_cost_basis=portfolio["total_cost_basis"],
+        total_profit_loss=portfolio["total_profit_loss"],
+        profit_loss_pct=portfolio["profit_loss_percentage"],
     )
-    stocks = _build_asset_rows(base, headers, p.get("stocks", []), "stock")
-    currencies = _build_asset_rows(base, headers, p.get("currencies", []), "currency")
-    crypto = _build_asset_rows(base, headers, p.get("crypto", []), "crypto")
+    stocks = _build_asset_rows(client, portfolio.get("stocks", []), "stock")
+    currencies = _build_asset_rows(client, portfolio.get("currencies", []), "currency")
+    crypto = _build_asset_rows(client, portfolio.get("crypto", []), "crypto")
     output = PortfolioDetailOutput(header=header, stocks=stocks, currencies=currencies, crypto=crypto)
 
     if json_out:

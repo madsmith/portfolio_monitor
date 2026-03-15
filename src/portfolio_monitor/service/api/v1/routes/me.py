@@ -8,22 +8,16 @@ def me_handler(account_store: AccountStore, session_store: SessionStore, default
     """Return handlers for /me and /me/alerts."""
 
     async def me(request: Request) -> JSONResponse:
-        if not request.user.is_authenticated:
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
         username = request.user.display_name
         role = _role_from_scopes(request.auth.scopes)
         return JSONResponse({"username": username, "role": role})
 
     async def get_my_alerts(request: Request) -> JSONResponse:
-        if not request.user.is_authenticated:
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
         username = request.user.display_name
         alerts = _get_alerts(username, account_store, default_username)
         return JSONResponse(alerts)
 
     async def update_my_alerts(request: Request) -> JSONResponse:
-        if not request.user.is_authenticated:
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
             alerts = await request.json()
         except Exception:

@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-import httpx
+from portfolio_monitor.cli.request import APIClient
 
 
 def add_login_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -12,12 +12,8 @@ def add_login_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_login(args: argparse.Namespace) -> None:
-    url = f"{args.url.rstrip('/')}/api/v1/login"
-    try:
-        response = httpx.post(url, json={"username": args.username, "password": args.password})
-    except httpx.ConnectError:
-        print(f"error: could not connect to {args.url}", file=sys.stderr)
-        sys.exit(1)
+    client = APIClient(args.url)
+    response = client.post("/api/v1/login", json={"username": args.username, "password": args.password})
 
     if response.status_code == 200:
         print(response.json()["token"])

@@ -7,16 +7,7 @@ from portfolio_monitor.service.settings import AccountStore, Role, SessionStore
 def accounts_handler(account_store: AccountStore, session_store: SessionStore, default_username: str):
     """Return route handlers for account management (admin-only) and per-account alerts."""
 
-    def _require_admin(request: Request) -> JSONResponse | None:
-        if not request.user.is_authenticated:
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-        if "role:admin" not in request.auth.scopes:
-            return JSONResponse({"error": "forbidden"}, status_code=403)
-        return None
-
     async def list_accounts(request: Request) -> JSONResponse:
-        if (err := _require_admin(request)) is not None:
-            return err
         accounts = [
             {"username": a.username, "role": str(a.role)}
             for a in account_store.get_all()
@@ -27,8 +18,6 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         )
 
     async def create_account(request: Request) -> JSONResponse:
-        if (err := _require_admin(request)) is not None:
-            return err
         try:
             data = await request.json()
         except Exception:
@@ -52,8 +41,6 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         return JSONResponse({"username": account.username, "role": str(account.role)}, status_code=201)
 
     async def delete_account(request: Request) -> JSONResponse:
-        if (err := _require_admin(request)) is not None:
-            return err
         username = request.path_params["username"]
         if username == default_username:
             return JSONResponse({"error": "cannot delete the default admin account"}, status_code=403)
@@ -65,8 +52,6 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
 
     async def update_account(request: Request) -> JSONResponse:
         """Update role for an account."""
-        if (err := _require_admin(request)) is not None:
-            return err
         username = request.path_params["username"]
         if username == default_username:
             return JSONResponse({"error": "cannot modify the default admin account"}, status_code=403)
@@ -85,9 +70,7 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         return JSONResponse({"ok": True})
 
     async def reset_password(request: Request) -> JSONResponse:
-        """Reset password for an account (admin) or own account."""
-        if not request.user.is_authenticated:
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        """Reset password for an account (admin or self)."""
         target_username = request.path_params["username"]
         caller = request.user.display_name
         is_admin = "role:admin" in request.auth.scopes
@@ -112,8 +95,6 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         return JSONResponse({"ok": True})
 
     async def get_account_alerts(request: Request) -> JSONResponse:
-        if (err := _require_admin(request)) is not None:
-            return err
         username = request.path_params["username"]
         if username == default_username:
             return JSONResponse(account_store.get_default_admin_alerts())
@@ -123,8 +104,6 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         return JSONResponse(account.alerts)
 
     async def update_account_alerts(request: Request) -> JSONResponse:
-        if (err := _require_admin(request)) is not None:
-            return err
         username = request.path_params["username"]
         try:
             alerts = await request.json()

@@ -1,11 +1,37 @@
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from starlette.authentication import (
     AuthCredentials,
     AuthenticationBackend,
     SimpleUser,
 )
-from starlette.requests import HTTPConnection
+from starlette.requests import HTTPConnection, Request
+from starlette.responses import JSONResponse, Response
 
 from portfolio_monitor.service.settings import SessionStore
+
+Handler = Callable[[Request], Coroutine[Any, Any, Response]]
+
+
+def require_auth(handler: Handler) -> Handler:
+    """Route wrapper: reject unauthenticated requests with 401."""
+    async def _wrapper(request: Request) -> Response:
+        if not request.user.is_authenticated:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return await handler(request)
+    return _wrapper
+
+
+def require_admin(handler: Handler) -> Handler:
+    """Route wrapper: reject unauthenticated requests with 401, non-admin with 403."""
+    async def _wrapper(request: Request) -> Response:
+        if not request.user.is_authenticated:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if "role:admin" not in request.auth.scopes:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        return await handler(request)
+    return _wrapper
 
 
 class SessionBackend(AuthenticationBackend):

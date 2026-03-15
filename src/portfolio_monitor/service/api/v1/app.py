@@ -1,5 +1,6 @@
 from starlette.routing import Route, Router, WebSocketRoute
 
+from portfolio_monitor.service.api.auth import require_admin, require_auth
 from portfolio_monitor.service.context import PortfolioMonitorContext
 
 from .routes.accounts import accounts_handler
@@ -49,24 +50,27 @@ class APIv1ServiceApp(Router):
         )
         super().__init__(
             routes=[
+                # Public routes — no authentication required
                 Route("/health", health, methods=["GET"]),
-                Route("/detectors", list_detectors, methods=["GET"]),
                 Route("/login", login, methods=["POST"]),
-                Route("/me", me, methods=["GET"]),
-                Route("/me/alerts", get_my_alerts, methods=["GET"]),
-                Route("/me/alerts", update_my_alerts, methods=["PUT"]),
-                Route("/accounts", list_accounts, methods=["GET"]),
-                Route("/accounts", create_account, methods=["POST"]),
-                Route("/accounts/{username}", delete_account, methods=["DELETE"]),
-                Route("/accounts/{username}", update_account, methods=["PUT"]),
-                Route("/accounts/{username}/password", reset_password, methods=["PUT"]),
-                Route("/accounts/{username}/alerts", get_account_alerts, methods=["GET"]),
-                Route("/accounts/{username}/alerts", update_account_alerts, methods=["PUT"]),
-                Route("/portfolios", portfolios_handler(ctx.portfolio_service), methods=["GET"]),
-                Route("/portfolio/{id}", portfolio_handler(ctx.portfolio_service), methods=["GET"]),
-                Route("/price/{type}/{ticker}", current_price_handler(ctx.data_provider), methods=["GET"]),
-                Route("/price/{type}/{ticker}/previous-close", previous_close_handler(ctx.data_provider), methods=["GET"]),
-                Route("/price/{type}/{ticker}/history", price_history_handler(ctx.data_provider), methods=["GET"]),
+                Route("/detectors", list_detectors, methods=["GET"]),
+                # Authenticated — any valid session
+                Route("/me", require_auth(me), methods=["GET"]),
+                Route("/me/alerts", require_auth(get_my_alerts), methods=["GET"]),
+                Route("/me/alerts", require_auth(update_my_alerts), methods=["PUT"]),
+                Route("/accounts/{username}/password", require_auth(reset_password), methods=["PUT"]),
+                Route("/portfolios", require_auth(portfolios_handler(ctx.portfolio_service)), methods=["GET"]),
+                Route("/portfolio/{id}", require_auth(portfolio_handler(ctx.portfolio_service)), methods=["GET"]),
+                Route("/price/{type}/{ticker}", require_auth(current_price_handler(ctx.data_provider)), methods=["GET"]),
+                Route("/price/{type}/{ticker}/previous-close", require_auth(previous_close_handler(ctx.data_provider)), methods=["GET"]),
+                Route("/price/{type}/{ticker}/history", require_auth(price_history_handler(ctx.data_provider)), methods=["GET"]),
+                # Admin only
+                Route("/accounts", require_admin(list_accounts), methods=["GET"]),
+                Route("/accounts", require_admin(create_account), methods=["POST"]),
+                Route("/accounts/{username}", require_admin(delete_account), methods=["DELETE"]),
+                Route("/accounts/{username}", require_admin(update_account), methods=["PUT"]),
+                Route("/accounts/{username}/alerts", require_admin(get_account_alerts), methods=["GET"]),
+                Route("/accounts/{username}/alerts", require_admin(update_account_alerts), methods=["PUT"]),
                 WebSocketRoute("/ws", ws_manager.handle),
             ]
         )

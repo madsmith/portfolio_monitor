@@ -3,9 +3,9 @@ import json
 import sys
 from typing import Annotated
 
-import httpx
 from pydantic import BaseModel
 
+from portfolio_monitor.cli.request import APIClient, make_client
 from portfolio_monitor.cli.display import ColumnMeta, fmt_value, model_to_dict, render_table
 
 
@@ -64,43 +64,30 @@ def add_price_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_price(args: argparse.Namespace) -> None:
-    if not args.token:
-        print("error: --token is required for price commands", file=sys.stderr)
-        sys.exit(1)
-
+    client = make_client(args)
     if args.last:
-        _run_history(args)
+        _run_history(client, args)
     else:
-        _run_single(args)
+        _run_single(client, args)
 
 
 # ---------------------------------------------------------------------------
 # Single price (current or previous-close)
 # ---------------------------------------------------------------------------
 
-def _run_single(args: argparse.Namespace) -> None:
-    headers = {"Authorization": f"Bearer {args.token}"}
-    base = args.url.rstrip("/")
+def _run_single(client: APIClient, args: argparse.Namespace) -> None:
     path = f"/api/v1/price/{args.asset_type}/{args.ticker}"
     if args.previous_close:
         path += "/previous-close"
 
-    try:
-        response = httpx.get(f"{base}{path}", headers=headers)
-    except httpx.ConnectError:
-        print(f"error: could not connect to {base}", file=sys.stderr)
-        sys.exit(1)
-
-    if response.status_code == 401:
-        print("error: unauthorized — check your token", file=sys.stderr)
-        sys.exit(1)
+    response = client.get(path)
     if response.status_code == 400:
         print(f"error: invalid asset type '{args.asset_type}'", file=sys.stderr)
         sys.exit(1)
     if response.status_code == 404:
         print(f"error: price unavailable for {args.ticker} ({args.asset_type})", file=sys.stderr)
         sys.exit(1)
-    if response.status_code != 200:
+    if not response.is_success:
         print(f"error: server returned {response.status_code}", file=sys.stderr)
         sys.exit(1)
 
@@ -128,30 +115,20 @@ def _run_single(args: argparse.Namespace) -> None:
 # Price history (--last)
 # ---------------------------------------------------------------------------
 
-def _run_history(args: argparse.Namespace) -> None:
-    headers = {"Authorization": f"Bearer {args.token}"}
-    base = args.url.rstrip("/")
+def _run_history(client: APIClient, args: argparse.Namespace) -> None:
     path = f"/api/v1/price/{args.asset_type}/{args.ticker}/history"
     params: dict[str, str] = {"last": args.last}
     if args.time:
         params["time"] = args.time
 
-    try:
-        response = httpx.get(f"{base}{path}", headers=headers, params=params)
-    except httpx.ConnectError:
-        print(f"error: could not connect to {base}", file=sys.stderr)
-        sys.exit(1)
-
-    if response.status_code == 401:
-        print("error: unauthorized — check your token", file=sys.stderr)
-        sys.exit(1)
+    response = client.get(path, params=params)
     if response.status_code == 400:
         print(f"error: {response.json().get('error', response.text)}", file=sys.stderr)
         sys.exit(1)
     if response.status_code == 404:
         print(f"error: no history available for {args.ticker} ({args.asset_type})", file=sys.stderr)
         sys.exit(1)
-    if response.status_code != 200:
+    if not response.is_success:
         print(f"error: server returned {response.status_code}", file=sys.stderr)
         sys.exit(1)
 
