@@ -6,6 +6,7 @@ from starlette.responses import JSONResponse
 
 from portfolio_monitor.core.datetime import parse_date, parse_period
 from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.data.market_info import MarketInfo, MarketStatus
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 _MAX_HISTORY = timedelta(days=7)
@@ -36,6 +37,19 @@ def current_price_handler(data_provider: DataProvider):
             return JSONResponse({"error": "invalid asset type"}, status_code=400)
         aggregate = await data_provider.get_aggregate(symbol)
         if aggregate is None:
+            current_time = datetime.now()
+            if MarketInfo.is_market_closed(symbol, current_time):
+                # Fetch the last aggregate from the previous trading day (between close and after hours close)
+                hours = MarketInfo.get_market_hours(symbol, current_time)
+
+                aggregates = await data_provider.get_range(
+                    symbol,
+                    hours[MarketStatus.CLOSE],
+                    hours[MarketStatus.AFTER_TRADING],
+                )
+                if aggregates:
+                    return JSONResponse(_agg_response(symbol, aggregates[-1]))
+
             return JSONResponse({"error": "price unavailable"}, status_code=404)
         return JSONResponse(_agg_response(symbol, aggregate))
 
