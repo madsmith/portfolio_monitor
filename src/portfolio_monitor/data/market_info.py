@@ -89,6 +89,22 @@ class MarketInfo:
         return market_status == MarketStatus.AFTER_TRADING
 
     @classmethod
+    def get_market_open(cls, symbol: AssetSymbol, date: datetime) -> datetime:
+        """Return the market open datetime for the session containing *date*.
+
+        Crypto (24/7): 00:00:00.000 UTC on the same calendar day as *date*.
+        Stocks / currencies: _MARKET_OPEN_TIME Eastern; weekend dates step back
+        to the preceding Friday.
+        """
+        d = date.astimezone(_UTC).date()
+        if symbol.asset_type == AssetTypes.Crypto:
+            return datetime(d.year, d.month, d.day, tzinfo=_UTC)
+        # Stocks and currencies — step back over weekends to the nearest trading day
+        while d.weekday() >= 5:
+            d -= timedelta(days=1)
+        return datetime.combine(d, _MARKET_OPEN_TIME, tzinfo=_EASTERN)
+
+    @classmethod
     def get_market_close(cls, symbol: AssetSymbol, date: datetime) -> datetime:
         """Return the market close datetime for the session containing *date*.
 
@@ -104,6 +120,23 @@ class MarketInfo:
         while d.weekday() >= 5:
             d -= timedelta(days=1)
         return datetime.combine(d, _MARKET_CLOSE_TIME, tzinfo=_EASTERN)
+
+    @classmethod
+    def get_market_hours(cls, symbol: AssetSymbol, date: datetime) -> dict[MarketStatus, datetime]:
+        """Return the market hours for *symbol* on the given *date*."""
+        if symbol.asset_type == AssetTypes.Crypto:
+            return {
+                MarketStatus.OPEN:          cls.get_market_open(symbol, date),
+                MarketStatus.CLOSE:         cls.get_market_close(symbol, date),
+            }
+        else:
+            open_time = cls.get_market_open(symbol, date)
+            return {
+                MarketStatus.PRE_TRADING:   datetime.combine(open_time.date(), _MARKET_PRE_OPEN_TIME, tzinfo=_EASTERN),
+                MarketStatus.OPEN:          open_time,
+                MarketStatus.AFTER_TRADING: datetime.combine(open_time.date(), _MARKET_AFTER_CLOSE_TIME, tzinfo=_EASTERN),
+                MarketStatus.CLOSE:         datetime.combine(open_time.date(), _MARKET_CLOSE_TIME, tzinfo=_EASTERN),
+            }
 
     @classmethod
     def get_market_day_timespan(cls, symbol: AssetSymbol) -> timedelta:
