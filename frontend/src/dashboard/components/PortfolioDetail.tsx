@@ -9,17 +9,17 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
         <tr>
           {(
             [
-              ["Date", "text-left"],
-              ["Qty", "text-right"],
-              ["Price", "text-right"],
-              ["Cost Basis", "text-right"],
-              ["P&L", "text-right"],
-              ["Fees", "text-right"],
-            ] as [string, string][]
-          ).map(([label, align]) => (
+              ["Date",       "text-left",  ""],
+              ["Qty",        "text-right", "hidden sm:table-cell"],
+              ["Price",      "text-right", ""],
+              ["Cost Basis", "text-right", "hidden sm:table-cell"],
+              ["P&L",        "text-right", "hidden md:table-cell"],
+              ["Fees",       "text-right", "hidden md:table-cell"],
+            ] as [string, string, string][]
+          ).map(([label, align, vis]) => (
             <th
               key={label}
-              className={`${align} text-[0.65rem] uppercase tracking-wide text-slate-600 font-semibold px-3 py-1.5 border-b border-[#2a2d3a]`}
+              className={`${align} ${vis} text-[0.65rem] uppercase tracking-wide text-slate-600 font-semibold px-3 py-1.5 border-b border-[#2a2d3a]`}
             >
               {label}
             </th>
@@ -37,11 +37,11 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
           return (
             <tr key={i} className="border-b border-[#222536] last:border-b-0">
               <td className="pl-8 pr-3 py-1.5 text-slate-500">{fmtDate(lot.date)}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{lot.quantity}</td>
+              <td className="hidden sm:table-cell px-3 py-1.5 text-right tabular-nums text-slate-500">{lot.quantity}</td>
               <td className={`px-3 py-1.5 text-right tabular-nums ${lotPlColor(priceGain)}`}>{fmtMoney(lot.price)}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.cost_basis)}</td>
-              <td className={`px-3 py-1.5 text-right tabular-nums ${lotPlColor(lotPL)}`}>{fmtMoney(lotPL)}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.fees)}</td>
+              <td className="hidden sm:table-cell px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.cost_basis)}</td>
+              <td className={`hidden md:table-cell px-3 py-1.5 text-right tabular-nums ${lotPlColor(lotPL)}`}>{fmtMoney(lotPL)}</td>
+              <td className="hidden md:table-cell px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.fees)}</td>
             </tr>
           );
         })}
@@ -63,27 +63,28 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
     });
   }
 
-  const headers: [string, string, (() => void) | undefined][] = [
-    ["Ticker", "text-left", undefined],
-    ["Qty", "text-right", undefined],
-    ["Price", "text-right", undefined],
-    [`Price Chg ${priceChgMode === "dollar" ? "$" : "%"}`, "text-right", () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar"))],
-    ["Value", "text-right", undefined],
-    [`Value Chg ${valueChgMode === "dollar" ? "$" : "%"}`, "text-right", () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar"))],
-    ["P&L", "text-right", undefined],
-    ["P&L %", "text-right", undefined],
+  const headers: [string, string, (() => void) | undefined, string][] = [
+    ["Ticker",                                                                  "text-left",  undefined,                                                                              ""],
+    ["Qty",                                                                     "text-right", undefined,                                                                              "hidden sm:table-cell"],
+    ["Price",                                                                   "text-right", undefined,                                                                              ""],
+    [`Price Chg ${priceChgMode === "dollar" ? "$" : "%"}`,                      "text-right", () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar")),                 ""],
+    ["Value",                                                                   "text-right", undefined,                                                                              ""],
+    [`Value Chg ${valueChgMode === "dollar" ? "$" : "%"}`,                      "text-right", () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")),                 "hidden md:table-cell"],
+    ["P&L",                                                                     "text-right", undefined,                                                                              "hidden lg:table-cell"],
+    ["P&L %",                                                                   "text-right", undefined,                                                                              "hidden lg:table-cell"],
   ];
 
   return (
     <table className="w-full text-sm border-collapse">
       <thead>
         <tr>
-          {headers.map(([label, align, onToggle], i) => (
+          {headers.map(([label, align, onToggle, vis], i) => (
             <th
               key={i}
               onClick={onToggle}
               className={[
                 align,
+                vis,
                 "text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2 border-b border-[#404868]",
                 onToggle ? "cursor-pointer hover:text-slate-300 select-none" : "",
               ].join(" ")}
@@ -115,26 +116,26 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
                 <td className="px-3 py-2 font-semibold text-slate-100">
                   <span className="inline-flex items-center gap-1.5">
                     {hasLots && (
-                      <span className="text-slate-500 text-[0.65rem]">
+                      <span className="hidden sm:table-cell text-slate-500 text-[0.65rem]">
                         {isExpanded ? "▾" : "▸"}
                       </span>
                     )}
                     {a.ticker}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
+                <td className="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
                 <td className={`px-3 py-2 text-right tabular-nums ${plColor(dayChgPrice)}`}>
                   {priceChgMode === "dollar" ? fmtChg(dayChgPrice) : fmtPct(dayChgPct)}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
-                <td className={`px-3 py-2 text-right tabular-nums ${plColor(dayChgValue)}`}>
+                <td className={`hidden md:table-cell px-3 py-2 text-right tabular-nums ${plColor(dayChgValue)}`}>
                   {valueChgMode === "dollar" ? fmtChg(dayChgValue) : fmtPct(dayChgPct)}
                 </td>
-                <td className={`px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
+                <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
                   {fmtMoney(a.profit_loss)}
                 </td>
-                <td className={`px-3 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
+                <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
                   {fmtPct(a.profit_loss_percentage)}
                 </td>
               </tr>

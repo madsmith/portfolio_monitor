@@ -24,17 +24,17 @@ export function Overview({
         <tr>
           {(
             [
-              ["Portfolio", "text-left"],
-              ["Value", "text-right"],
-              ["Today's Chg", "text-right"],
-              ["Cost Basis", "text-right"],
-              ["P&L", "text-right"],
-              ["", ""],
-            ] as [string, string][]
-          ).map(([label, align], i) => (
+              ["Portfolio",   "text-left",  ""],
+              ["Value",       "text-right", ""],
+              ["Today's Chg", "text-right", ""],
+              ["P&L",         "text-right", "hidden md:table-cell"],
+              ["Cost Basis",  "text-right", "hidden lg:table-cell"],
+              ["",            "",           ""],
+            ] as [string, string, string][]
+          ).map(([label, align, vis], i) => (
             <th
               key={i}
-              className={`${align} text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2 border-b border-[#404868]`}
+              className={`${align} ${vis} text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2 border-b border-[#404868]`}
             >
               {label}
             </th>
@@ -53,12 +53,17 @@ export function Overview({
               <td className="px-3 py-3 font-semibold text-slate-100">{p.name}</td>
               <td className="px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_value)}</td>
               <td className={`px-3 py-3 text-right tabular-nums ${plColor(chg?.value ?? null)}`}>
-                {chg ? `${fmtChg(chg.value)} (${fmtPct(chg.pct)})` : "—"}
+                {chg ? (
+                  <>
+                    {fmtChg(chg.value)}
+                    <span className="hidden sm:inline"> ({fmtPct(chg.pct)})</span>
+                  </>
+                ) : "—"}
               </td>
-              <td className="px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_cost_basis)}</td>
-              <td className={`px-3 py-3 text-right tabular-nums font-medium ${plColor(p.total_profit_loss)}`}>
+              <td className={`hidden md:table-cell px-3 py-3 text-right tabular-nums font-medium ${plColor(p.total_profit_loss)}`}>
                 {fmtMoney(p.total_profit_loss)} ({fmtPct(p.profit_loss_percentage)})
               </td>
+              <td className="hidden lg:table-cell px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_cost_basis)}</td>
               <td className="px-3 py-3 text-right text-slate-600 text-base">→</td>
             </tr>
           );
