@@ -50,10 +50,14 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
   );
 }
 
+type SortKey = "ticker" | "qty" | "price" | "priceChg" | "value" | "valueChg" | "pl" | "plPct";
+
 function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<string, number> }) {
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [valueChgMode, setValueChgMode] = useState<"dollar" | "percent">("dollar");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   function toggleTicker(ticker: string) {
     setExpandedTickers((prev) => {
@@ -63,45 +67,94 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
     });
   }
 
-  const headers: [string, string, (() => void) | undefined, string][] = [
-    ["Ticker",                                                                  "text-left",  undefined,                                                                              ""],
-    ["Qty",                                                                     "text-right", undefined,                                                                              "hidden sm:table-cell"],
-    ["Price",                                                                   "text-right", undefined,                                                                              ""],
-    [`Price Chg ${priceChgMode === "dollar" ? "$" : "%"}`,                      "text-right", () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar")),                 ""],
-    ["Value",                                                                   "text-right", undefined,                                                                              ""],
-    [`Value Chg ${valueChgMode === "dollar" ? "$" : "%"}`,                      "text-right", () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")),                 "hidden md:table-cell"],
-    ["P&L",                                                                     "text-right", undefined,                                                                              "hidden lg:table-cell"],
-    ["P&L %",                                                                   "text-right", undefined,                                                                              "hidden lg:table-cell"],
-  ];
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "ticker" ? "asc" : "desc");
+    }
+  }
+
+  // Enrich assets with computed day-change values so sorting can access them
+  const enriched = assets.map((a) => {
+    const pc = prevClose[prevCloseKey(a)] ?? null;
+    const dayChgPrice = a.current_price !== null && pc !== null ? a.current_price - pc : null;
+    const dayChgValue = dayChgPrice !== null ? dayChgPrice * parseFloat(a.total_quantity) : null;
+    const dayChgPct = dayChgPrice !== null && pc !== null && pc !== 0 ? (dayChgPrice / pc) * 100 : null;
+    return { ...a, dayChgPrice, dayChgValue, dayChgPct };
+  });
+
+  const sorted = sortKey === null ? enriched : [...enriched].sort((a, b) => {
+    const nullLast = (v: number | null) => v ?? (sortDir === "asc" ? Infinity : -Infinity);
+    let cmp = 0;
+    switch (sortKey) {
+      case "ticker":    cmp = a.ticker.localeCompare(b.ticker); break;
+      case "qty":       cmp = parseFloat(a.total_quantity) - parseFloat(b.total_quantity); break;
+      case "price":     cmp = nullLast(a.current_price) - nullLast(b.current_price); break;
+      case "priceChg":  cmp = nullLast(a.dayChgPrice) - nullLast(b.dayChgPrice); break;
+      case "value":     cmp = nullLast(a.current_value) - nullLast(b.current_value); break;
+      case "valueChg":  cmp = nullLast(a.dayChgValue) - nullLast(b.dayChgValue); break;
+      case "pl":        cmp = nullLast(a.profit_loss) - nullLast(b.profit_loss); break;
+      case "plPct":     cmp = nullLast(a.profit_loss_percentage) - nullLast(b.profit_loss_percentage); break;
+    }
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  function SortIcon({ k }: { k: SortKey }) {
+    if (sortKey !== k) return <span className="text-slate-700 ml-0.5">⇅</span>;
+    return <span className="text-slate-300 ml-0.5">{sortDir === "asc" ? "↑" : "↓"}</span>;
+  }
+
+  function ModeToggle({ mode, onToggle }: { mode: string; onToggle: () => void }) {
+    return (
+      <span
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+        className="ml-1 px-1 rounded bg-[#2a2d3a] text-slate-400 hover:text-slate-100 hover:bg-[#404868] cursor-pointer transition-colors normal-case tracking-normal font-normal"
+      >
+        {mode}
+      </span>
+    );
+  }
 
   return (
     <table className="w-full text-sm border-collapse">
       <thead>
         <tr>
-          {headers.map(([label, align, onToggle, vis], i) => (
+          {(
+            [
+              { label: "Ticker",    align: "text-left",  vis: "",                      sk: "ticker"   as SortKey },
+              { label: "Qty",       align: "text-right", vis: "hidden sm:table-cell",  sk: "qty"      as SortKey },
+              { label: "Price",     align: "text-right", vis: "",                      sk: "price"    as SortKey },
+              { label: "Price Chg", align: "text-right", vis: "",                      sk: "priceChg" as SortKey, badge: priceChgMode === "dollar" ? "$" : "%", onBadge: () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
+              { label: "Value",     align: "text-right", vis: "",                      sk: "value"    as SortKey },
+              { label: "Value Chg", align: "text-right", vis: "hidden md:table-cell",  sk: "valueChg" as SortKey, badge: valueChgMode === "dollar" ? "$" : "%", onBadge: () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
+              { label: "P&L",       align: "text-right", vis: "hidden lg:table-cell",  sk: "pl"       as SortKey },
+              { label: "P&L %",     align: "text-right", vis: "hidden lg:table-cell",  sk: "plPct"    as SortKey },
+            ] as { label: string; align: string; vis: string; sk: SortKey; badge?: string; onBadge?: () => void }[]
+          ).map(({ label, align, vis, sk, badge, onBadge }) => (
             <th
-              key={i}
-              onClick={onToggle}
+              key={sk}
+              onClick={() => handleSort(sk)}
               className={[
-                align,
-                vis,
+                align, vis,
                 "text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2 border-b border-[#404868]",
-                onToggle ? "cursor-pointer hover:text-slate-300 select-none" : "",
+                "cursor-pointer hover:text-slate-300 select-none",
               ].join(" ")}
             >
-              {label}
+              <span className={`inline-flex items-center ${align === "text-right" ? "justify-end" : ""}`}>
+                {label}
+                {badge && <ModeToggle mode={badge} onToggle={onBadge!} />}
+                <SortIcon k={sk} />
+              </span>
             </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {assets.map((a) => {
+        {sorted.map((a) => {
           const isExpanded = expandedTickers.has(a.ticker);
           const hasLots = a.lots.length > 0;
-          const pc = prevClose[prevCloseKey(a)] ?? null;
-          const dayChgPrice = a.current_price !== null && pc !== null ? a.current_price - pc : null;
-          const dayChgValue = dayChgPrice !== null ? dayChgPrice * parseFloat(a.total_quantity) : null;
-          const dayChgPct = dayChgPrice !== null && pc !== null && pc !== 0 ? (dayChgPrice / pc) * 100 : null;
           return (
             <React.Fragment key={a.ticker}>
               <tr
@@ -116,7 +169,7 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
                 <td className="px-3 py-2 font-semibold text-slate-100">
                   <span className="inline-flex items-center gap-1.5">
                     {hasLots && (
-                      <span className="hidden sm:table-cell text-slate-500 text-[0.65rem]">
+                      <span className="hidden sm:inline text-slate-500 text-[0.65rem]">
                         {isExpanded ? "▾" : "▸"}
                       </span>
                     )}
@@ -125,12 +178,12 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
                 </td>
                 <td className="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
-                <td className={`px-3 py-2 text-right tabular-nums ${plColor(dayChgPrice)}`}>
-                  {priceChgMode === "dollar" ? fmtChg(dayChgPrice) : fmtPct(dayChgPct)}
+                <td className={`px-3 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
+                  {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
-                <td className={`hidden md:table-cell px-3 py-2 text-right tabular-nums ${plColor(dayChgValue)}`}>
-                  {valueChgMode === "dollar" ? fmtChg(dayChgValue) : fmtPct(dayChgPct)}
+                <td className={`hidden md:table-cell px-3 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
+                  {valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct)}
                 </td>
                 <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
                   {fmtMoney(a.profit_loss)}
