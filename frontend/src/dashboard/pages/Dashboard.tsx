@@ -190,7 +190,58 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="relative flex items-end gap-1">
+        {/* Mobile: dropdown with prev/next arrows */}
+        <div className="sm:hidden mb-3">
+          {(() => {
+            const pages = [
+              { value: "overview", label: "Overview", go: () => navigate("/") },
+              ...portfolios.map((p) => ({ value: p.id, label: p.name, go: () => navigate(`/portfolio/${p.id}`) })),
+              { value: "settings", label: "Settings", go: () => navigate("/settings") },
+            ];
+            const currentValue = isSettingsActive ? "settings" : (activeId ?? "overview");
+            const currentIndex = pages.findIndex((p) => p.value === currentValue);
+            const prev = currentIndex > 0 ? pages[currentIndex - 1] : null;
+            const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
+            const arrowCls = "flex items-center justify-center w-9 shrink-0 bg-[#1e2130] border border-[#404868] rounded-md text-slate-400 transition-colors";
+            return (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => prev?.go()}
+                  disabled={!prev}
+                  className={`${arrowCls} ${prev ? "hover:text-slate-100 hover:border-slate-500 cursor-pointer" : "opacity-30 cursor-default"}`}
+                  aria-label="Previous page"
+                >
+                  ‹
+                </button>
+                <select
+                  value={currentValue}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "overview") navigate("/");
+                    else if (v === "settings") navigate("/settings");
+                    else navigate(`/portfolio/${v}`);
+                  }}
+                  className="flex-1 bg-[#1e2130] border border-[#404868] rounded-md px-3 py-2 text-sm text-slate-100 text-center focus:outline-none focus:border-slate-500 appearance-none cursor-pointer"
+                >
+                  {pages.map((p) => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => next?.go()}
+                  disabled={!next}
+                  className={`${arrowCls} ${next ? "hover:text-slate-100 hover:border-slate-500 cursor-pointer" : "opacity-30 cursor-default"}`}
+                  aria-label="Next page"
+                >
+                  ›
+                </button>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Desktop: tab bar */}
+        <div className="relative hidden sm:flex items-end gap-1">
           <Tab label="Overview" active={!isSettingsActive && activeId === null} onClick={() => navigate("/")} />
           {portfolios.map((p) => (
             <Tab key={p.id} label={p.name} active={p.id === activeId} onClick={() => navigate(`/portfolio/${p.id}`)} />
@@ -200,7 +251,7 @@ export default function Dashboard() {
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[#404868]" />
         </div>
 
-        <div className="bg-[#1e2130] border-2 border-[#404868] rounded-b-lg p-6">
+        <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6">
           {isSettingsActive ? (
             <Settings />
           ) : activeId === null ? (
