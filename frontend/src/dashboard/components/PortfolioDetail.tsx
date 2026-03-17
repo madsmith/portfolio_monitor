@@ -1,6 +1,13 @@
 import React, { useState } from "react";
 import type { Asset, Lot, PortfolioDetail } from "../api/client";
 import { fmtMoney, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../lib/formatters";
+import { DataTable, type ColDef } from "./DataTable";
+
+type EnrichedAsset = Asset & {
+  dayChgPrice: number | null;
+  dayChgValue: number | null;
+  dayChgPct: number | null;
+};
 
 function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | null }) {
   return (
@@ -50,14 +57,10 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
   );
 }
 
-type SortKey = "ticker" | "qty" | "price" | "priceChg" | "value" | "valueChg" | "pl" | "plPct";
-
 function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<string, number> }) {
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [valueChgMode, setValueChgMode] = useState<"dollar" | "percent">("dollar");
-  const [sortKey, setSortKey] = useState<SortKey | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   function toggleTicker(ticker: string) {
     setExpandedTickers((prev) => {
@@ -67,17 +70,7 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
     });
   }
 
-  function handleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir(key === "ticker" ? "asc" : "desc");
-    }
-  }
-
-  // Enrich assets with computed day-change values so sorting can access them
-  const enriched = assets.map((a) => {
+  const enriched: EnrichedAsset[] = assets.map((a) => {
     const pc = prevClose[prevCloseKey(a)] ?? null;
     const dayChgPrice = a.current_price !== null && pc !== null ? a.current_price - pc : null;
     const dayChgValue = dayChgPrice !== null ? dayChgPrice * parseFloat(a.total_quantity) : null;
@@ -85,125 +78,75 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
     return { ...a, dayChgPrice, dayChgValue, dayChgPct };
   });
 
-  const sorted = sortKey === null ? enriched : [...enriched].sort((a, b) => {
-    const nullLast = (v: number | null) => v ?? (sortDir === "asc" ? Infinity : -Infinity);
-    let cmp = 0;
-    switch (sortKey) {
-      case "ticker":    cmp = a.ticker.localeCompare(b.ticker); break;
-      case "qty":       cmp = parseFloat(a.total_quantity) - parseFloat(b.total_quantity); break;
-      case "price":     cmp = nullLast(a.current_price) - nullLast(b.current_price); break;
-      case "priceChg":  cmp = nullLast(a.dayChgPrice) - nullLast(b.dayChgPrice); break;
-      case "value":     cmp = nullLast(a.current_value) - nullLast(b.current_value); break;
-      case "valueChg":  cmp = nullLast(a.dayChgValue) - nullLast(b.dayChgValue); break;
-      case "pl":        cmp = nullLast(a.profit_loss) - nullLast(b.profit_loss); break;
-      case "plPct":     cmp = nullLast(a.profit_loss_percentage) - nullLast(b.profit_loss_percentage); break;
-    }
-    return sortDir === "asc" ? cmp : -cmp;
-  });
-
-  function SortIcon({ k }: { k: SortKey }) {
-    if (sortKey !== k) return <span className="text-slate-700 ml-0.5">⇅</span>;
-    return <span className="text-slate-300 ml-0.5">{sortDir === "asc" ? "↑" : "↓"}</span>;
-  }
-
-  function ModeToggle({ mode, onToggle }: { mode: string; onToggle: () => void }) {
-    return (
-      <span
-        onClick={(e) => { e.stopPropagation(); onToggle(); }}
-        className="ml-1 px-1 rounded bg-[#2a2d3a] text-slate-400 hover:text-slate-100 hover:bg-[#404868] cursor-pointer transition-colors normal-case tracking-normal font-normal"
-      >
-        {mode}
-      </span>
-    );
-  }
+  const columns: ColDef<EnrichedAsset>[] = [
+    { key: "ticker",    label: "Ticker",    align: "left",  sortValue: (a) => a.ticker,                    defaultDir: "asc" },
+    { key: "qty",       label: "Qty",       align: "right", sortValue: (a) => parseFloat(a.total_quantity), vis: "hidden sm:table-cell" },
+    { key: "price",     label: "Price",     align: "right", sortValue: (a) => a.current_price },
+    { key: "priceChg",  label: "Price Chg", align: "right", sortValue: (a) => priceChgMode === "dollar" ? a.dayChgPrice : a.dayChgPct,
+      badge: priceChgMode === "dollar" ? "$" : "%", onBadge: () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
+    { key: "value",     label: "Value",     align: "right", sortValue: (a) => a.current_value },
+    { key: "valueChg",  label: "Value Chg", align: "right", sortValue: (a) => valueChgMode === "dollar" ? a.dayChgValue : a.dayChgPct, vis: "hidden md:table-cell",
+      badge: valueChgMode === "dollar" ? "$" : "%", onBadge: () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
+    { key: "pl",        label: "P&L",       align: "right", sortValue: (a) => a.profit_loss,               vis: "hidden lg:table-cell" },
+    { key: "plPct",     label: "P&L %",     align: "right", sortValue: (a) => a.profit_loss_percentage,    vis: "hidden lg:table-cell" },
+  ];
 
   return (
-    <table className="w-full text-sm border-collapse">
-      <thead>
-        <tr>
-          {(
-            [
-              { label: "Ticker",    align: "text-left",  vis: "",                      sk: "ticker"   as SortKey },
-              { label: "Qty",       align: "text-right", vis: "hidden sm:table-cell",  sk: "qty"      as SortKey },
-              { label: "Price",     align: "text-right", vis: "",                      sk: "price"    as SortKey },
-              { label: "Price Chg", align: "text-right", vis: "",                      sk: "priceChg" as SortKey, badge: priceChgMode === "dollar" ? "$" : "%", onBadge: () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
-              { label: "Value",     align: "text-right", vis: "",                      sk: "value"    as SortKey },
-              { label: "Value Chg", align: "text-right", vis: "hidden md:table-cell",  sk: "valueChg" as SortKey, badge: valueChgMode === "dollar" ? "$" : "%", onBadge: () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
-              { label: "P&L",       align: "text-right", vis: "hidden lg:table-cell",  sk: "pl"       as SortKey },
-              { label: "P&L %",     align: "text-right", vis: "hidden lg:table-cell",  sk: "plPct"    as SortKey },
-            ] as { label: string; align: string; vis: string; sk: SortKey; badge?: string; onBadge?: () => void }[]
-          ).map(({ label, align, vis, sk, badge, onBadge }) => (
-            <th
-              key={sk}
-              onClick={() => handleSort(sk)}
+    <DataTable
+      columns={columns}
+      rows={enriched}
+      getKey={(a) => a.ticker}
+      renderRow={(a) => {
+        const isExpanded = expandedTickers.has(a.ticker);
+        const hasLots = a.lots.length > 0;
+        return (
+          <>
+            <tr
+              onClick={() => hasLots && toggleTicker(a.ticker)}
               className={[
-                align, vis,
-                "text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2 border-b border-[#404868]",
-                "cursor-pointer hover:text-slate-300 select-none",
+                "border-b border-[#2a2d3a] transition-colors",
+                !isExpanded ? "last:border-b-0" : "",
+                hasLots ? "cursor-pointer hover:bg-[#252a40]" : "",
+                isExpanded ? "bg-[#252a40]" : "",
               ].join(" ")}
             >
-              <span className={`inline-flex items-center ${align === "text-right" ? "justify-end" : ""}`}>
-                {label}
-                {badge && <ModeToggle mode={badge} onToggle={onBadge!} />}
-                <SortIcon k={sk} />
-              </span>
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((a) => {
-          const isExpanded = expandedTickers.has(a.ticker);
-          const hasLots = a.lots.length > 0;
-          return (
-            <React.Fragment key={a.ticker}>
-              <tr
-                onClick={() => hasLots && toggleTicker(a.ticker)}
-                className={[
-                  "border-b border-[#2a2d3a] transition-colors",
-                  !isExpanded ? "last:border-b-0" : "",
-                  hasLots ? "cursor-pointer hover:bg-[#252a40]" : "",
-                  isExpanded ? "bg-[#252a40]" : "",
-                ].join(" ")}
-              >
-                <td className="px-3 py-2 font-semibold text-slate-100">
-                  <span className="inline-flex items-center gap-1.5">
-                    {hasLots && (
-                      <span className="hidden sm:inline text-slate-500 text-[0.65rem]">
-                        {isExpanded ? "▾" : "▸"}
-                      </span>
-                    )}
-                    {a.ticker}
-                  </span>
-                </td>
-                <td className="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
-                <td className={`px-3 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
-                  {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
-                <td className={`hidden md:table-cell px-3 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
-                  {valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct)}
-                </td>
-                <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
-                  {fmtMoney(a.profit_loss)}
-                </td>
-                <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
-                  {fmtPct(a.profit_loss_percentage)}
+              <td className="px-3 py-2 font-semibold text-slate-100">
+                <span className="inline-flex items-center gap-1.5">
+                  {hasLots && (
+                    <span className="hidden sm:inline text-slate-500 text-[0.65rem]">
+                      {isExpanded ? "▾" : "▸"}
+                    </span>
+                  )}
+                  {a.ticker}
+                </span>
+              </td>
+              <td className="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
+              <td className={`px-3 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
+                {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
+              <td className={`hidden md:table-cell px-3 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
+                {valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct)}
+              </td>
+              <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
+                {fmtMoney(a.profit_loss)}
+              </td>
+              <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
+                {fmtPct(a.profit_loss_percentage)}
+              </td>
+            </tr>
+            {isExpanded && (
+              <tr className="border-b border-[#2a2d3a] last:border-b-0">
+                <td colSpan={columns.length} className="px-0 py-0 bg-[#181c28]">
+                  <LotTable lots={a.lots} currentPrice={a.current_price} />
                 </td>
               </tr>
-              {isExpanded && (
-                <tr className="border-b border-[#2a2d3a] last:border-b-0">
-                  <td colSpan={8} className="px-0 py-0 bg-[#181c28]">
-                    <LotTable lots={a.lots} currentPrice={a.current_price} />
-                  </td>
-                </tr>
-              )}
-            </React.Fragment>
-          );
-        })}
-      </tbody>
-    </table>
+            )}
+          </>
+        );
+      }}
+    />
   );
 }
 
