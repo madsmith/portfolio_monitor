@@ -3,11 +3,11 @@ import { api, type DailyOpenClose, type PriceAggregate } from "../api/client";
 import { fmtMoney } from "../lib/formatters";
 
 const PERIODS = [
-  { label: "1H", last: "1h", span: "1m",  refreshMs:      60_000, trendMaxMs: null },
-  { label: "4H", last: "4h", span: "1m",  refreshMs:  1 * 60_000, trendMaxMs:  20 * 60_000 },
-  { label: "1D", last: "1d", span: "1m",  refreshMs:  1 * 60_000, trendMaxMs:  60 * 60_000 },
-  { label: "3D", last: "3d", span: "5m",  refreshMs:  5 * 60_000, trendMaxMs: 180 * 60_000 },
-  { label: "7D", last: "7d", span: "10m", refreshMs: 10 * 60_000, trendMaxMs: 420 * 60_000 },
+  { label: "1H", last: "1h", span: "1m",  refreshMs:      60_000, trendMaxMs: null,         compactGapMs: 4 * 60 * 60_000 },
+  { label: "4H", last: "4h", span: "1m",  refreshMs:  1 * 60_000, trendMaxMs:  20 * 60_000, compactGapMs: 4 * 60 * 60_000 },
+  { label: "1D", last: "1d", span: "1m",  refreshMs:  1 * 60_000, trendMaxMs:  60 * 60_000, compactGapMs: 4 * 60 * 60_000 },
+  { label: "3D", last: "3d", span: "5m",  refreshMs:  5 * 60_000, trendMaxMs: 180 * 60_000, compactGapMs: 4 * 60 * 60_000 },
+  { label: "7D", last: "7d", span: "10m", refreshMs: 10 * 60_000, trendMaxMs: 420 * 60_000, compactGapMs: 4 * 60 * 60_000 },
 ] as const;
 
 type Period = typeof PERIODS[number];
@@ -22,6 +22,9 @@ const Y_LABELS = 4;
 const X_LABELS = 5;
 const Y_LABEL_X = PAD.left + PLOT_W + 6;  // x origin of right-hand Y axis labels/boxes
 const Y_BOX_W = 54;                        // width of price label boxes on right axis
+
+// Pixels of visual gap between sessions in compact mode
+const COMPACT_GAP_PX = 6;
 
 const PERIOD_MS: Record<string, number> = {
   "1h": 60 * 60_000,
@@ -68,6 +71,88 @@ function PriceBox({
   );
 }
 
+type CompactLayout = {
+  xScale: (ts: string) => number;
+  xInverse: (x: number) => Date;
+  dividers: number[];
+  xLabels: { x: number; time: Date }[];
+};
+
+/** Build a compressed x-axis layout from raw data.
+ *  Splits data into market sessions by collapsing only gaps ≥ compactGapMs
+ *  (market-closed periods like overnight/weekends), leaving intraday data gaps intact.
+ *  Each session gets x-space proportional to its duration.
+ *  A COMPACT_GAP_PX visual gap separates adjacent sessions.
+ */
+function buildCompactLayout(data: PriceAggregate[], compactGapMs: number): CompactLayout | null {
+  if (data.length === 0) return null;
+
+  // Split data into sessions at market-closed gaps only
+  const sessions: PriceAggregate[][] = [];
+  let session: PriceAggregate[] = [data[0]];
+  for (let i = 1; i < data.length; i++) {
+    const gap = new Date(data[i].timestamp).getTime() - new Date(data[i - 1].timestamp).getTime();
+    if (gap >= compactGapMs) {
+      sessions.push(session);
+      session = [];
+    }
+    session.push(data[i]);
+  }
+  sessions.push(session);
+
+  const segments = sessions;
+  if (segments.length === 0) return null;
+
+  const segInfo = segments.map((seg) => {
+    const tFirst = new Date(seg[0].timestamp).getTime();
+    const tLast  = new Date(seg[seg.length - 1].timestamp).getTime();
+    return { tFirst, tLast, dur: Math.max(tLast - tFirst, 1) };
+  });
+
+  const totalDur    = segInfo.reduce((s, si) => s + si.dur, 0);
+  const totalGapPx  = COMPACT_GAP_PX * (segments.length - 1);
+  const availW      = PLOT_W - totalGapPx;
+
+  let xCursor = PAD.left;
+  const segLayout = segInfo.map((si) => {
+    const w = totalDur > 0
+      ? Math.max(1, (si.dur / totalDur) * availW)
+      : availW / segInfo.length;
+    const result = { ...si, xStart: xCursor, w };
+    xCursor += w + COMPACT_GAP_PX;
+    return result;
+  });
+
+  function xScale(ts: string): number {
+    const t = new Date(ts).getTime();
+    for (const sl of segLayout) {
+      // +120s buffer to include the last bar's timestamp
+      if (t >= sl.tFirst && t <= sl.tLast + 120_000) {
+        const frac = Math.min(1, (t - sl.tFirst) / sl.dur);
+        return sl.xStart + frac * sl.w;
+      }
+    }
+    const last = segLayout[segLayout.length - 1];
+    return last.xStart + last.w;
+  }
+
+  function xInverse(x: number): Date {
+    for (const sl of segLayout) {
+      if (x >= sl.xStart && x <= sl.xStart + sl.w) {
+        const frac = sl.w > 0 ? (x - sl.xStart) / sl.w : 0;
+        return new Date(sl.tFirst + frac * sl.dur);
+      }
+    }
+    const last = segLayout[segLayout.length - 1];
+    return new Date(last.tLast);
+  }
+
+  const dividers = segLayout.slice(0, -1).map((sl) => sl.xStart + sl.w + COMPACT_GAP_PX / 2);
+  const xLabels  = segLayout.map((sl) => ({ x: sl.xStart + sl.w / 2, time: new Date(sl.tFirst) }));
+
+  return { xScale, xInverse, dividers, xLabels };
+}
+
 export function Chart({
   ticker,
   assetType,
@@ -76,6 +161,7 @@ export function Chart({
   showOpen = null,
   showXIntercept = true,
   showYIntercept = true,
+  compact = true,
 }: {
   ticker: string;
   assetType: string;
@@ -92,6 +178,13 @@ export function Chart({
   showXIntercept?: boolean;
   /** Show a horizontal crosshair + price label on hover. Default: true. */
   showYIntercept?: boolean;
+  /**
+   * Compress the x-axis to only show active trading time.
+   * Sessions (segments split by trendMaxMs gaps) are laid out proportionally
+   * to their duration; non-trading gaps between sessions are collapsed to a
+   * thin visual divider. Default: false.
+   */
+  compact?: boolean;
 }) {
   const [period, setPeriod] = useState<Period>(PERIODS[1]);
   const [data, setData] = useState<PriceAggregate[]>([]);
@@ -154,8 +247,7 @@ export function Chart({
   const tMax = Date.now();
   const tRange = tMax - tMin;
 
-  const xScaleTs = (ts: string) => PAD.left + ((new Date(ts).getTime() - tMin) / tRange) * PLOT_W;
-  const yScale   = (p: number)  => PAD.top + PLOT_H - ((p - yMin) / (yMax - yMin)) * PLOT_H;
+  const yScale = (p: number) => PAD.top + PLOT_H - ((p - yMin) / (yMax - yMin)) * PLOT_H;
 
   // Split data into contiguous segments, breaking on gaps > trendMaxMs
   const trendMaxMs = period.trendMaxMs;
@@ -172,6 +264,14 @@ export function Chart({
     }
     segments.push(seg);
   }
+
+  // Compact layout: compress x-axis so only active trading time takes up space
+  const compactLayout: CompactLayout | null = compact ? buildCompactLayout(data, period.compactGapMs) : null;
+
+  // Unified x scale — compact or linear
+  const xScaleTs = compactLayout
+    ? compactLayout.xScale
+    : (ts: string) => PAD.left + ((new Date(ts).getTime() - tMin) / tRange) * PLOT_W;
 
   // Paths — one M…L run per segment, joined into a single <path> each
   const linePath = segments
@@ -192,7 +292,7 @@ export function Chart({
     return { price, y };
   }).reverse();
 
-  // X axis labels — evenly spaced across the full time window
+  // X axis labels — evenly spaced across the full time window (non-compact)
   const xLabelTimes = Array.from({ length: X_LABELS }, (_, i) =>
     new Date(tMin + (i / (X_LABELS - 1)) * tRange)
   );
@@ -211,7 +311,9 @@ export function Chart({
     }
     setHoverPos({ x: svgX, y: svgY });
     if (data.length >= 2) {
-      const hoverTs = tMin + (plotX / PLOT_W) * tRange;
+      const hoverTs = compactLayout
+        ? compactLayout.xInverse(svgX).getTime()
+        : tMin + (plotX / PLOT_W) * tRange;
       let nearest = 0;
       let nearestDist = Infinity;
       for (let i = 0; i < data.length; i++) {
@@ -287,6 +389,12 @@ export function Chart({
               stroke="#1e2130" strokeWidth={1} />
           ))}
 
+          {/* Compact mode: session dividers */}
+          {compactLayout && compactLayout.dividers.map((x, i) => (
+            <line key={i} x1={x} y1={PAD.top} x2={x} y2={PAD.top + PLOT_H}
+              stroke="#2a3050" strokeWidth={1} strokeDasharray="2 2" />
+          ))}
+
           {/* Area fill */}
           <path d={areaPath} fill={`url(#chartArea-${ticker})`} />
 
@@ -332,23 +440,33 @@ export function Chart({
               fill={lineColor} textFill="#fff" />
           )}
 
-          {/* X axis labels — evenly spaced across the full time window */}
-          {xLabelTimes.map((d, i) => {
-            const x = PAD.left + (i / (X_LABELS - 1)) * PLOT_W;
-            const anchor = i === 0 ? "start" : i === xLabelTimes.length - 1 ? "end" : "middle";
-            return (
-              <text key={i} x={x} y={PAD.top + PLOT_H + 16} textAnchor={anchor}
-                fontSize={10} fill="#64748b">
-                {fmtAxisTime(d, period)}
-              </text>
-            );
-          })}
+          {/* X axis labels */}
+          {compactLayout
+            ? compactLayout.xLabels.map((lbl, i) => (
+                <text key={i} x={lbl.x} y={PAD.top + PLOT_H + 16} textAnchor="middle"
+                  fontSize={10} fill="#64748b">
+                  {fmtAxisTime(lbl.time, period)}
+                </text>
+              ))
+            : xLabelTimes.map((d, i) => {
+                const x = PAD.left + (i / (X_LABELS - 1)) * PLOT_W;
+                const anchor = i === 0 ? "start" : i === xLabelTimes.length - 1 ? "end" : "middle";
+                return (
+                  <text key={i} x={x} y={PAD.top + PLOT_H + 16} textAnchor={anchor}
+                    fontSize={10} fill="#64748b">
+                    {fmtAxisTime(d, period)}
+                  </text>
+                );
+              })
+          }
 
           {/* Intercepts — driven by raw mouse position */}
           {hoverPos !== null && (() => {
             const mx = hoverPos.x;
             const my = hoverPos.y;
-            const hoverTime = new Date(tMin + ((mx - PAD.left) / PLOT_W) * tRange);
+            const hoverTime = compactLayout
+              ? compactLayout.xInverse(mx)
+              : new Date(tMin + ((mx - PAD.left) / PLOT_W) * tRange);
             const hoverPrice = yMin + (1 - (my - PAD.top) / PLOT_H) * (yMax - yMin);
             const xLabelW = 72;
             return (
