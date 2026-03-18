@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Aggregate:
+class OHLCV:
+    """Base class for OHLCV aggregates."""
     symbol: AssetSymbol
     date_open: datetime
     open: float
@@ -32,18 +33,29 @@ class Aggregate:
     low: float
     close: float
     volume: float
-    timespan: timedelta
 
-    def __post_init__(self):
-        """Validate and coerce fields."""
+    def __post_init__(self) -> None:
         if not isinstance(self.symbol, AssetSymbol):
             raise TypeError(
                 f"symbol must be an AssetSymbol, got {type(self.symbol).__name__}: {self.symbol!r}"
             )
         if self.date_open.tzinfo is None:
             raise ValueError(
-                f"Aggregate date_open must be timezone-aware. Got: {self.date_open}"
+                f"date_open must be timezone-aware. Got: {self.date_open}"
             )
+
+    @property
+    def timestamp_ms(self) -> int:
+        """Milliseconds since epoch for date_open."""
+        return int(self.date_open.timestamp() * 1000)
+
+
+@dataclass
+class Aggregate(OHLCV):
+    timespan: timedelta
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
         if isinstance(self.timespan, int):
             object.__setattr__(self, "timespan", timedelta(milliseconds=self.timespan))
 
@@ -61,14 +73,31 @@ class Aggregate:
         }
 
     @property
-    def timestamp_ms(self) -> int:
-        """Convert datetime to milliseconds since epoch"""
-        return int(self.date_open.timestamp() * 1000)
-
-    @property
     def timespan_ms(self) -> int:
-        """Convert timespan to milliseconds"""
+        """Timespan in milliseconds."""
         return int(self.timespan.total_seconds() * 1000)
+
+
+@dataclass
+class DailyOpenCloseAggregate(OHLCV):
+    """Daily OHLCV aggregate enriched with pre-market and after-hours prices."""
+    pre_market: float | None
+    after_hours: float | None
+
+    def to_dict(self) -> dict[str, Any]:
+        p = _PRICE_PRECISION.get(self.symbol.asset_type, 6)
+        d: dict[str, Any] = {
+            "symbol": self.symbol.to_dict(),
+            "date": self.date_open.date().isoformat(),
+            "open": round(self.open, p),
+            "high": round(self.high, p),
+            "low": round(self.low, p),
+            "close": round(self.close, p),
+            "volume": round(self.volume, 2),
+            "pre_market": round(self.pre_market, p) if self.pre_market is not None else None,
+            "after_hours": round(self.after_hours, p) if self.after_hours is not None else None,
+        }
+        return d
 
 
 class AggregateCache:

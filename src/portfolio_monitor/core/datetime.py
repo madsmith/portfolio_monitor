@@ -5,27 +5,64 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
+# Matches "NNunit" where unit is one of: mo, s, m, h, d, w (case-insensitive)
+_PERIOD_RE = re.compile(r"^(\d+)(mo|[smhdwy])$", re.IGNORECASE)
+
+
+def parse_period_parts(period: str) -> tuple[int, str]:
+    """Parse a period string into (multiplier, normalized_suffix).
+
+    Normalized suffix is always lowercase: s, m, h, d, w, mo.
+    Supports: s (seconds), m (minutes), h (hours), d (days), w (weeks), mo (months).
+    Case-insensitive — '1H' and '1h' are equivalent.
+
+    Raises ValueError for unrecognised formats.
+    """
+    m = _PERIOD_RE.fullmatch(period.strip())
+    if m is None:
+        raise ValueError(
+            f"invalid period {period!r}; "
+            "expected format like '1m', '5m', '1H', '1d', '1w', '1mo'"
+        )
+    return int(m.group(1)), m.group(2).lower()
+
 
 def parse_period(period: str) -> timedelta:
+    """Parse a period string into a timedelta.
+
+    Supports: s (seconds), m (minutes), h (hours), d (days), w (weeks), mo (~30 days).
+    Case-insensitive — '1H' and '1h' are equivalent.
     """
-    Parse the period string into a timedelta.
-    """
-    if period.endswith("d"):
-        return timedelta(days=int(period[:-1]))
-    elif period.endswith("h"):
-        return timedelta(hours=int(period[:-1]))
-    elif period.endswith("m"):
-        return timedelta(minutes=int(period[:-1]))
-    elif period.endswith("s"):
-        return timedelta(seconds=int(period[:-1]))
-    else:
-        raise ValueError(f"Invalid period: {period}")
+    n, unit = parse_period_parts(period)
+    match unit:
+        case "s":  return timedelta(seconds=n)
+        case "m":  return timedelta(minutes=n)
+        case "h":  return timedelta(hours=n)
+        case "d":  return timedelta(days=n)
+        case "w":  return timedelta(weeks=n)
+        case "mo": return timedelta(days=n * 30)
+        case "y":  return timedelta(days=n * 365)
+        case _:    raise ValueError(f"unsupported unit: {unit!r}")
 
 
 def datetime_from_ms(ms: int, tz: ZoneInfo) -> datetime:
     assert tz is not None, "Timezone must be specified"
 
     return datetime.fromtimestamp(ms / 1000, tz)
+
+
+def ms_from_datetime(dt: datetime) -> int:
+    """
+    Convert datetime to milliseconds since epoch, ensuring datetime is timezone aware
+    and converting to UTC first.
+    """
+    if dt.tzinfo is None:
+        raise ValueError(f"Datetime must be timezone-aware. Got: {dt}")
+
+    # Convert to UTC if not already
+    utc_dt = dt.astimezone(ZoneInfo("UTC"))
+
+    return int(utc_dt.timestamp() * 1000)
 
 
 def parse_date(value: str) -> datetime | None:
@@ -88,17 +125,3 @@ def parse_date(value: str) -> datetime | None:
 
     logger.warning("Could not parse date '%s' with any known format", value)
     return None
-
-
-def ms_from_datetime(dt: datetime) -> int:
-    """
-    Convert datetime to milliseconds since epoch, ensuring datetime is timezone aware
-    and converting to UTC first.
-    """
-    if dt.tzinfo is None:
-        raise ValueError(f"Datetime must be timezone-aware. Got: {dt}")
-
-    # Convert to UTC if not already
-    utc_dt = dt.astimezone(ZoneInfo("UTC"))
-
-    return int(utc_dt.timestamp() * 1000)

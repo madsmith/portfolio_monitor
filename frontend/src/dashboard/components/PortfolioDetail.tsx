@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import type { Asset, Lot, PortfolioDetail } from "../api/client";
 import { fmtMoney, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../lib/formatters";
 import { DataTable, type ColDef } from "./DataTable";
+import { Chart } from "./Chart";
 
 type EnrichedAsset = Asset & {
   dayChgPrice: number | null;
@@ -59,11 +60,20 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
 
 function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<string, number> }) {
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
+  const [chartTickers, setChartTickers] = useState<Set<string>>(new Set());
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [valueChgMode, setValueChgMode] = useState<"dollar" | "percent">("dollar");
 
   function toggleTicker(ticker: string) {
     setExpandedTickers((prev) => {
+      const next = new Set(prev);
+      next.has(ticker) ? next.delete(ticker) : next.add(ticker);
+      return next;
+    });
+  }
+
+  function toggleChartTicker(ticker: string) {
+    setChartTickers((prev) => {
       const next = new Set(prev);
       next.has(ticker) ? next.delete(ticker) : next.add(ticker);
       return next;
@@ -98,6 +108,7 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
       getKey={(a) => a.ticker}
       renderRow={(a) => {
         const isExpanded = expandedTickers.has(a.ticker);
+        const hasChart = chartTickers.has(a.ticker)
         const hasLots = a.lots.length > 0;
         return (
           <>
@@ -117,7 +128,12 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
                       {isExpanded ? "▾" : "▸"}
                     </span>
                   )}
-                  {a.ticker}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleChartTicker(a.ticker); }}
+                    className="hover:text-sky-400 transition-colors cursor-pointer"
+                  >
+                    {a.ticker}
+                  </button>
                 </span>
               </td>
               <td className="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
@@ -140,6 +156,13 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
               <tr className="border-b border-[#2a2d3a] last:border-b-0">
                 <td colSpan={columns.length} className="px-0 py-0 bg-[#181c28]">
                   <LotTable lots={a.lots} currentPrice={a.current_price} />
+                </td>
+              </tr>
+            )}
+            {hasChart && (
+              <tr className="border-b border-[#2a2d3a] last:border-b-0">
+                <td colSpan={columns.length} className="px-4 py-3 bg-[#0c0f18]">
+                  <Chart ticker={a.ticker} assetType={a.asset_type} />
                 </td>
               </tr>
             )}

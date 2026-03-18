@@ -93,6 +93,34 @@ export type AccountSummary = {
 
 export type AlertConfig = Record<string, unknown>;
 
+export type PriceAggregate = {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type DailyOpenClose = {
+  symbol: { ticker: string; asset_type: string };
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  pre_market: number | null;
+  after_hours: number | null;
+};
+
+export type PriceHistory = {
+  symbol: { ticker: string; asset_type: string };
+  from: string;
+  to: string;
+  aggregates: PriceAggregate[];
+};
+
 export type DetectorArgSpec = {
   name: string;
   type: string;        // "float", "str", "int", etc.
@@ -128,6 +156,19 @@ export const api = {
 
   getPreviousClose: (assetType: string, ticker: string): Promise<{ price: number; timestamp: string }> =>
     authGet(`/api/v1/price/${assetType}/${ticker}/previous-close`),
+
+  getOpenClose: (assetType: string, ticker: string, date?: string): Promise<DailyOpenClose> => {
+    const params = new URLSearchParams();
+    if (date) params.set("date", date);
+    const qs = params.size ? `?${params}` : "";
+    return authGet(`/api/v1/price/${assetType}/${ticker}/open-close${qs}`);
+  },
+
+  getPriceHistory: (assetType: string, ticker: string, last: string, span?: string): Promise<PriceHistory> => {
+    const params = new URLSearchParams({ last });
+    if (span) params.set("span", span);
+    return authGet(`/api/v1/price/${assetType}/${ticker}/history?${params}`);
+  },
 
   // Account management (admin only)
   getAccounts: (): Promise<AccountSummary[]> =>

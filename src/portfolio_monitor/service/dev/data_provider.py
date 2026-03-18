@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime
 
-from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
+from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache, DailyOpenCloseAggregate
 from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.data.timespan import AggregateTimespan
 from portfolio_monitor.service.types import AssetSymbol
 
 from .price_generator import PriceGenerator
@@ -50,8 +51,22 @@ class DevDataProvider(DataProvider):
         from_: datetime,
         to: datetime,
         *,
-        cache_write: bool = False, # ignored as DevDataProvider is only cache
-        cache_read: bool = True,   # ignored as DevDataProvider is only cache
+        cache_write: bool = False,
+        cache_read: bool = True,
+        span: AggregateTimespan | None = None,
     ) -> list[Aggregate]:
-        """Return cached aggregates within the given time range."""
+        """Return cached 1-minute aggregates within the given time range.
+
+        Non-default spans return an empty list — DevDataProvider only holds
+        minute-resolution data and does not downsample.
+        """
+        effective_span = span or AggregateTimespan.default()
+        if not effective_span.is_cacheable():
+            return []
         return self._cache.get_range(symbol, from_, to)
+
+    async def get_open_close(
+        self, symbol: AssetSymbol, date: datetime | None = None
+    ) -> DailyOpenCloseAggregate | None:
+        """Not supported in dev mode — returns None."""
+        return None

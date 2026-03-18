@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 from portfolio_monitor.core.datetime import parse_date, parse_period
 from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.data.market_info import MarketInfo, MarketStatus
+from portfolio_monitor.data.timespan import AggregateTimespan
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 _MAX_HISTORY = timedelta(days=7)
@@ -86,6 +87,15 @@ def price_history_handler(data_provider: DataProvider):
         if delta > _MAX_HISTORY:
             return JSONResponse({"error": "period exceeds maximum of 7 days"}, status_code=400)
 
+        span_str = request.query_params.get("span")
+        if span_str:
+            try:
+                span = AggregateTimespan.parse(span_str)
+            except ValueError:
+                return JSONResponse({"error": f"invalid span: {span_str!r}"}, status_code=400)
+        else:
+            span = AggregateTimespan.default()
+
         time_str = request.query_params.get("time")
         if time_str:
             to_time = parse_date(time_str)
@@ -97,7 +107,7 @@ def price_history_handler(data_provider: DataProvider):
             to_time = datetime.now(ZoneInfo("UTC"))
 
         from_time = to_time - delta
-        aggregates = await data_provider.get_range(symbol, from_time, to_time, cache_write=True)
+        aggregates = await data_provider.get_range(symbol, from_time, to_time, cache_write=True, span=span)
 
         if not aggregates:
             return JSONResponse({"error": "no data available"}, status_code=404)
@@ -120,3 +130,27 @@ def price_history_handler(data_provider: DataProvider):
         })
 
     return get_price_history
+
+
+def open_close_handler(data_provider: DataProvider):
+    async def get_open_close(request: Request) -> JSONResponse:
+        symbol = _parse_symbol(request)
+        if symbol is None:
+            return JSONResponse({"error": "invalid asset type"}, status_code=400)
+
+        date_str = request.query_params.get("date")
+        if date_str:
+            date = parse_date(date_str)
+            if date is None:
+                return JSONResponse({"error": f"invalid date: {date_str!r}"}, status_code=400)
+            if date.tzinfo is None:
+                date = date.replace(tzinfo=ZoneInfo("UTC"))
+        else:
+            date = None
+
+        result = await data_provider.get_open_close(symbol, date)
+        if result is None:
+            return JSONResponse({"error": "data unavailable"}, status_code=404)
+        return JSONResponse(result.to_dict())
+
+    return get_open_close

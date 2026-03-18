@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
 
 from polygon import RESTClient as PolygonRESTClient
-from polygon.rest.aggs import Agg, PreviousCloseAgg
+from polygon.rest.aggs import Agg, DailyOpenCloseAgg, PreviousCloseAgg
 from urllib3 import HTTPResponse
 from urllib3.exceptions import RequestError
 
@@ -12,8 +12,10 @@ from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.data.aggregate_cache import (
     Aggregate,
     AggregateCache,
+    DailyOpenCloseAggregate,
 )
 from portfolio_monitor.data.market_info import MarketInfo
+from portfolio_monitor.data.timespan import AggregateTimespan
 from portfolio_monitor.service.types import AssetSymbol
 from portfolio_monitor.utils.trace import get_trace_logger
 
@@ -42,7 +44,12 @@ class DataProvider(Protocol):
         *,
         cache_write: bool = False,
         cache_read: bool = True,
+        span: AggregateTimespan | None = None,
     ) -> list[Aggregate]: ...
+
+    async def get_open_close(
+        self, symbol: AssetSymbol, date: datetime | None = None
+    ) -> DailyOpenCloseAggregate | None: ...
 
 
 class PolygonDataProvider(DataProvider):
@@ -215,6 +222,55 @@ class PolygonDataProvider(DataProvider):
         logger.warning("Unknown trade type for %s: %s", symbol, type(trade))
         return None
 
+    async def get_open_close(
+        self, symbol: AssetSymbol, date: datetime | None = None
+    ) -> DailyOpenCloseAggregate | None:
+        """Fetch the daily open/close aggregate for a symbol on the given date.
+
+        Args:
+            symbol: Asset symbol
+            date: The trading date to query; defaults to today (UTC).
+
+        Returns:
+            DailyOpenCloseAggregate or None on error / no data.
+        """
+        target = (date or datetime.now()).date()
+        try:
+            logger.debug("Fetching open/close for %s on %s from API", symbol, target)
+            result = self._polygon_client.get_daily_open_close_agg(
+                ticker=symbol.lookup_symbol,
+                date=target,
+            )
+        except RequestError:
+            logger.warning("Rate limit fetching open/close for %s", symbol)
+            return None
+        except Exception:
+            logger.exception("Error fetching open/close for %s", symbol)
+            return None
+
+        if not isinstance(result, DailyOpenCloseAgg):
+            logger.warning("Unexpected open/close response type for %s: %s", symbol, type(result))
+            return None
+        if result.status != "OK":
+            logger.warning("Open/close status not OK for %s: %s", symbol, result.status)
+            return None
+        if None in (result.open, result.high, result.low, result.close, result.volume):
+            logger.warning("Incomplete open/close data for %s: %s", symbol, result)
+            return None
+
+        date_open = datetime.strptime(result.from_, "%Y-%m-%d").replace(tzinfo=ZoneInfo("UTC"))
+        return DailyOpenCloseAggregate(
+            symbol=symbol,
+            date_open=date_open,
+            open=result.open,
+            high=result.high,
+            low=result.low,
+            close=result.close,
+            volume=result.volume,
+            pre_market=result.pre_market,
+            after_hours=result.after_hours,
+        )
+
     async def get_range(
         self,
         symbol: AssetSymbol,
@@ -223,6 +279,7 @@ class PolygonDataProvider(DataProvider):
         *,
         cache_write: bool = False,
         cache_read: bool = True,
+        span: AggregateTimespan | None = None,
     ) -> list[Aggregate]:
         """
         Get a range of aggregates for a ticker
@@ -231,6 +288,8 @@ class PolygonDataProvider(DataProvider):
             symbol: Asset symbol to fetch data for
             from_: Start datetime (inclusive, timezone aware)
             to: End datetime (inclusive, timezone aware)
+            span: Candle size; defaults to 1-minute. Non-default spans bypass
+                  the cache entirely (neither read nor write).
 
         Returns:
             List of Aggregate objects sorted by time
@@ -242,6 +301,12 @@ class PolygonDataProvider(DataProvider):
         # Convert to UTC for consistency
         from_utc = from_.astimezone(ZoneInfo("UTC"))
         to_utc = to.astimezone(ZoneInfo("UTC"))
+
+        effective_span = span or AggregateTimespan.default()
+
+        # Non-minute aggregates are not cached — skip all cache logic
+        if not effective_span.is_cacheable():
+            return await self._fetch_range(symbol, from_utc, to_utc, span=effective_span)
 
         if cache_read:
             # Get cached data in this range
@@ -267,7 +332,7 @@ class PolygonDataProvider(DataProvider):
 
         if len(missing_ranges) > 6:
             logger.warning("Large number of missing ranges (%d) for %s from %s to %s - Performing full fetch", len(missing_ranges), symbol, from_utc, to_utc)
-            fetched = await self._fetch_range(symbol, from_utc, to_utc, cache_write=cache_write)
+            fetched = await self._fetch_range(symbol, from_utc, to_utc, cache_write=cache_write, span=effective_span)
             return sorted(fetched, key=lambda x: x.date_open)
 
         # Otherwise fetch the missing ranges
@@ -275,7 +340,7 @@ class PolygonDataProvider(DataProvider):
 
         for start, end in missing_ranges:
             fetched = await self._fetch_range(
-                symbol, start, end, cache_write=cache_write
+                symbol, start, end, cache_write=cache_write, span=effective_span
             )
             all_aggregates.extend(fetched)
 
@@ -345,6 +410,7 @@ class PolygonDataProvider(DataProvider):
         to: datetime,
         *,
         cache_write: bool = False,
+        span: AggregateTimespan | None = None,
     ) -> list[Aggregate]:
         """
         Fetch a range of aggregates from the API.
@@ -353,29 +419,27 @@ class PolygonDataProvider(DataProvider):
             symbol: Asset symbol
             from_: Start datetime (inclusive)
             to: End datetime (inclusive)
+            span: Candle size (defaults to 1-minute)
 
         Returns:
             List of fetched aggregates
         """
+        effective_span = span or AggregateTimespan.default()
         result = []
 
         try:
-            # Calculate how many minutes in [from_, to]
-            minutes_delta = int((to - from_).total_seconds() / 60) + 1
-            limit = min(50000, minutes_delta)  # Polygon API limit
 
             aggs: list[Agg] | HTTPResponse | None = None
             # Fetch data from API with retry
             for attempt in range(self._max_retries):
                 try:
-                    logger.debug("Fetching range for %s from API (attempt %d): %s to %s", symbol, attempt + 1, from_, to)
+                    logger.debug("Fetching range for %s from API (attempt %d): %s to %s (span: %s)", symbol, attempt + 1, from_, to, effective_span)
                     aggs = self._polygon_client.get_aggs(
                         ticker=symbol.lookup_symbol,
-                        multiplier=1,
-                        timespan="minute",
+                        multiplier=effective_span.multiplier,
+                        timespan=str(effective_span.timespan),
                         from_=from_,
                         to=to,
-                        limit=limit,
                     )
                     break
                 except RequestError:

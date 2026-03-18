@@ -9,7 +9,7 @@ from .routes.health import health
 from .routes.login import login_handler
 from .routes.me import me_handler
 from .routes.portfolios import portfolio_handler, portfolios_handler
-from .routes.prices import current_price_handler, previous_close_handler, price_history_handler
+from .routes.prices import current_price_handler, open_close_handler, previous_close_handler, price_history_handler
 from .ws import WebSocketManager
 
 
@@ -64,6 +64,7 @@ class APIv1ServiceApp(Router):
                 Route("/price/{type}/{ticker}", require_auth(current_price_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/previous-close", require_auth(previous_close_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/history", require_auth(price_history_handler(ctx.data_provider)), methods=["GET"]),
+                Route("/price/{type}/{ticker}/open-close", require_auth(open_close_handler(ctx.data_provider)), methods=["GET"]),
                 # Admin only
                 Route("/accounts", require_admin(list_accounts), methods=["GET"]),
                 Route("/accounts", require_admin(create_account), methods=["POST"]),
