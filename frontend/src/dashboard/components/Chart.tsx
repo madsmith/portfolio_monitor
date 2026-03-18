@@ -55,14 +55,16 @@ function fmtTooltipTime(ts: string): string {
 
 /** A filled price label box on the right-hand axis. */
 function PriceBox({
-  y, price, fill, stroke, textFill,
+  y, price, fill, stroke, textFill, fillOpacity = 1, strokeOpacity = 1
 }: {
   y: number; price: number; fill: string; stroke?: string; textFill: string;
+  fillOpacity?: number; strokeOpacity?: number;
 }) {
   return (
     <g>
       <rect x={Y_LABEL_X} y={y - 8} width={Y_BOX_W} height={16} rx={2}
-        fill={fill} stroke={stroke} strokeWidth={stroke ? 1 : 0} />
+        fill={fill} stroke={stroke} strokeWidth={stroke ? 1 : 0}
+        fillOpacity={fillOpacity} strokeOpacity={strokeOpacity}/>
       <text x={Y_LABEL_X + Y_BOX_W / 2} y={y} textAnchor="middle"
         dominantBaseline="middle" fontSize="0.9em" fontWeight="600" fill={textFill}>
         {fmtMoney(price)}
@@ -228,8 +230,10 @@ export function Chart({
     ? (hoverIdx !== null ? data[hoverIdx] : data[data.length - 1])
     : null;
 
+  const openPrice = openClose?.open ?? null;
+
   const isPositive = data.length >= 2
-    ? data[data.length - 1].close >= data[0].close
+    ? data[data.length - 1].close >= (openPrice ?? data[0].close)
     : null;
   const lineColor = isPositive === null ? "#64748b" : isPositive ? "#4d9060" : "#9c4040";
   const areaColor = lineColor;
@@ -325,7 +329,6 @@ export function Chart({
   }
 
   const currentPrice  = data.length > 0 ? data[data.length - 1].close : null;
-  const openPrice     = openClose?.open ?? null;
 
   return (
     <div className="text-sm">
@@ -438,7 +441,8 @@ export function Chart({
           {/* Current price label box */}
           {showCurrent && currentPrice !== null && (
             <PriceBox y={yScale(currentPrice)} price={currentPrice}
-              fill={lineColor} textFill="#fff" />
+              fill={lineColor} textFill="#fff" stroke={lineColor}
+              fillOpacity={0.35} strokeOpacity={1}/>
           )}
 
           {/* X axis labels */}
@@ -489,7 +493,8 @@ export function Chart({
                     <line x1={PAD.left} y1={my} x2={PAD.left + PLOT_W} y2={my}
                       stroke="#404868" strokeWidth={1} strokeDasharray="3 2" />
                     <PriceBox y={my} price={hoverPrice}
-                      fill="#252a40" stroke="#404868" textFill="#e2e8f0" />
+                      fill="#252a40" stroke="#404868" textFill="#e2e8f0"
+                      fillOpacity={0.5} strokeOpacity={1}/>
                   </>
                 )}
               </g>
