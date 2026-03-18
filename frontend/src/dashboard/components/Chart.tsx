@@ -19,7 +19,7 @@ const PAD = { top: 10, right: 50, bottom: 28, left: 0 };
 const PLOT_W = W - PAD.left - PAD.right;
 const PLOT_H = H - PAD.top - PAD.bottom;
 const Y_LABELS = 4;
-const X_LABELS = 5;
+const X_LABELS = 6;
 const Y_LABEL_X = PAD.left + PLOT_W + 6;  // x origin of right-hand Y axis labels/boxes
 const Y_BOX_W = 48;                        // width of price label boxes on right axis
 
@@ -40,7 +40,7 @@ function parsePeriodMs(last: string): number {
 
 function fmtAxisTime(d: Date, period: Period): string {
   if (period.last === "3d" || period.last === "7d") {
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   }
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
@@ -150,7 +150,21 @@ function buildCompactLayout(data: PriceAggregate[], compactGapMs: number): Compa
   }
 
   const dividers = segLayout.slice(0, -1).map((sl) => sl.xStart + sl.w + COMPACT_GAP_PX / 2);
-  const xLabels  = segLayout.map((sl) => ({ x: sl.xStart + sl.w / 2, time: new Date(sl.tFirst) }));
+
+  // Distribute X_LABELS evenly across total active (trading) time, skipping gaps
+  const xLabels: { x: number; time: Date }[] = [];
+  for (let i = 0; i < X_LABELS; i++) {
+    const targetMs = (i / (X_LABELS - 1)) * totalDur;
+    let elapsed = 0;
+    for (const sl of segLayout) {
+      if (targetMs <= elapsed + sl.dur) {
+        const t = new Date(sl.tFirst + (targetMs - elapsed));
+        xLabels.push({ x: sl.xStart + ((targetMs - elapsed) / sl.dur) * sl.w, time: t });
+        break;
+      }
+      elapsed += sl.dur;
+    }
+  }
 
   return { xScale, xInverse, dividers, xLabels };
 }
@@ -445,25 +459,24 @@ export function Chart({
               fillOpacity={0.35} strokeOpacity={1}/>
           )}
 
-          {/* X axis labels */}
-          {compactLayout
-            ? compactLayout.xLabels.map((lbl, i) => (
-                <text key={i} x={lbl.x} y={PAD.top + PLOT_H + 16} textAnchor="middle"
-                  fontSize="1em" fill="#64748b">
-                  {fmtAxisTime(lbl.time, period)}
-                </text>
-              ))
-            : xLabelTimes.map((d, i) => {
-                const x = PAD.left + (i / (X_LABELS - 1)) * PLOT_W;
-                const anchor = i === 0 ? "start" : i === xLabelTimes.length - 1 ? "end" : "middle";
-                return (
-                  <text key={i} x={x} y={PAD.top + PLOT_H + 16} textAnchor={anchor}
-                    fontSize="1em" fill="#64748b">
-                    {fmtAxisTime(d, period)}
-                  </text>
-                );
-              })
-          }
+          {/* X axis tick marks + labels */}
+          {(compactLayout
+            ? compactLayout.xLabels.map((lbl) => ({ x: lbl.x, time: lbl.time, anchor: "middle" as const }))
+            : xLabelTimes.map((d, i) => ({
+                x: PAD.left + (i / (X_LABELS - 1)) * PLOT_W,
+                time: d,
+                anchor: (i === 0 ? "start" : i === xLabelTimes.length - 1 ? "end" : "middle") as "start" | "middle" | "end",
+              }))
+          ).map(({ x, time, anchor }, i) => (
+            <g key={i}>
+              <line x1={x} y1={PAD.top + PLOT_H} x2={x} y2={PAD.top + PLOT_H + 4}
+                stroke="#404868" strokeWidth={1} />
+              <text x={x} y={PAD.top + PLOT_H + 14} textAnchor={anchor}
+                fontSize="1em" fill="#64748b">
+                {fmtAxisTime(time, period)}
+              </text>
+            </g>
+          ))}
 
           {/* Intercepts — driven by raw mouse position */}
           {hoverPos !== null && (() => {
@@ -481,7 +494,7 @@ export function Chart({
                     <line x1={mx} y1={PAD.top} x2={mx} y2={PAD.top + PLOT_H}
                       stroke="#404868" strokeWidth={1} strokeDasharray="3 2" />
                     <rect x={mx - xLabelW / 2} y={PAD.top + PLOT_H + 6} width={xLabelW} height={15}
-                      rx={2} fill="#252a40" stroke="#404868" strokeWidth={1} />
+                      rx={2} fill="#252a40" stroke="#404868" strokeWidth={1} fillOpacity={0.5}/>
                     <text x={mx} y={PAD.top + PLOT_H + 13} textAnchor="middle"
                       dominantBaseline="middle" fontSize="0.9em" fill="#94a3b8">
                       {fmtAxisTime(hoverTime, period)}
@@ -516,7 +529,8 @@ export function Chart({
                 {showTooltip && (
                   <g>
                     <rect x={tipX} y={tipY} width={tipW} height={tipH} rx={3}
-                      fill="#1e2130" stroke="#404868" strokeWidth={1} />
+                      fill="#1e2130" stroke="#404868" strokeWidth={1}
+                      fillOpacity={0.5} strokeOpacity={1} />
                     <text x={tipX + 8} y={tipY + 12} fontSize="1em" fill="#e2e8f0" fontWeight="600">
                       {fmtMoney(hovered.close)}
                     </text>
