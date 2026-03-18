@@ -66,9 +66,9 @@ class APIv1ServiceApp(Router):
                 Route("/price/{type}/{ticker}/previous-close", require_auth(previous_close_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/history", require_auth(price_history_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/open-close", require_auth(open_close_handler(ctx.data_provider)), methods=["GET"]),
-                Route("/market_info/{type}/{ticker}/hours", require_auth(market_hours_handler), methods=["GET"]),
-                Route("/market_info/{type}/{ticker}/close", require_auth(market_close_handler), methods=["GET"]),
-                Route("/market_info/{type}/{ticker}/open",  require_auth(market_open_handler),  methods=["GET"]),
+                Route("/market_info/{type}/{ticker}/hours", market_hours_handler, methods=["GET"]),
+                Route("/market_info/{type}/{ticker}/close", market_close_handler, methods=["GET"]),
+                Route("/market_info/{type}/{ticker}/open",  market_open_handler,  methods=["GET"]),
                 # Admin only
                 Route("/accounts", require_admin(list_accounts), methods=["GET"]),
                 Route("/accounts", require_admin(create_account), methods=["POST"]),
