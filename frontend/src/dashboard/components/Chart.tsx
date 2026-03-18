@@ -209,6 +209,7 @@ export function Chart({
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [openClose, setOpenClose] = useState<DailyOpenClose | null>(null);
+  const [openCloseLoading, setOpenCloseLoading] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -234,9 +235,10 @@ export function Chart({
   useEffect(() => {
     if (!effectiveShowOpen) { setOpenClose(null); return; }
     let active = true;
+    setOpenCloseLoading(true);
     api.getOpenClose(assetType, ticker)
-      .then((r) => { if (active) { setOpenClose(r); } })
-      .catch(() => { if (active) { setOpenClose(null); } });
+      .then((r) => { if (active) { setOpenClose(r); setOpenCloseLoading(false); } })
+      .catch(() => { if (active) { setOpenClose(null); setOpenCloseLoading(false); } });
     return () => { active = false; };
   }, [ticker, assetType, effectiveShowOpen]);
 
@@ -379,12 +381,12 @@ export function Chart({
       </div>
 
       {/* Chart area */}
-      {loading && <p className="text-slate-500 text-xs py-6 text-center">Loading…</p>}
+      {(loading || openCloseLoading) && <p className="text-slate-500 text-xs py-6 text-center">Loading…</p>}
       {error && <p className="text-red-400 text-xs py-6 text-center">{error}</p>}
-      {!loading && !error && data.length === 0 && (
+      {!(loading || openCloseLoading) && !error && data.length === 0 && (
         <p className="text-slate-600 text-xs py-6 text-center">No data available</p>
       )}
-      {!loading && !error && data.length >= 2 && (
+      {!(loading || openCloseLoading) && !error && data.length >= 2 && (
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}

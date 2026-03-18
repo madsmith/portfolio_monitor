@@ -121,7 +121,7 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
                 isExpanded ? "bg-[#252a40]" : "",
               ].join(" ")}
             >
-              <td className="px-2 sm:px-3 py-2 font-semibold text-slate-100">
+              <td className="px-2 sm:px-3 py-2 font-semibold text-slate-100" onClick={(e) => { e.stopPropagation(); toggleChartTicker(a.ticker); }}>
                 <span className="inline-flex items-center gap-1.5">
                   {hasLots && (
                     <span className="hidden sm:inline text-slate-500 text-[0.65rem]">
