@@ -217,18 +217,18 @@ export function PortfolioDetailContent({
         ).reduce<React.ReactNode[]>((acc, [label, value, colorVal, vis], i) => {
           if (i === 1) {
             acc.push(
-              <div key="today-chg" className="bg-[#131928] border border-[#404868] rounded-md px-4 py-3">
+              <div key="today-chg" className="bg-[#131928] border border-[#404868] rounded-md px-2 py-2">
                 <div className="text-[0.65rem] uppercase tracking-wide text-slate-500 mb-1">Today&apos;s Chg</div>
-                <div className={`text-sm sm:text-base font-semibold tabular-nums ${plColor(todayChg?.value ?? null)}`}>
+                <div className={`text-sm sm:text-base font-semibold tabular-nums ml-2 ${plColor(todayChg?.value ?? null)}`}>
                   {todayChg ? <>{fmtChg(todayChg.value)}<span className="hidden sm:inline"> ({fmtPct(todayChg.pct)})</span></> : "—"}
                 </div>
               </div>
             );
           }
           acc.push(
-            <div key={label} className={`${vis} bg-[#131928] border border-[#404868] rounded-md px-4 py-3`}>
+            <div key={label} className={`${vis} bg-[#131928] border border-[#404868] rounded-md px-2 py-2`}>
               <div className="text-[0.65rem] uppercase tracking-wide text-slate-500 mb-1">{label}</div>
-              <div className={`text-sm sm:text-base font-semibold tabular-nums ${colorVal !== null ? plColor(colorVal) : "text-slate-100"}`}>
+              <div className={`text-sm sm:text-base font-semibold tabular-nums ml-2 ${colorVal !== null ? plColor(colorVal) : "text-slate-100"}`}>
                 {value}
               </div>
             </div>
