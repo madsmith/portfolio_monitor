@@ -15,13 +15,13 @@ type Period = typeof PERIODS[number];
 // SVG layout constants
 const W = 800;
 const H = 180;
-const PAD = { top: 10, right: 62, bottom: 28, left: 10 };
+const PAD = { top: 10, right: 50, bottom: 28, left: 0 };
 const PLOT_W = W - PAD.left - PAD.right;
 const PLOT_H = H - PAD.top - PAD.bottom;
 const Y_LABELS = 4;
 const X_LABELS = 5;
 const Y_LABEL_X = PAD.left + PLOT_W + 6;  // x origin of right-hand Y axis labels/boxes
-const Y_BOX_W = 54;                        // width of price label boxes on right axis
+const Y_BOX_W = 48;                        // width of price label boxes on right axis
 
 // Pixels of visual gap between sessions in compact mode
 const COMPACT_GAP_PX = 6;
@@ -64,7 +64,7 @@ function PriceBox({
       <rect x={Y_LABEL_X} y={y - 8} width={Y_BOX_W} height={16} rx={2}
         fill={fill} stroke={stroke} strokeWidth={stroke ? 1 : 0} />
       <text x={Y_LABEL_X + Y_BOX_W / 2} y={y} textAnchor="middle"
-        dominantBaseline="middle" fontSize={9} fontWeight="600" fill={textFill}>
+        dominantBaseline="middle" fontSize="0.9em" fontWeight="600" fill={textFill}>
         {fmtMoney(price)}
       </text>
     </g>
@@ -372,6 +372,7 @@ export function Chart({
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
+          fontSize="10"
           onMouseMove={handleMouseMove}
           onMouseLeave={() => { setHoverIdx(null); setHoverPos(null); }}
           className="overflow-visible"
@@ -429,7 +430,7 @@ export function Chart({
           {/* Y axis labels (right-hand side) */}
           {yLabels.map(({ price, y }, i) => (
             <text key={i} x={Y_LABEL_X} y={y} textAnchor="start"
-              dominantBaseline="middle" fontSize={10} fill="#64748b">
+              dominantBaseline="middle" fontSize="1em" fill="#64748b">
               {fmtMoney(price)}
             </text>
           ))}
@@ -444,7 +445,7 @@ export function Chart({
           {compactLayout
             ? compactLayout.xLabels.map((lbl, i) => (
                 <text key={i} x={lbl.x} y={PAD.top + PLOT_H + 16} textAnchor="middle"
-                  fontSize={10} fill="#64748b">
+                  fontSize="1em" fill="#64748b">
                   {fmtAxisTime(lbl.time, period)}
                 </text>
               ))
@@ -453,7 +454,7 @@ export function Chart({
                 const anchor = i === 0 ? "start" : i === xLabelTimes.length - 1 ? "end" : "middle";
                 return (
                   <text key={i} x={x} y={PAD.top + PLOT_H + 16} textAnchor={anchor}
-                    fontSize={10} fill="#64748b">
+                    fontSize="1em" fill="#64748b">
                     {fmtAxisTime(d, period)}
                   </text>
                 );
@@ -478,7 +479,7 @@ export function Chart({
                     <rect x={mx - xLabelW / 2} y={PAD.top + PLOT_H + 6} width={xLabelW} height={15}
                       rx={2} fill="#252a40" stroke="#404868" strokeWidth={1} />
                     <text x={mx} y={PAD.top + PLOT_H + 13} textAnchor="middle"
-                      dominantBaseline="middle" fontSize={9} fill="#94a3b8">
+                      dominantBaseline="middle" fontSize="0.9em" fill="#94a3b8">
                       {fmtAxisTime(hoverTime, period)}
                     </text>
                   </>
@@ -511,10 +512,10 @@ export function Chart({
                   <g>
                     <rect x={tipX} y={tipY} width={tipW} height={tipH} rx={3}
                       fill="#1e2130" stroke="#404868" strokeWidth={1} />
-                    <text x={tipX + 8} y={tipY + 12} fontSize={10} fill="#e2e8f0" fontWeight="600">
+                    <text x={tipX + 8} y={tipY + 12} fontSize="1em" fill="#e2e8f0" fontWeight="600">
                       {fmtMoney(hovered.close)}
                     </text>
-                    <text x={tipX + 8} y={tipY + 25} fontSize={9} fill="#64748b">
+                    <text x={tipX + 8} y={tipY + 25} fontSize="0.9em" fill="#64748b">
                       {fmtTooltipTime(hovered.timestamp)}
                     </text>
                   </g>

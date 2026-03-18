@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+/* Scale SVG chart text up on mobile to compensate for viewBox shrinkage */
+@media (max-width: 640px) {
+  svg[viewBox] {
+    font-size: 35px;
+  }
+}

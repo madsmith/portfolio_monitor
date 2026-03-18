@@ -27,7 +27,7 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
           ).map(([label, align, vis]) => (
             <th
               key={label}
-              className={`${align} ${vis} text-[0.65rem] uppercase tracking-wide text-slate-600 font-semibold px-3 py-1.5 border-b border-[#2a2d3a]`}
+              className={`${align} ${vis} text-[0.65rem] uppercase tracking-wide text-slate-600 font-semibold px-2 sm:px-3 py-1.5 border-b border-[#2a2d3a]`}
             >
               {label}
             </th>
@@ -44,12 +44,12 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
             currentPrice !== null && lot.price !== null ? currentPrice - lot.price : null;
           return (
             <tr key={i} className="border-b border-[#222536] last:border-b-0">
-              <td className="pl-8 pr-3 py-1.5 text-slate-500">{fmtDate(lot.date)}</td>
-              <td className="hidden sm:table-cell px-3 py-1.5 text-right tabular-nums text-slate-500">{lot.quantity}</td>
-              <td className={`px-3 py-1.5 text-right tabular-nums ${lotPlColor(priceGain)}`}>{fmtMoney(lot.price)}</td>
-              <td className="hidden sm:table-cell px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.cost_basis)}</td>
-              <td className={`hidden md:table-cell px-3 py-1.5 text-right tabular-nums ${lotPlColor(lotPL)}`}>{fmtMoney(lotPL)}</td>
-              <td className="hidden md:table-cell px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.fees)}</td>
+              <td className="pl-4 sm:pl-8 pr-2 sm:pr-3 py-1.5 text-slate-500">{fmtDate(lot.date)}</td>
+              <td className="hidden sm:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{lot.quantity}</td>
+              <td className={`px-2 sm:px-3 py-1.5 text-right tabular-nums ${lotPlColor(priceGain)}`}>{fmtMoney(lot.price)}</td>
+              <td className="hidden sm:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.cost_basis)}</td>
+              <td className={`hidden md:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums ${lotPlColor(lotPL)}`}>{fmtMoney(lotPL)}</td>
+              <td className="hidden md:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.fees)}</td>
             </tr>
           );
         })}
@@ -121,7 +121,7 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
                 isExpanded ? "bg-[#252a40]" : "",
               ].join(" ")}
             >
-              <td className="px-3 py-2 font-semibold text-slate-100">
+              <td className="px-2 sm:px-3 py-2 font-semibold text-slate-100">
                 <span className="inline-flex items-center gap-1.5">
                   {hasLots && (
                     <span className="hidden sm:inline text-slate-500 text-[0.65rem]">
@@ -136,19 +136,19 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
                   </button>
                 </span>
               </td>
-              <td className="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
-              <td className={`px-3 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
+              <td className="hidden sm:table-cell px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
+              <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
+              <td className={`px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
                 {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
-              <td className={`hidden md:table-cell px-3 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
+              <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
+              <td className={`hidden md:table-cell px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
                 {valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct)}
               </td>
-              <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
+              <td className={`hidden lg:table-cell px-2 sm:px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
                 {fmtMoney(a.profit_loss)}
               </td>
-              <td className={`hidden lg:table-cell px-3 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
+              <td className={`hidden lg:table-cell px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
                 {fmtPct(a.profit_loss_percentage)}
               </td>
             </tr>
@@ -209,26 +209,26 @@ export function PortfolioDetailContent({
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         {(
           [
-            ["Value", fmtMoney(detail.total_value), null],
-            ["Cost Basis", fmtMoney(detail.total_cost_basis), null],
-            ["P&L", fmtMoney(detail.total_profit_loss), detail.total_profit_loss],
-            ["P&L %", fmtPct(detail.profit_loss_percentage), detail.profit_loss_percentage],
-          ] as [string, string, number | null][]
-        ).reduce<React.ReactNode[]>((acc, [label, value, colorVal], i) => {
+            ["Value",     fmtMoney(detail.total_value),              null,                          ""],
+            ["Cost Basis",fmtMoney(detail.total_cost_basis),         null,                          ""],
+            ["P&L",       fmtMoney(detail.total_profit_loss),        detail.total_profit_loss,      ""],
+            ["P&L %",     fmtPct(detail.profit_loss_percentage),     detail.profit_loss_percentage, "hidden sm:block"],
+          ] as [string, string, number | null, string][]
+        ).reduce<React.ReactNode[]>((acc, [label, value, colorVal, vis], i) => {
           if (i === 1) {
             acc.push(
               <div key="today-chg" className="bg-[#131928] border border-[#404868] rounded-md px-4 py-3">
                 <div className="text-[0.65rem] uppercase tracking-wide text-slate-500 mb-1">Today&apos;s Chg</div>
-                <div className={`text-base font-semibold tabular-nums ${plColor(todayChg?.value ?? null)}`}>
-                  {todayChg ? <>{fmtChg(todayChg.value)} ({fmtPct(todayChg.pct)})</> : "—"}
+                <div className={`text-sm sm:text-base font-semibold tabular-nums ${plColor(todayChg?.value ?? null)}`}>
+                  {todayChg ? <>{fmtChg(todayChg.value)}<span className="hidden sm:inline"> ({fmtPct(todayChg.pct)})</span></> : "—"}
                 </div>
               </div>
             );
           }
           acc.push(
-            <div key={label} className="bg-[#131928] border border-[#404868] rounded-md px-4 py-3">
+            <div key={label} className={`${vis} bg-[#131928] border border-[#404868] rounded-md px-4 py-3`}>
               <div className="text-[0.65rem] uppercase tracking-wide text-slate-500 mb-1">{label}</div>
-              <div className={`text-base font-semibold tabular-nums ${colorVal !== null ? plColor(colorVal) : "text-slate-100"}`}>
+              <div className={`text-sm sm:text-base font-semibold tabular-nums ${colorVal !== null ? plColor(colorVal) : "text-slate-100"}`}>
                 {value}
               </div>
             </div>
