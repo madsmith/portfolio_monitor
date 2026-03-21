@@ -96,11 +96,28 @@ class AlertRouter:
     # ------------------------------------------------------------------
 
     async def connect_all(self) -> None:
+        failed: list[AlertDelivery] = []
         for target in self._global_targets:
-            await target.connect()
-        for targets in self._account_targets.values():
-            for target in targets:
+            try:
                 await target.connect()
+            except Exception:
+                logger.exception("Failed to connect global target %s — removing", target)
+                failed.append(target)
+        for t in failed:
+            self._global_targets.remove(t)
+
+        for username, targets in self._account_targets.items():
+            failed = []
+            for target in targets:
+                try:
+                    await target.connect()
+                except Exception:
+                    logger.exception(
+                        "Failed to connect target %s for account %s — removing", target, username
+                    )
+                    failed.append(target)
+            for t in failed:
+                targets.remove(t)
 
     async def disconnect_all(self) -> None:
         for target in self._global_targets:
