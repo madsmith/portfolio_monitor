@@ -4,6 +4,7 @@ from starlette.responses import JSONResponse
 from portfolio_monitor.core.currency import Currency
 from portfolio_monitor.portfolio.portfolio import Asset, Lot, Portfolio
 from portfolio_monitor.portfolio.service import PortfolioService
+from portfolio_monitor.service.context import AuthContext
 
 
 def _currency_val(c: Currency | None) -> float | None:
@@ -64,7 +65,8 @@ def _portfolio_detail(p: Portfolio) -> dict:
 
 def portfolios_handler(portfolio_service: PortfolioService):
     async def list_portfolios(request: Request) -> JSONResponse:
-        portfolios = portfolio_service.get_portfolios()
+        auth = AuthContext.from_request(request)
+        portfolios = portfolio_service.get_portfolios(auth)
         return JSONResponse([_portfolio_summary(p) for p in portfolios])
 
     return list_portfolios
@@ -72,8 +74,9 @@ def portfolios_handler(portfolio_service: PortfolioService):
 
 def portfolio_handler(portfolio_service: PortfolioService):
     async def get_portfolio(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
         portfolio_id = request.path_params["id"]
-        portfolio = portfolio_service.get_portfolio(name=None, id=portfolio_id)
+        portfolio = portfolio_service.get_portfolio(portfolio_id, auth)
         if portfolio is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse(_portfolio_detail(portfolio))

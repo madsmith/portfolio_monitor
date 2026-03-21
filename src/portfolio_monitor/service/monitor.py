@@ -8,7 +8,7 @@ from portfolio_monitor.data.aggregate_cache import Aggregate
 from portfolio_monitor.data.events import AggregateUpdated
 from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.data.provider import DataProvider
-from portfolio_monitor.portfolio.portfolio import Portfolio
+from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.types import AssetSymbol, AssetUpdateRecord
 
 logger = logging.getLogger(__name__)
@@ -21,11 +21,11 @@ class MonitorService:
         self,
         bus: EventBus,
         data_provider: DataProvider,
-        portfolios: list[Portfolio],
+        portfolio_service: PortfolioService
     ) -> None:
         self._bus: EventBus = bus
         self._data_provider: DataProvider = data_provider
-        self._portfolios: list[Portfolio] = portfolios
+        self._portfolio_service: PortfolioService = portfolio_service
 
         self.running: bool = False
         self._task: asyncio.Task | None = None
@@ -64,7 +64,7 @@ class MonitorService:
 
         all_symbols: dict[AssetSymbol, AssetUpdateRecord] = {
             asset.symbol: AssetUpdateRecord(asset.symbol)
-            for portfolio in self._portfolios
+            for portfolio in self._portfolio_service.get_all_portfolios()
             for asset in portfolio.assets()
         }
 

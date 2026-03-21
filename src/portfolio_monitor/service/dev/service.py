@@ -12,7 +12,6 @@ from portfolio_monitor.data.events import AggregateUpdated
 from portfolio_monitor.data.provider import PolygonDataProvider
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio.loader import load_portfolios
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts import (
     AlertRouter,
@@ -39,16 +38,7 @@ async def run_dev_service(config: DevConfig) -> None:
     if config.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # 1. Load portfolios (same as production)
     assert config.portfolio_path, "portfolio_path is required"
-    portfolios = load_portfolios(config.portfolio_path)
-
-    if config.debug:
-        print("=== Dev Mode ===")
-        print(f"Tick interval: {config.tick_interval}s")
-        for portfolio in portfolios:
-            print(portfolio)
-        print("================")
 
     # 2. Memory-only aggregate cache
     aggregate_cache = MemoryOnlyAggregateCache()
@@ -60,6 +50,17 @@ async def run_dev_service(config: DevConfig) -> None:
         await aggregate_cache.add(event.aggregate)
 
     bus.subscribe(AggregateUpdated, _persist_aggregate)
+
+    # Load portfolios
+    portfolio_service = PortfolioService(bus=bus, portfolio_path=config.portfolio_path)
+    portfolios = portfolio_service.get_all_portfolios()
+
+    if config.debug:
+        print("=== Dev Mode ===")
+        print(f"Tick interval: {config.tick_interval}s")
+        for portfolio in portfolios:
+            print(portfolio)
+        print("================")
 
     # 4. Detection engine (same build logic as production)
     try:
@@ -138,7 +139,6 @@ async def run_dev_service(config: DevConfig) -> None:
         detection_engine=detection_engine,
         data_provider=dev_data_provider,
     )
-    portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)
     alert_router = AlertRouter(bus=bus)
     # Suppress all alert delivery by default in dev mode;
     # detectors still process data and build history.

@@ -15,7 +15,7 @@ from portfolio_monitor.data.events import AggregateUpdated
 from portfolio_monitor.detectors.engine import DeviationEngine
 from portfolio_monitor.detectors.events import AlertFired
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio.portfolio import Portfolio
+from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts.router import AlertRouter
 from portfolio_monitor.service.dev.price_generator import Regime
 from portfolio_monitor.service.dev.synthetic_source import SyntheticDataSource  # noqa: TC001
@@ -36,7 +36,7 @@ class ControlPanelApp:
         detection_service: DetectionService,
         alert_router: AlertRouter,
         aggregate_cache: AggregateCache,
-        portfolios: list[Portfolio],
+        portfolio_service: PortfolioService,
     ) -> None:
         self._bus: EventBus = bus
         self._source: SyntheticDataSource | None = synthetic_source
@@ -44,7 +44,7 @@ class ControlPanelApp:
         self._detection_service: DetectionService = detection_service
         self._alert_router: AlertRouter = alert_router
         self._cache: AggregateCache = aggregate_cache
-        self._portfolios: list[Portfolio] = portfolios
+        self._portfolio_service: PortfolioService = portfolio_service
 
         # SSE subscriber queues
         self._alert_queues: list[asyncio.Queue] = []
@@ -108,7 +108,7 @@ class ControlPanelApp:
 
     async def get_state(self, request: Request) -> JSONResponse:
         all_symbols = list(
-            {asset.symbol for p in self._portfolios for asset in p.assets()}
+            {asset.symbol for p in self._portfolio_service.get_all_portfolios() for asset in p.assets()}
         )
         symbols_data = []
         for symbol in sorted(all_symbols, key=lambda s: s.ticker):

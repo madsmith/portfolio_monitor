@@ -25,7 +25,6 @@ from portfolio_monitor.data.events import AggregateUpdated
 from portfolio_monitor.data.provider import PolygonDataProvider
 from portfolio_monitor.detectors import DeviationEngine, DetectorRegistry
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio.loader import load_portfolios
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts import (
     AlertRouter,
@@ -59,17 +58,8 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
         logging.getLogger("urllib3.connectionpool").setLevel(logging.DEBUG)
 
-    # Load portfolios
     if not config.portfolio_path:
         raise ValueError("Portfolio path not configured")
-
-    portfolios = load_portfolios(config.portfolio_path)
-
-    if config.debug:
-        print("=== Portfolios     ===")
-        for portfolio in portfolios:
-            print(portfolio)
-        print("=== End Portfolios ===")
 
     # Load aggregate cache
     aggregate_cache = AggregateCache(config.aggregate_cache_path)
@@ -107,9 +97,11 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     session_store = SessionStore(config.session_store_path)
     session_store.load()
 
+    portfolio_service = PortfolioService(bus=bus, portfolio_path=config.portfolio_path)
+
     # Build per-account detection engine
     detection_engine, detector_accounts = _build_per_account_engine(
-        account_store, portfolios, default_admin_username=config.dashboard_username or "default"
+        account_store, portfolio_service, default_admin_username=config.dashboard_username or "default"
     )
 
     # Create services — subscriptions happen in constructors
@@ -118,7 +110,6 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         detection_engine=detection_engine,
         data_provider=data_provider,
     )
-    portfolio_service = PortfolioService(bus=bus, portfolios=portfolios)
     alert_router = AlertRouter(bus=bus)
     for detector_id, usernames in detector_accounts.items():
         for username in usernames:
@@ -162,22 +153,11 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     monitor = MonitorService(
         bus=bus,
         data_provider=data_provider,
-        portfolios=portfolios,
+        portfolio_service=portfolio_service,
     )
 
-    # Prime detection engine with historical data
-    all_symbols: list[AssetSymbol] = list(
-        {asset.symbol for portfolio in portfolios for asset in portfolio.assets()}
-    )
-    await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
-
-    # Seed portfolio prices with the most recent available price (current bar preferred,
-    # falling back to previous close when the market is closed and no live bar is available)
-    logger.info("Seeding portfolio prices...")
-    for symbol in all_symbols:
-        agg = await data_provider.get_aggregate(symbol)
-        if agg:
-            await bus.publish(AggregateUpdated(symbol=symbol, aggregate=agg))
+    # Prime services
+    await prime(bus, portfolio_service, data_provider, detection_service)
 
     # Start API server
     ctx = PortfolioMonitorContext(
@@ -209,7 +189,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             detection_service=detection_service,
             alert_router=alert_router,
             aggregate_cache=aggregate_cache,
-            portfolios=portfolios,
+            portfolio_service=portfolio_service,
         )
         cp_uvicorn_config = uvicorn.Config(
             control_panel.app,
@@ -267,10 +247,27 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             logger.error("Error closing aggregate cache: %s", e)
 
 
+async def prime(bus: EventBus, portfolio_service: PortfolioService, data_provider: PolygonDataProvider, detection_service: DetectionService):
+    """Prime services used by the monitor."""
+
+    # Prime detection engine with historical data
+    all_symbols: list[AssetSymbol] = list(
+        {asset.symbol for portfolio in portfolio_service.get_all_portfolios() for asset in portfolio.assets()}
+    )
+    await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
+
+    # Seed portfolio prices with the most recent available price (current bar preferred,
+    # falling back to previous close when the market is closed and no live bar is available)
+    logger.info("Seeding portfolio prices...")
+    for symbol in all_symbols:
+        agg = await data_provider.get_aggregate(symbol)
+        if agg:
+            await bus.publish(AggregateUpdated(symbol=symbol, aggregate=agg))
+
 
 def _build_per_account_engine(
     account_store: AccountStore,
-    portfolios: list,
+    portfolio_service: PortfolioService,
     default_admin_username: str = "default",
 ) -> tuple[DeviationEngine, dict[str, list[str]]]:
     """Build a DeviationEngine with one detector per (account × symbol × kind).
@@ -283,7 +280,7 @@ def _build_per_account_engine(
         detector_accounts: mapping of detector_id → list of account usernames.
     """
     all_symbols: list[AssetSymbol] = list(
-        {asset.symbol for portfolio in portfolios for asset in portfolio.assets()}
+        {asset.symbol for portfolio in portfolio_service.get_all_portfolios() for asset in portfolio.assets()}
     )
     ticker_to_symbol: dict[str, AssetSymbol] = {s.ticker: s for s in all_symbols}
 
