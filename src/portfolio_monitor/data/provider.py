@@ -69,7 +69,7 @@ class PolygonDataProvider(DataProvider):
         # Time delay before considering data not real-time (default 15 minutes)
         # Add a 1-minute margin to the configured delay to ensure we're getting truly fresh data
         base_delay = timedelta(seconds=config.polygon_delay)
-        self._delay: timedelta = base_delay + timedelta(minutes=1)
+        self._delay: timedelta = base_delay
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(
             config.polygon_api_key
         )
