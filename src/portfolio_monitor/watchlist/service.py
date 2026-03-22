@@ -91,7 +91,7 @@ class WatchlistService:
         return None
 
     def _can_write(self, wl: Watchlist, auth: "AuthContext") -> bool:
-        return auth.is_admin or wl.owner == auth.username
+        return (auth.is_admin and auth.username == "admin") or wl.owner == auth.username
 
     # ------------------------------------------------------------------
     # Reads
@@ -101,7 +101,7 @@ class WatchlistService:
         return [wl for wls in self._by_owner.values() for wl in wls]
 
     def get_watchlists(self, auth: "AuthContext") -> list[Watchlist]:
-        if auth.is_admin:
+        if auth.is_admin and auth.username == "admin":
             return self.get_all_watchlists()
         result = list(self._by_owner.get("default", []))
         result.extend(self._by_owner.get(auth.username, []))
