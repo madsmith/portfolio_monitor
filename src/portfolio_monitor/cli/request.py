@@ -63,6 +63,16 @@ class APIClient:
         response = self.put(path, json=json)
         _require_success(response)
 
+    def try_get_json(self, path: str) -> Any:
+        """GET request. Returns parsed JSON on success, None on any failure."""
+        try:
+            response = self.get(path)
+        except SystemExit:
+            return None
+        if not response.is_success:
+            return None
+        return response.json()
+
 
 
 def make_client(args: argparse.Namespace, *, require_token: bool = True) -> APIClient:

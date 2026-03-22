@@ -242,7 +242,7 @@ async def run_dev_service(config: DevConfig) -> None:
     for wl in watchlist_service.get_all_watchlists():
         for entry in wl.entries:
             monitor_service.register_symbol(entry.symbol)
-    _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor_service, detection_service)
+    _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor_service, detection_service, dev_data_provider)
     ctx = PortfolioMonitorContext(
         config=config,
         portfolio_service=portfolio_service,

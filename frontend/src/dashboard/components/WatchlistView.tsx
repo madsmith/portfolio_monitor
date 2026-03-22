@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api, type WatchlistDetail, type WatchlistEntry, type WatchlistSummary } from "../api/client";
 import { fmtChg, fmtMoney, fmtPct, plColor, prevCloseKey } from "../lib/formatters";
 import { Chart } from "./Chart";
@@ -34,13 +34,15 @@ function WatchlistTable({
   const enriched: EnrichedEntry[] = entries.map((e) => {
     const pcKey = prevCloseKey(e);
     const pc = prevClose[pcKey] ?? null;
+    // Fall back to previous close when no live price is available (market closed / not yet primed)
+    const price = e.current_price ?? pc;
     const dayChgPrice = e.current_price !== null && pc !== null ? e.current_price - pc : null;
     const dayChgPct = dayChgPrice !== null && pc !== null && pc !== 0 ? (dayChgPrice / pc) * 100 : null;
     const sinceAdded =
-      e.current_price !== null && e.initial_price !== null && e.initial_price !== 0
-        ? ((e.current_price - e.initial_price) / e.initial_price) * 100
+      price !== null && e.initial_price !== null && e.initial_price !== 0
+        ? ((price - e.initial_price) / e.initial_price) * 100
         : null;
-    return { ...e, dayChgPrice, dayChgPct, sinceAdded };
+    return { ...e, current_price: price, dayChgPrice, dayChgPct, sinceAdded };
   });
 
   return (
@@ -80,8 +82,8 @@ function WatchlistTable({
       </thead>
       <tbody>
         {enriched.map((e) => (
-          <>
-            <tr key={e.ticker} className="border-b border-[#2a2d3a] last:border-b-0 transition-colors">
+          <Fragment key={e.ticker}>
+            <tr className="border-b border-[#2a2d3a] last:border-b-0 transition-colors">
               <td className="px-2 sm:px-3 py-2 font-semibold">
                 <button
                   onClick={() => toggleChart(e.ticker)}
@@ -115,7 +117,7 @@ function WatchlistTable({
                 </td>
               </tr>
             )}
-          </>
+          </Fragment>
         ))}
       </tbody>
     </table>

@@ -3,17 +3,19 @@ import json
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.service.context import AuthContext
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 from portfolio_monitor.watchlist.models import Watchlist, WatchlistEntry
 from portfolio_monitor.watchlist.service import WatchlistService
 
 
-def _entry_dict(entry: WatchlistEntry) -> dict:
+def _entry_dict(entry: WatchlistEntry, fallback_price: float | None = None) -> dict:
+    price = float(entry.current_price._value) if entry.current_price is not None else fallback_price
     return {
         "ticker": entry.symbol.ticker,
         "asset_type": entry.symbol.asset_type.value,
-        "current_price": float(entry.current_price._value) if entry.current_price is not None else None,
+        "current_price": price,
         "notes": entry.notes,
         "target_buy": entry.target_buy,
         "target_sell": entry.target_sell,
@@ -42,7 +44,7 @@ def _watchlist_detail(wl: Watchlist) -> dict:
     }
 
 
-def watchlists_handler(watchlist_service: WatchlistService):
+def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataProvider):
     async def list_watchlists(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         return JSONResponse([_watchlist_summary(wl) for wl in watchlist_service.get_watchlists(auth)])
@@ -62,7 +64,16 @@ def watchlists_handler(watchlist_service: WatchlistService):
         wl = watchlist_service.get_watchlist(request.path_params["id"], auth)
         if wl is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return JSONResponse(_watchlist_detail(wl))
+        # For entries with no live price (e.g. market closed, new entry), fall back
+        # to get_aggregate which returns previous close when the market is closed.
+        fallbacks: dict[str, float] = {}
+        for entry in wl.entries:
+            if entry.current_price is None:
+                agg = await data_provider.get_aggregate(entry.symbol)
+                if agg is not None:
+                    fallbacks[entry.symbol.ticker] = agg.close
+        entries = [_entry_dict(e, fallbacks.get(e.symbol.ticker)) for e in wl.entries]
+        return JSONResponse({"id": wl.id, "name": wl.name, "owner": wl.owner, "entries": entries})
 
     async def delete_watchlist(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)

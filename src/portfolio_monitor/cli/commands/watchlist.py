@@ -217,6 +217,14 @@ def _cmd_list(client: APIClient, args: argparse.Namespace) -> None:
 def _cmd_show(client: APIClient, args: argparse.Namespace) -> None:
     data = client.get_json(f"/api/v1/watchlist/{args.id}")
     assert isinstance(data, dict)
+    # Backfill current_price from previous-close for entries with no live price
+    for entry in data.get("entries", []):
+        if entry.get("current_price") is None:
+            price_data = client.try_get_json(
+                f"/api/v1/price/{entry['asset_type']}/{entry['ticker']}/previous-close"
+            )
+            if price_data and price_data.get("price") is not None:
+                entry["current_price"] = price_data["price"]
     _print_detail(data, args.json_out)
 
 

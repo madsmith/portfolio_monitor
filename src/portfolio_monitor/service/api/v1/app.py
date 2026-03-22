@@ -55,7 +55,7 @@ class APIv1ServiceApp(Router):
             update_wl_entry,
             get_wl_entry_alerts,
             update_wl_entry_alerts,
-        ) = watchlists_handler(ctx.watchlist_service)
+        ) = watchlists_handler(ctx.watchlist_service, ctx.data_provider)
 
         ws_manager = WebSocketManager(
             bus=ctx.bus,

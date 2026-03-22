@@ -166,7 +166,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             monitor.register_symbol(entry.symbol)
 
     # Wire live detection adapter for watchlist entry changes
-    _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor, detection_service)
+    _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor, detection_service, data_provider)
 
     # Prime services
     all_watchlist_symbols = list({e.symbol for wl in watchlist_service.get_all_watchlists() for e in wl.entries})
@@ -385,6 +385,7 @@ def _wire_watchlist_adapter(
     alert_router: AlertRouter,
     monitor: MonitorService,
     detection_service: DetectionService,
+    data_provider: PolygonDataProvider,
 ) -> None:
     """Subscribe to watchlist events and apply live engine/router/monitor updates."""
     from portfolio_monitor.watchlist.events import (
@@ -417,6 +418,10 @@ def _wire_watchlist_adapter(
 
     async def _on_entry_added(event: WatchlistEntryAdded) -> None:
         monitor.register_symbol(event.symbol)
+        # Seed initial price immediately (fallback to prev close when market closed)
+        agg = await data_provider.get_aggregate(event.symbol)
+        if agg:
+            await bus.publish(AggregateUpdated(symbol=event.symbol, aggregate=agg))
         ids = _add_detectors(event.symbol, event.alert_config, event.owner)
         key = (event.owner, event.symbol.ticker)
         entry_detectors[key].extend(ids)
