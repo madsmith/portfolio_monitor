@@ -121,6 +121,33 @@ export type PriceHistory = {
   aggregates: PriceAggregate[];
 };
 
+export type WatchlistSummary = {
+  id: string;
+  name: string;
+  owner: string;
+  entry_count: number;
+};
+
+export type WatchlistEntry = {
+  ticker: string;
+  asset_type: string;
+  current_price: number | null;
+  notes: string;
+  target_buy: number | null;
+  target_sell: number | null;
+  time_added: string | null;
+  initial_price: number | null;
+  meta: Record<string, unknown>;
+  alerts: Record<string, unknown>;
+};
+
+export type WatchlistDetail = {
+  id: string;
+  name: string;
+  owner: string;
+  entries: WatchlistEntry[];
+};
+
 export type DetectorArgSpec = {
   name: string;
   type: string;        // "float", "str", "int", etc.
@@ -201,4 +228,11 @@ export const api = {
 
   getDetectors: (): Promise<DetectorInfo[]> =>
     authGet("/api/v1/detectors"),
+
+  // Watchlists
+  getWatchlists: (): Promise<WatchlistSummary[]> =>
+    authGet("/api/v1/watchlists"),
+
+  getWatchlist: (id: string): Promise<WatchlistDetail> =>
+    authGet(`/api/v1/watchlist/${id}`),
 };

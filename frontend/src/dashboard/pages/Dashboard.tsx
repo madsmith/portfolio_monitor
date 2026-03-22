@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
-import { api, clearToken, getUsername, type PortfolioDetail, type PortfolioSummary } from "../api/client";
+import { api, clearToken, getUsername, type PortfolioDetail, type PortfolioSummary, type WatchlistSummary } from "../api/client";
 import { type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
 import { applyPriceUpdate, computeTodayChange, prevCloseKey, type TodayChange } from "../lib/formatters";
 import { Overview } from "../components/Overview";
 import { PortfolioDetailContent } from "../components/PortfolioDetail";
+import { WatchlistView } from "../components/WatchlistView";
 import Settings from "./Settings";
 
 function toWsSymbol(a: { ticker: string; asset_type: string }): WsAssetSymbol {
@@ -31,11 +32,14 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const match = useMatch("/portfolio/:id");
   const settingsMatch = useMatch("/settings");
-  const activeId = settingsMatch ? null : (match?.params.id ?? null);
+  const watchlistMatch = useMatch("/watchlist");
+  const activeId = (settingsMatch || watchlistMatch) ? null : (match?.params.id ?? null);
   const isSettingsActive = settingsMatch !== null;
+  const isWatchlistActive = watchlistMatch !== null;
   const currentUsername = getUsername();
 
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
+  const [watchlists, setWatchlists] = useState<WatchlistSummary[]>([]);
   const [portfoliosLoading, setPortfoliosLoading] = useState(true);
   const [portfoliosError, setPortfoliosError] = useState<string | null>(null);
 
@@ -112,6 +116,15 @@ export default function Dashboard() {
       )
     );
   }, [detail]);
+
+  // Fetch watchlist summaries once
+  useEffect(() => {
+    let active = true;
+    api.getWatchlists()
+      .then((list) => { if (active) setWatchlists(list); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch portfolio list once. Also kicks off background detail+prevClose fetches for all
   // portfolios so the overview "Today's Chg" column is populated immediately.
@@ -196,9 +209,10 @@ export default function Dashboard() {
             const pages = [
               { value: "overview", label: "Overview", go: () => navigate("/") },
               ...portfolios.map((p) => ({ value: p.id, label: p.name, go: () => navigate(`/portfolio/${p.id}`) })),
+              ...(watchlists.length > 0 ? [{ value: "watchlist", label: "Watchlist", go: () => navigate("/watchlist") }] : []),
               { value: "settings", label: "Settings", go: () => navigate("/settings") },
             ];
-            const currentValue = isSettingsActive ? "settings" : (activeId ?? "overview");
+            const currentValue = isSettingsActive ? "settings" : isWatchlistActive ? "watchlist" : (activeId ?? "overview");
             const currentIndex = pages.findIndex((p) => p.value === currentValue);
             const prev = currentIndex > 0 ? pages[currentIndex - 1] : null;
             const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
@@ -219,6 +233,7 @@ export default function Dashboard() {
                     const v = e.target.value;
                     if (v === "overview") navigate("/");
                     else if (v === "settings") navigate("/settings");
+                    else if (v === "watchlist") navigate("/watchlist");
                     else navigate(`/portfolio/${v}`);
                   }}
                   className="flex-1 bg-[#1e2130] border border-[#404868] rounded-md px-3 py-2 text-sm text-slate-100 text-center focus:outline-none focus:border-slate-500 appearance-none cursor-pointer"
@@ -242,10 +257,13 @@ export default function Dashboard() {
 
         {/* Desktop: tab bar */}
         <div className="relative hidden sm:flex items-end gap-1">
-          <Tab label="Overview" active={!isSettingsActive && activeId === null} onClick={() => navigate("/")} />
+          <Tab label="Overview" active={!isSettingsActive && !isWatchlistActive && activeId === null} onClick={() => navigate("/")} />
           {portfolios.map((p) => (
             <Tab key={p.id} label={p.name} active={p.id === activeId} onClick={() => navigate(`/portfolio/${p.id}`)} />
           ))}
+          {watchlists.length > 0 && (
+            <Tab label="Watchlist" active={isWatchlistActive} onClick={() => navigate("/watchlist")} />
+          )}
           <div className="flex-1" />
           <Tab label="Settings" active={isSettingsActive} onClick={() => navigate("/settings")} />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[#404868]" />
@@ -254,6 +272,8 @@ export default function Dashboard() {
         <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6">
           {isSettingsActive ? (
             <Settings />
+          ) : isWatchlistActive ? (
+            <WatchlistView watchlists={watchlists} />
           ) : activeId === null ? (
             <Overview
               portfolios={portfolios}
