@@ -288,7 +288,7 @@ def _build_per_account_engine(
     watchlist_service: WatchlistService,
     default_admin_username: str = "default",
 ) -> tuple[DeviationEngine, dict[str, list[str]]]:
-    """Build a DeviationEngine with one detector per (account × symbol × kind).
+    """Build a DeviationEngine with one detector per (account x symbol x kind).
 
     Includes both account alert configs and watchlist entry alert configs.
 
