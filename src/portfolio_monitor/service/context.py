@@ -7,6 +7,7 @@ from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.settings import AccountStore, SessionStore
+from portfolio_monitor.watchlist.service import WatchlistService
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ class PortfolioMonitorContext:
 
     config: PortfolioMonitorConfig
     portfolio_service: PortfolioService
+    watchlist_service: WatchlistService
     bus: EventBus
     data_provider: DataProvider
     account_store: AccountStore

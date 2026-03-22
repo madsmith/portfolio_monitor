@@ -77,6 +77,16 @@ class DeviationEngine:
         else:
             raise ValueError(f"Type {type(detector)} is not a valid detector")
 
+    def remove_detector(self, symbol: AssetSymbol, detector_id: str) -> bool:
+        """Remove a specific asset detector by detector_id. Returns True if found."""
+        detectors = self.asset_detectors.get(symbol, [])
+        for i, d in enumerate(detectors):
+            if d.detector_id == detector_id:
+                detectors.pop(i)
+                self.active_alerts.pop((symbol, detector_id), None)
+                return True
+        return False
+
     def get_available_detector_kinds(self) -> list[str]:
         return DetectorRegistry.list_available_detectors()
 

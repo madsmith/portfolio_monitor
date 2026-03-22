@@ -7,12 +7,13 @@ from omegaconf import OmegaConf
 from portfolio_monitor.core.currency import Currency
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.events import AggregateUpdated
-from portfolio_monitor.portfolio.events import PortfolioUpdated, PriceUpdated
-from portfolio_monitor.portfolio.portfolio import Portfolio
 from portfolio_monitor.service.types import AssetSymbol
 
 if TYPE_CHECKING:
     from portfolio_monitor.service.context import AuthContext
+
+from .events import PortfolioUpdated, PriceUpdated
+from .models import Portfolio
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def _load_portfolios_by_owner(portfolio_path: Path) -> dict[str, list[Portfolio]
             if "name" not in data:
                 logger.warning("YAML file does not contain a portfolio: %s", yaml_file)
                 continue
-            portfolio = Portfolio.from_dict(dict(data))
+            portfolio = Portfolio.from_dict(dict(data), id_hash_seed=str(yaml_file))
             by_owner.setdefault(owner, []).append(portfolio)
             logger.info(
                 "Loaded portfolio '%s' (owner=%s) from %s",

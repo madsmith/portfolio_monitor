@@ -29,6 +29,7 @@ class MonitorService:
 
         self.running: bool = False
         self._task: asyncio.Task | None = None
+        self._symbols: dict[AssetSymbol, AssetUpdateRecord] = {}
 
     @property
     def task(self) -> asyncio.Task | None:
@@ -42,6 +43,15 @@ class MonitorService:
         self.running = True
         logger.info("Starting monitor")
         self._task = asyncio.create_task(self._run())
+
+    def register_symbol(self, symbol: AssetSymbol) -> None:
+        """Add a symbol to the monitor poll set (live, no restart needed)."""
+        if symbol not in self._symbols:
+            self._symbols[symbol] = AssetUpdateRecord(symbol)
+
+    def unregister_symbol(self, symbol: AssetSymbol) -> None:
+        """Remove a symbol from the monitor poll set."""
+        self._symbols.pop(symbol, None)
 
     async def stop(self) -> None:
         if not self.running:
@@ -62,7 +72,8 @@ class MonitorService:
     async def _run(self) -> None:
         update_interval = timedelta(seconds=60)
 
-        all_symbols: dict[AssetSymbol, AssetUpdateRecord] = {
+        # Build initial symbol set from portfolios
+        self._symbols = {
             asset.symbol: AssetUpdateRecord(asset.symbol)
             for portfolio in self._portfolio_service.get_all_portfolios()
             for asset in portfolio.assets()
@@ -74,7 +85,7 @@ class MonitorService:
                 next_update = now + update_interval
 
                 # TODO: add option to offset data by configurable delay to support limited access to realtime data (e.g. 15-minute delayed data from Polygon free tier)
-                for record in all_symbols.values():
+                for record in self._symbols.values():
                     symbol: AssetSymbol = record.symbol
 
                     if not MarketInfo.is_market_open(symbol, now):
@@ -98,7 +109,11 @@ class MonitorService:
                     (next_update - now).total_seconds(),
                     update_interval.total_seconds() / 2,
                 )
-                logger.debug("Monitor sleeping %.1f seconds", sleep_seconds)
+                logger.debug(
+                    "Monitor sleeping %.1f seconds (%d symbols tracked)",
+                    sleep_seconds,
+                    len(self._symbols),
+                )
                 await asyncio.sleep(sleep_seconds)
 
         except asyncio.CancelledError:

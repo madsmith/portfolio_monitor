@@ -11,6 +11,11 @@ class PortfolioMonitorConfig(AppConfig):
         "portfolio_monitor.portfolio_path",
         converter=Path,
     )
+    watchlist_path = BindDefault[Path](
+        "portfolio_monitor.watchlist_path",
+        default="./config/watchlists",
+        converter=Path,
+    )
     aggregate_cache_path = BindDefault[Path](
         "portfolio_monitor.aggregate_cache_path",
         default="./config/aggregate_cache.db",

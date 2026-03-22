@@ -1,0 +1,6 @@
+name: "Tech Stocks"
+owner: "default"
+entries:
+  - ticker: "GOOG"
+    asset_type: "stock"
+  

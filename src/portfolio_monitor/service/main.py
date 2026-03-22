@@ -37,6 +37,7 @@ from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.watchlist.service import WatchlistService
 
 # Configure logging
 logging.basicConfig(
@@ -98,10 +99,14 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
     session_store.load()
 
     portfolio_service = PortfolioService(bus=bus, portfolio_path=config.portfolio_path)
+    watchlist_service = WatchlistService(bus=bus, watchlist_path=config.watchlist_path)
 
-    # Build per-account detection engine
+    # Build per-account detection engine (includes watchlist entry alert configs)
     detection_engine, detector_accounts = _build_per_account_engine(
-        account_store, portfolio_service, default_admin_username=config.dashboard_username or "default"
+        account_store,
+        portfolio_service,
+        watchlist_service,
+        default_admin_username=config.dashboard_username or "default",
     )
 
     # Create services — subscriptions happen in constructors
@@ -155,14 +160,23 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         data_provider=data_provider,
         portfolio_service=portfolio_service,
     )
+    # Pre-register watchlist symbols in monitor so they're polled from startup
+    for wl in watchlist_service.get_all_watchlists():
+        for entry in wl.entries:
+            monitor.register_symbol(entry.symbol)
+
+    # Wire live detection adapter for watchlist entry changes
+    _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor, detection_service)
 
     # Prime services
-    await prime(bus, portfolio_service, data_provider, detection_service)
+    all_watchlist_symbols = list({e.symbol for wl in watchlist_service.get_all_watchlists() for e in wl.entries})
+    await prime(bus, portfolio_service, data_provider, detection_service, extra_symbols=all_watchlist_symbols)
 
     # Start API server
     ctx = PortfolioMonitorContext(
         config=config,
         portfolio_service=portfolio_service,
+        watchlist_service=watchlist_service,
         bus=bus,
         data_provider=data_provider,
         account_store=account_store,
@@ -247,18 +261,21 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             logger.error("Error closing aggregate cache: %s", e)
 
 
-async def prime(bus: EventBus, portfolio_service: PortfolioService, data_provider: PolygonDataProvider, detection_service: DetectionService):
-    """Prime services used by the monitor."""
-
-    # Prime detection engine with historical data
+async def prime(
+    bus: EventBus,
+    portfolio_service: PortfolioService,
+    data_provider: PolygonDataProvider,
+    detection_service: DetectionService,
+    extra_symbols: list[AssetSymbol] | None = None,
+) -> None:
+    """Prime detection engine and seed prices for all portfolio + watchlist symbols."""
     all_symbols: list[AssetSymbol] = list(
         {asset.symbol for portfolio in portfolio_service.get_all_portfolios() for asset in portfolio.assets()}
+        | set(extra_symbols or [])
     )
     await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
 
-    # Seed portfolio prices with the most recent available price (current bar preferred,
-    # falling back to previous close when the market is closed and no live bar is available)
-    logger.info("Seeding portfolio prices...")
+    logger.info("Seeding prices for %d symbols...", len(all_symbols))
     for symbol in all_symbols:
         agg = await data_provider.get_aggregate(symbol)
         if agg:
@@ -268,22 +285,24 @@ async def prime(bus: EventBus, portfolio_service: PortfolioService, data_provide
 def _build_per_account_engine(
     account_store: AccountStore,
     portfolio_service: PortfolioService,
+    watchlist_service: WatchlistService,
     default_admin_username: str = "default",
 ) -> tuple[DeviationEngine, dict[str, list[str]]]:
     """Build a DeviationEngine with one detector per (account × symbol × kind).
 
-    Default configs are expanded into per-symbol detectors for all known symbols,
-    skipping symbols where that account has a symbol-specific override of the same kind.
+    Includes both account alert configs and watchlist entry alert configs.
 
     Returns:
-        engine: DeviationEngine with all account detectors registered as asset detectors.
+        engine: DeviationEngine with all detectors registered as asset detectors.
         detector_accounts: mapping of detector_id → list of account usernames.
     """
     all_symbols: list[AssetSymbol] = list(
         {asset.symbol for portfolio in portfolio_service.get_all_portfolios() for asset in portfolio.assets()}
+        | {entry.symbol for wl in watchlist_service.get_all_watchlists() for entry in wl.entries}
     )
     ticker_to_symbol: dict[str, AssetSymbol] = {s.ticker: s for s in all_symbols}
 
+    # Account-level alert configs
     account_configs: list[tuple[str, dict]] = [
         (default_admin_username, account_store.get_default_admin_alerts()),
     ] + [(a.username, a.alerts) for a in account_store.get_all()]
@@ -337,12 +356,89 @@ def _build_per_account_engine(
                 symbol_detectors.setdefault(symbol, []).append((detector, username))
                 detector_accounts.setdefault(detector.detector_id, []).append(username)
 
+    # Watchlist entry alert configs — per-entry, per-owner
+    for wl in watchlist_service.get_all_watchlists():
+        for entry in wl.entries:
+            if not entry.alerts:
+                continue
+            symbol = ticker_to_symbol.get(entry.symbol.ticker) or entry.symbol
+            for kind, args in entry.alerts.items():
+                if not isinstance(args, dict):
+                    continue
+                detector = DetectorRegistry.create_detector(kind, args)
+                if detector is None:
+                    continue
+                symbol_detectors.setdefault(symbol, []).append((detector, wl.owner))
+                detector_accounts.setdefault(detector.detector_id, []).append(wl.owner)
+
     engine = DeviationEngine()
     for symbol, pairs in symbol_detectors.items():
         for detector, _ in pairs:
             engine.add_detector(symbol, detector)  # type: ignore[arg-type]
 
     return engine, detector_accounts
+
+
+def _wire_watchlist_adapter(
+    bus: EventBus,
+    engine: DeviationEngine,
+    alert_router: AlertRouter,
+    monitor: MonitorService,
+    detection_service: DetectionService,
+) -> None:
+    """Subscribe to watchlist events and apply live engine/router/monitor updates."""
+    from portfolio_monitor.watchlist.events import (
+        WatchlistEntryAdded,
+        WatchlistEntryAlertsUpdated,
+        WatchlistEntryRemoved,
+    )
+
+    # (owner, ticker) → list of detector_ids registered for that entry
+    entry_detectors: dict[tuple[str, str], list[str]] = defaultdict(list)
+
+    def _add_detectors(symbol: AssetSymbol, alert_config: dict, owner: str) -> list[str]:
+        ids: list[str] = []
+        for kind, args in alert_config.items():
+            if not isinstance(args, dict):
+                continue
+            detector = DetectorRegistry.create_detector(kind, args)
+            if detector is None:
+                continue
+            engine.add_detector(symbol, detector)  # type: ignore[arg-type]
+            alert_router.register_detector_account(detector.detector_id, owner)
+            ids.append(detector.detector_id)
+        return ids
+
+    def _remove_detectors(symbol: AssetSymbol, owner: str) -> None:
+        key = (owner, symbol.ticker)
+        for did in entry_detectors.pop(key, []):
+            engine.remove_detector(symbol, did)
+            alert_router.unregister_detector_account(did)
+
+    async def _on_entry_added(event: WatchlistEntryAdded) -> None:
+        monitor.register_symbol(event.symbol)
+        ids = _add_detectors(event.symbol, event.alert_config, event.owner)
+        key = (event.owner, event.symbol.ticker)
+        entry_detectors[key].extend(ids)
+        if ids:
+            await detection_service.prime([event.symbol], datetime.now(ZoneInfo("UTC")))
+
+    async def _on_entry_removed(event: WatchlistEntryRemoved) -> None:
+        _remove_detectors(event.symbol, event.owner)
+        # Unregister from monitor only if no other consumer still tracks this symbol
+        # (conservatively keep it — polling a dead symbol is harmless)
+
+    async def _on_alerts_updated(event: WatchlistEntryAlertsUpdated) -> None:
+        _remove_detectors(event.symbol, event.owner)
+        ids = _add_detectors(event.symbol, event.new_alert_config, event.owner)
+        key = (event.owner, event.symbol.ticker)
+        entry_detectors[key].extend(ids)
+        if ids:
+            await detection_service.prime([event.symbol], datetime.now(ZoneInfo("UTC")))
+
+    bus.subscribe(WatchlistEntryAdded, _on_entry_added)
+    bus.subscribe(WatchlistEntryRemoved, _on_entry_removed)
+    bus.subscribe(WatchlistEntryAlertsUpdated, _on_alerts_updated)
 
 
 def generate_auth_key(config_path: Path) -> None:

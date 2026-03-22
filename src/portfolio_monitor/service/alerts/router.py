@@ -79,6 +79,10 @@ class AlertRouter:
         """
         self._detector_accounts[detector_id].append(username)
 
+    def unregister_detector_account(self, detector_id: str) -> None:
+        """Remove all account associations for a detector (e.g. on entry removal)."""
+        self._detector_accounts.pop(detector_id, None)
+
     # ------------------------------------------------------------------
     # Per-account suppression
     # ------------------------------------------------------------------

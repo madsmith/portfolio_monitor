@@ -13,6 +13,7 @@ from portfolio_monitor.data.provider import PolygonDataProvider
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.service import PortfolioService
+from portfolio_monitor.watchlist.service import WatchlistService
 from portfolio_monitor.service.alerts import (
     AlertRouter,
     LoggingAlertDelivery,
@@ -21,8 +22,11 @@ from portfolio_monitor.service.alerts import (
 )
 from portfolio_monitor.service.api.app import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
+from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.service.types import AssetSymbol
+
+from portfolio_monitor.service.main import _wire_watchlist_adapter
 
 from .config import DevConfig
 from .data_provider import DevDataProvider
@@ -233,9 +237,16 @@ async def run_dev_service(config: DevConfig) -> None:
     account_store.load()
     session_store = SessionStore(config.session_store_path)
     session_store.load()
+    watchlist_service = WatchlistService(bus=bus, watchlist_path=config.watchlist_path)
+    monitor_service = MonitorService(bus=bus, data_provider=dev_data_provider, portfolio_service=portfolio_service)
+    for wl in watchlist_service.get_all_watchlists():
+        for entry in wl.entries:
+            monitor_service.register_symbol(entry.symbol)
+    _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor_service, detection_service)
     ctx = PortfolioMonitorContext(
         config=config,
         portfolio_service=portfolio_service,
+        watchlist_service=watchlist_service,
         bus=bus,
         data_provider=dev_data_provider,
         account_store=account_store,

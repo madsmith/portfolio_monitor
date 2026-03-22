@@ -11,6 +11,7 @@ from .routes.me import me_handler
 from .routes.market_info import market_close_handler, market_hours_handler, market_open_handler
 from .routes.portfolios import portfolio_handler, portfolios_handler
 from .routes.prices import current_price_handler, open_close_handler, previous_close_handler, price_history_handler
+from .routes.watchlists import watchlists_handler
 from .ws import WebSocketManager
 
 
@@ -44,6 +45,18 @@ class APIv1ServiceApp(Router):
             update_account_alerts,
         ) = accounts_handler(account_store, session_store, config.dashboard_username)
 
+        (
+            list_watchlists,
+            create_watchlist,
+            get_watchlist,
+            delete_watchlist,
+            add_wl_entry,
+            remove_wl_entry,
+            update_wl_entry,
+            get_wl_entry_alerts,
+            update_wl_entry_alerts,
+        ) = watchlists_handler(ctx.watchlist_service)
+
         ws_manager = WebSocketManager(
             bus=ctx.bus,
             session_store=session_store,
@@ -62,6 +75,15 @@ class APIv1ServiceApp(Router):
                 Route("/accounts/{username}/password", require_auth(reset_password), methods=["PUT"]),
                 Route("/portfolios", require_auth(portfolios_handler(ctx.portfolio_service)), methods=["GET"]),
                 Route("/portfolio/{id}", require_auth(portfolio_handler(ctx.portfolio_service)), methods=["GET"]),
+                Route("/watchlists", require_auth(list_watchlists), methods=["GET"]),
+                Route("/watchlist", require_auth(create_watchlist), methods=["POST"]),
+                Route("/watchlist/{id}", require_auth(get_watchlist), methods=["GET"]),
+                Route("/watchlist/{id}", require_auth(delete_watchlist), methods=["DELETE"]),
+                Route("/watchlist/{id}/entries", require_auth(add_wl_entry), methods=["POST"]),
+                Route("/watchlist/{id}/entries/{ticker}", require_auth(remove_wl_entry), methods=["DELETE"]),
+                Route("/watchlist/{id}/entries/{ticker}", require_auth(update_wl_entry), methods=["PUT"]),
+                Route("/watchlist/{id}/entries/{ticker}/alerts", require_auth(get_wl_entry_alerts), methods=["GET"]),
+                Route("/watchlist/{id}/entries/{ticker}/alerts", require_auth(update_wl_entry_alerts), methods=["PUT"]),
                 Route("/price/{type}/{ticker}", require_auth(current_price_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/previous-close", require_auth(previous_close_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/history", require_auth(price_history_handler(ctx.data_provider)), methods=["GET"]),

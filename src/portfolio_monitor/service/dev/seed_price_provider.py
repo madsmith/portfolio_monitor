@@ -2,7 +2,7 @@ import logging
 
 from portfolio_monitor.data.aggregate_cache import Aggregate
 from portfolio_monitor.data.provider import PolygonDataProvider
-from portfolio_monitor.portfolio.portfolio import Portfolio
+from portfolio_monitor.portfolio import Portfolio
 from portfolio_monitor.service.types import AssetSymbol
 
 logger = logging.getLogger(__name__)

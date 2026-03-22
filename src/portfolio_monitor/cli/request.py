@@ -44,6 +44,10 @@ class APIClient:
         """POST request. Exits on connection error."""
         return _request("POST", self._base + path, headers=self._headers, json=json, check_auth=False)
 
+    def delete(self, path: str) -> httpx.Response:
+        """DELETE request. Exits on connection error or 401."""
+        return _request("DELETE", self._base + path, headers=self._headers)
+
     # ------------------------------------------------------------------
     # High-level — additionally exit on any non-2xx response
     # ------------------------------------------------------------------
