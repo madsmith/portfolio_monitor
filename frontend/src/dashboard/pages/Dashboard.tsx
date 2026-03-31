@@ -51,18 +51,24 @@ export default function Dashboard() {
 
   const wsRef = useRef<PortfolioWebSocket | null>(null);
 
-  // Promise caches — deduplicate requests across background + foreground effects
-  // and across React StrictMode's double-invocation.
+  // Promise caches — deduplicate requests within the current UTC hour. Keyed by
+  // "<id>:<YYYY-MM-DDTHH>" so stale data is discarded at the top of each hour.
   const detailCacheRef = useRef<Record<string, Promise<PortfolioDetail>>>({});
   const prevCloseCacheRef = useRef<Record<string, Promise<Record<string, number>>>>({});
 
+  function hourKey(id: string): string {
+    return `${id}:${new Date().toISOString().slice(0, 13)}`;
+  }
+
   function cachedDetail(id: string): Promise<PortfolioDetail> {
-    detailCacheRef.current[id] ??= api.getPortfolio(id);
-    return detailCacheRef.current[id];
+    const key = hourKey(id);
+    detailCacheRef.current[key] ??= api.getPortfolio(id);
+    return detailCacheRef.current[key];
   }
 
   function cachedPrevClose(d: PortfolioDetail): Promise<Record<string, number>> {
-    prevCloseCacheRef.current[d.id] ??= Promise.allSettled(
+    const key = hourKey(d.id);
+    prevCloseCacheRef.current[key] ??= Promise.allSettled(
       [...d.stocks, ...d.currencies, ...d.crypto].map((a) =>
         api.getPreviousClose(a.asset_type, a.ticker).then((data) => ({ key: prevCloseKey(a), price: data.price }))
       )
@@ -73,7 +79,7 @@ export default function Dashboard() {
       }
       return closes;
     });
-    return prevCloseCacheRef.current[d.id];
+    return prevCloseCacheRef.current[key];
   }
 
   // Connect WebSocket on mount, close on unmount
