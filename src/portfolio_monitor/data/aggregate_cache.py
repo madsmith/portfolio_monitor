@@ -78,6 +78,12 @@ class Aggregate(OHLCV):
         return int(self.timespan.total_seconds() * 1000)
 
 
+    @property
+    def date_close(self) -> datetime:
+        """End of the period (date_open + timespan)."""
+        return self.date_open + self.timespan
+
+
 @dataclass
 class DailyOpenCloseAggregate(OHLCV):
     """Daily OHLCV aggregate enriched with pre-market and after-hours prices."""

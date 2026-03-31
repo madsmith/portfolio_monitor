@@ -188,30 +188,22 @@ export function WatchlistView({ watchlists }: { watchlists: WatchlistSummary[] }
     return () => { active = false; };
   }, [selectedId]);
 
-  // Fetch previous-close prices for all entries
+  // Fetch previous-close prices incrementally — update state as each resolves
+  // so prices populate one-by-one rather than all at once after a batch wait.
   useEffect(() => {
     if (!detail) { setPrevClose({}); return; }
     let active = true;
-    Promise.allSettled(
-      detail.entries.map((e) =>
-        api.getPreviousClose(e.asset_type, e.ticker).then((data) => ({
-          key: prevCloseKey(e),
-          price: data.price,
-        }))
-      )
-    ).then((results) => {
-      if (!active) return;
-      const closes: Record<string, number> = {};
-      for (const r of results) {
-        if (r.status === "fulfilled") closes[r.value.key] = r.value.price;
-      }
-      setPrevClose(closes);
-    });
+    setPrevClose({});
+    for (const e of detail.entries) {
+      api.getPreviousClose(e.asset_type, e.ticker)
+        .then((data) => {
+          if (!active) return;
+          setPrevClose((prev) => ({ ...prev, [prevCloseKey(e)]: data.price }));
+        })
+        .catch(() => {});
+    }
     return () => { active = false; };
   }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (loading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;
-  if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;
 
   return (
     <div>
@@ -222,15 +214,17 @@ export function WatchlistView({ watchlists }: { watchlists: WatchlistSummary[] }
           onSelect={setSelectedId}
         />
       )}
-      {detail && (
-        detail.entries.length === 0 ? (
-          <p className="text-slate-500 text-sm py-2">No entries in this watchlist.</p>
-        ) : (
-          <div className="border border-[#404868] rounded-md overflow-hidden">
-            <WatchlistTable entries={detail.entries} prevClose={prevClose} />
-          </div>
-        )
-      )}
+      {loading ? (
+        <p className="text-slate-500 py-2 text-sm">Loading…</p>
+      ) : error ? (
+        <p className="text-red-400 py-2 text-sm">{error}</p>
+      ) : detail && detail.entries.length === 0 ? (
+        <p className="text-slate-500 text-sm py-2">No entries in this watchlist.</p>
+      ) : detail ? (
+        <div className="border border-[#404868] rounded-md overflow-hidden">
+          <WatchlistTable entries={detail.entries} prevClose={prevClose} />
+        </div>
+      ) : null}
     </div>
   );
 }

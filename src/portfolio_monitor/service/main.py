@@ -4,7 +4,7 @@ import logging
 import secrets
 import sys
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -20,8 +20,9 @@ from uvicorn.server import Server
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.aggregate_cache import AggregateCache
+from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
 from portfolio_monitor.data.events import AggregateUpdated
+from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.data.provider import PolygonDataProvider
 from portfolio_monitor.detectors import DeviationEngine, DetectorRegistry
 from portfolio_monitor.detectors.service import DetectionService
@@ -170,7 +171,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
 
     # Prime services
     all_watchlist_symbols = list({e.symbol for wl in watchlist_service.get_all_watchlists() for e in wl.entries})
-    await prime(bus, portfolio_service, data_provider, detection_service, extra_symbols=all_watchlist_symbols)
+    await prime(config, bus, portfolio_service, data_provider, detection_service, extra_symbols=all_watchlist_symbols)
 
     # Start API server
     ctx = PortfolioMonitorContext(
@@ -262,6 +263,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
 
 
 async def prime(
+    config: PortfolioMonitorConfig,
     bus: EventBus,
     portfolio_service: PortfolioService,
     data_provider: PolygonDataProvider,
@@ -280,6 +282,31 @@ async def prime(
         agg = await data_provider.get_aggregate(symbol)
         if agg:
             await bus.publish(AggregateUpdated(symbol=symbol, aggregate=agg))
+
+    if config.deep_prime:
+        logger.info("Deep priming - fetching all symbols from Polygon...")
+
+        for symbol in all_symbols:
+            await _deep_prime(symbol, data_provider)
+
+async def _deep_prime(symbol: AssetSymbol, data_provider: PolygonDataProvider) -> None:
+    """Deep prime a symbol by fetching all data from Polygon."""
+    # Load all aggregates for this symbol from current "last" price to prior last close
+    current_aggregate: Aggregate = await data_provider.get_aggregate(symbol)
+
+    if current_aggregate is None:
+        current_time = datetime.now()
+        if MarketInfo.is_market_closed(symbol, current_time):
+            close_time = MarketInfo.get_market_close(symbol, current_time)
+        else:
+            logger.warning("Current aggregate is None for symbol %s, but market is open. This should not happen.", symbol)
+            return
+    else:
+        close_time = current_aggregate.date_close
+    
+    prior_close_time = MarketInfo.get_market_close(symbol, close_time - timedelta(days=2))
+    
+    _ = await data_provider.get_range(symbol, prior_close_time, close_time, cache_write=True)
 
 
 def _build_per_account_engine(
@@ -480,6 +507,11 @@ def arg_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--host", type=str, help="Control interface host")
     run_parser.add_argument("--port", type=int, help="Control interface port")
     run_parser.add_argument("--auth-key", type=str, help="Authorization key")
+    run_parser.add_argument(
+        "--prime",
+        action="store_true",
+        help="Run with deep prime mode (fetch all symbols from Polygon)",
+    )
     run_parser.add_argument(
         "--dev",
         action="store_true",

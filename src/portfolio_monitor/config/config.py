@@ -49,6 +49,7 @@ class PortfolioMonitorConfig(AppConfig):
 
     debug = BindDefault[bool]("portfolio_monitor.debug", default=False)
     dev_console = BindDefault[bool]("portfolio_monitor.dev_console", arg_key="dev", default=False)
+    deep_prime = BindDefault[bool]("portfolio_monitor.deep_prime", arg_key="prime", default=False)
 
     openclaw_host = BindDefault[str](
         "portfolio_monitor.openclaw.host", default="127.0.0.1"
