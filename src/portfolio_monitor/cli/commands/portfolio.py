@@ -92,8 +92,8 @@ def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
     # list
     sub.add_parser("list", help="List all portfolios")
 
-    # get
-    s = sub.add_parser("get", help="Show details for a specific portfolio")
+    # show
+    s = sub.add_parser("show", help="Show details for a specific portfolio")
     s.add_argument("id", metavar="ID")
 
     p.set_defaults(func=run_portfolio)
@@ -108,7 +108,7 @@ def run_portfolio(args: argparse.Namespace) -> None:
     if args.portfolio_command == "list":
         _list_all(client, args.json_out)
     else:
-        _get_one(client, args.id, args.json_out)
+        _show_one(client, args.id, args.json_out)
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ def _list_all(client: APIClient, json_out: bool = False) -> None:
     render_table(rows)
 
 
-def _get_one(client: APIClient, portfolio_id: str, json_out: bool = False) -> None:
+def _show_one(client: APIClient, portfolio_id: str, json_out: bool = False) -> None:
     portfolio = client.get_json(f"/api/v1/portfolio/{portfolio_id}")
     assert isinstance(portfolio, dict)
 
