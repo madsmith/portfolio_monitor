@@ -15,7 +15,6 @@ def get_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--url",
-        default="http://127.0.0.1:8400",
         metavar="URL",
         help="Base URL of the portfolio-monitor server API (default: http://127.0.0.1:8400)",
     )
@@ -44,6 +43,12 @@ def main() -> None:
     if args.token is None:
         # Allow token to be passed via environment variable for convenience
         args.token = os.getenv("PORTFOLIO_MANAGER_TOKEN")
+
+    if args.url is None:
+        # Allow url to be passed via environment variable for convenience
+        args.url = os.getenv("PORTFOLIO_MANAGER_URL")
+        if args.url is None:
+            args.url = "http://127.0.0.1:8400"
 
     args.func(args)
 
