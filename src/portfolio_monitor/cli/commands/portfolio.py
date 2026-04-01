@@ -85,15 +85,17 @@ def render_portfolio_detail(output: PortfolioDetailOutput) -> None:
 
 def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("portfolio", help="Query portfolio data")
-    group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument("--all", action="store_true", help="List all portfolios")
-    group.add_argument("--id", metavar="ID", help="Show details for a specific portfolio")
-    p.add_argument(
-        "--json",
-        dest="json_out",
-        action="store_true",
-        help="Output raw JSON instead of formatted text",
-    )
+    p.add_argument("--json", dest="json_out", action="store_true", help="Output raw JSON instead of formatted text")
+    sub = p.add_subparsers(dest="portfolio_command", metavar="SUBCOMMAND")
+    sub.required = True
+
+    # list
+    sub.add_parser("list", help="List all portfolios")
+
+    # get
+    s = sub.add_parser("get", help="Show details for a specific portfolio")
+    s.add_argument("id", metavar="ID")
+
     p.set_defaults(func=run_portfolio)
 
 
@@ -103,7 +105,7 @@ def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run_portfolio(args: argparse.Namespace) -> None:
     client = make_client(args)
-    if args.all:
+    if args.portfolio_command == "list":
         _list_all(client, args.json_out)
     else:
         _get_one(client, args.id, args.json_out)

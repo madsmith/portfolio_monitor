@@ -1,18 +1,18 @@
 """CLI commands for managing watchlists.
 
 Subcommands:
-  list                           List all watchlists
-  show   --id ID                 Show watchlist detail
-  create --name NAME             Create a new watchlist
-  delete --id ID                 Delete a watchlist
-  add    --id ID --ticker T      Add an entry
-  remove --id ID --ticker T      Remove an entry
-  note   --id ID --ticker T TEXT Set notes on an entry
-  target --id ID --ticker T      Set buy/sell price targets
-  meta   --id ID --ticker T K=V  Set metadata key(s) on an entry
-  alert show   --id ID --ticker T              Show entry alert config
-  alert set    --id ID --ticker T --kind K ... Set an alert on an entry
-  alert remove --id ID --ticker T --kind K     Remove an alert from an entry
+  list                         List all watchlists
+  show   ID                    Show watchlist detail
+  create --name NAME           Create a new watchlist
+  delete ID                    Delete a watchlist
+  add    ID --ticker T         Add an entry
+  remove ID --ticker T         Remove an entry
+  note   ID --ticker T TEXT    Set notes on an entry
+  target ID --ticker T         Set buy/sell price targets
+  meta   ID --ticker T K=V     Set metadata key(s) on an entry
+  alert show   ID --ticker T              Show entry alert config
+  alert set    ID --ticker T --kind K ... Set an alert on an entry
+  alert remove ID --ticker T --kind K     Remove an alert from an entry
 """
 
 import argparse
@@ -65,7 +65,7 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # show
     s = sub.add_parser("show", help="Show watchlist detail")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
 
     # create
     s = sub.add_parser("create", help="Create a new watchlist")
@@ -73,11 +73,11 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # delete
     s = sub.add_parser("delete", help="Delete a watchlist")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
 
     # add entry
     s = sub.add_parser("add", help="Add an entry to a watchlist")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--type", dest="asset_type", default="stock",
                    choices=["stock", "currency", "crypto"])
@@ -87,25 +87,25 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # remove entry
     s = sub.add_parser("remove", help="Remove an entry from a watchlist")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
 
     # note
     s = sub.add_parser("note", help="Set notes on an entry")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("text", metavar="TEXT")
 
     # target
     s = sub.add_parser("target", help="Set price targets on an entry")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--buy", dest="target_buy", type=float, default=None, metavar="PRICE")
     s.add_argument("--sell", dest="target_sell", type=float, default=None, metavar="PRICE")
 
     # meta
     s = sub.add_parser("meta", help="Set metadata key(s) on an entry (KEY=VALUE ...)")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("pairs", nargs="+", metavar="KEY=VALUE")
 
@@ -115,17 +115,17 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
     al_sub.required = True
 
     s = al_sub.add_parser("show", help="Show alert config for an entry")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
 
     s = al_sub.add_parser("set", help="Add/update a detector on an entry (KEY=VALUE ...)")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--kind", required=True, metavar="KIND")
     s.add_argument("args", nargs="*", metavar="KEY=VALUE")
 
     s = al_sub.add_parser("remove", help="Remove a detector from an entry")
-    s.add_argument("--id", required=True, metavar="ID")
+    s.add_argument("id", metavar="ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--kind", required=True, metavar="KIND")
 
