@@ -25,7 +25,7 @@ from websockets.asyncio.client import ClientConnection
 from portfolio_monitor.detectors.base import Alert
 from portfolio_monitor.service.alerts.delivery.openclaw_agent_http import _compact_alert
 from .base import AlertDelivery
-
+from portfolio_monitor import __version__
 logger = logging.getLogger(__name__)
 
 
@@ -83,7 +83,7 @@ class OpenClawGatewayWsDelivery(AlertDelivery):
 
         self.device_identity: dict[str, str] | None = None
         if device_identity_file is not None:
-            self.load_device_identity(device_identity_file)
+            self.device_identity = self.load_device_identity(device_identity_file)
 
         self._ws_url: str = f"ws://{host}:{port}"
         self._auth: dict[str, str] = (
@@ -144,7 +144,6 @@ class OpenClawGatewayWsDelivery(AlertDelivery):
             json.dump(identity, f, indent=2)
 
         logger.info("Generated device identity %s → %s", device_id[:12], path)
-        self.device_identity = identity
         return identity
 
     def load_device_identity(self, path: Path) -> dict[str, str]:
@@ -157,8 +156,8 @@ class OpenClawGatewayWsDelivery(AlertDelivery):
                 identity["deviceId"][:12],
                 path,
             )
-            self.device_identity = identity
             return identity
+
         return self.generate_device_identity(path)
 
     async def connect(self) -> None:
@@ -249,7 +248,8 @@ class OpenClawGatewayWsDelivery(AlertDelivery):
                 "maxProtocol": 3,
                 "client": {
                     "id": client_id,
-                    "version": "1.0.0",
+                    "displayName": "Nexus Portfolio Monitor",
+                    "version": __version__,
                     "platform": "python",
                     "mode": mode,
                 },
