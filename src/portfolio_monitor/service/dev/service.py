@@ -25,6 +25,7 @@ from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.service.vite import ViteProcess, start_vite
 
 from portfolio_monitor.service.main import _wire_watchlist_adapter
 
@@ -286,34 +287,32 @@ async def run_dev_service(config: DevConfig) -> None:
     control_panel._stop_callback = _initiate_shutdown
     loop.add_signal_handler(signal.SIGINT, _initiate_shutdown)
 
-    vite_proc: asyncio.subprocess.Process | None = None
+    vite: ViteProcess | None = None
     try:
         await alert_router.connect_all()
         await synthetic_source.start()
-        vite_proc = await _start_vite()
+        serve_task = asyncio.gather(dev_server.serve(), api_server.serve())
+        while not api_server.started:
+            await asyncio.sleep(0.05)
+        frontend_dir = Path(__file__).resolve().parents[4] / "frontend"
+        vite = await start_vite(frontend_dir)
         print(f"\nControl:   http://{config.host}:{config.control_panel_port}/")
         print(f"Dashboard: http://{config.host}:{config.port}/")
-        print(f"Frontend:  http://127.0.0.1:5173/")
+        print(f"Frontend:  {vite.url}")
         print(f"API:       http://{config.host}:{config.port}/api/v1/health")
         print(f"Login:     {config.dashboard_username} / {config.dashboard_password}")
         print(f"Auth key:  {config.auth_key[:8]}...{config.auth_key[-4:]}\n")
-        await asyncio.gather(dev_server.serve(), api_server.serve())
+        await serve_task
     except asyncio.CancelledError:
         logger.info("Dev mode cancelled, shutting down...")
     except Exception:
         logger.exception("Error in dev service")
         raise
     finally:
-        if vite_proc is not None and vite_proc.returncode is None:
-            vite_proc.terminate()
-            await vite_proc.wait()
+        if vite is not None and vite.returncode is None:
+            vite.terminate()
+            await vite.wait()
         await synthetic_source.stop()
         await alert_router.disconnect_all()
         loop.remove_signal_handler(signal.SIGINT)
         signal.signal(signal.SIGINT, original_handler)
-
-
-async def _start_vite() -> asyncio.subprocess.Process:
-    """Start the Vite dev server as a subprocess."""
-    frontend_dir = Path(__file__).resolve().parents[4] / "frontend"
-    return await asyncio.create_subprocess_exec("pnpm", "dev", cwd=str(frontend_dir))

@@ -38,6 +38,7 @@ from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.service.vite import ViteProcess, start_vite
 from portfolio_monitor.watchlist.service import WatchlistService
 
 # Configure logging
@@ -46,10 +47,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-
-async def _start_vite() -> asyncio.subprocess.Process:
-    return await asyncio.create_subprocess_exec("pnpm", "dev", cwd=str(_FRONTEND_DIR))
 
 
 async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -> None:
@@ -221,29 +218,32 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
 
         control_panel._stop_callback = _initiate_shutdown
 
-    vite_proc: asyncio.subprocess.Process | None = None
+    vite: ViteProcess | None = None
     try:
         await alert_router.connect_all()
         await monitor.start()
+        if cp_server is not None:
+            serve_task = asyncio.gather(api_server.serve(), cp_server.serve())
+        else:
+            serve_task = asyncio.ensure_future(api_server.serve())
         if is_dev:
-            vite_proc = await _start_vite()
+            while not api_server.started:
+                await asyncio.sleep(0.05)
+            vite = await start_vite(_FRONTEND_DIR)
             print(f"\nControl:   http://{config.host}:{config.control_panel_port}/")
             print(f"Dashboard: http://{config.host}:{config.port}/")
-            print(f"Frontend:  http://127.0.0.1:5173/")
+            print(f"Frontend:  {vite.url}")
             print(f"API:       http://{config.host}:{config.port}/api/v1/health\n")
-        if cp_server is not None:
-            await asyncio.gather(api_server.serve(), cp_server.serve())
-        else:
-            await api_server.serve()
+        await serve_task
     except asyncio.CancelledError:
         logger.info("Main task cancelled, initiating graceful shutdown...")
     except Exception as e:
         logger.error("Error in service: %s", e)
         raise
     finally:
-        if vite_proc is not None and vite_proc.returncode is None:
-            vite_proc.terminate()
-            await vite_proc.wait()
+        if vite is not None and vite.returncode is None:
+            vite.terminate()
+            await vite.wait()
 
         try:
             if monitor.running:
