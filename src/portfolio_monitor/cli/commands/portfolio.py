@@ -83,17 +83,20 @@ def render_portfolio_detail(output: PortfolioDetailOutput) -> None:
 # Argument parser
 # ---------------------------------------------------------------------------
 
+_json_parent = argparse.ArgumentParser(add_help=False)
+_json_parent.add_argument("--json", dest="json_out", action="store_true", help="Output raw JSON instead of formatted text")
+
+
 def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
-    p = subparsers.add_parser("portfolio", help="Query portfolio data")
-    p.add_argument("--json", dest="json_out", action="store_true", help="Output raw JSON instead of formatted text")
+    p = subparsers.add_parser("portfolio", help="Query portfolio data", parents=[_json_parent])
     sub = p.add_subparsers(dest="portfolio_command", metavar="SUBCOMMAND")
     sub.required = True
 
     # list
-    sub.add_parser("list", help="List all portfolios")
+    sub.add_parser("list", help="List all portfolios", parents=[_json_parent])
 
     # show
-    s = sub.add_parser("show", help="Show details for a specific portfolio")
+    s = sub.add_parser("show", help="Show details for a specific portfolio", parents=[_json_parent])
     s.add_argument("id", metavar="ID")
 
     p.set_defaults(func=run_portfolio)

@@ -1,6 +1,7 @@
 import argparse
 import os
 
+from portfolio_monitor import __version__
 from portfolio_monitor.cli.commands.alerts import add_alerts_parser
 from portfolio_monitor.cli.commands.login import add_login_parser
 from portfolio_monitor.cli.commands.portfolio import add_portfolio_parser
@@ -12,6 +13,9 @@ def get_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="portfolio-manager",
         description="Nexus Portfolio Monitor CLI",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "--url",
