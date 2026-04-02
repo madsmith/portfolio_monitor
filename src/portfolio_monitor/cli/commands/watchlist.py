@@ -68,7 +68,7 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # show
     s = sub.add_parser("show", help="Show watchlist detail", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
 
     # create
     s = sub.add_parser("create", help="Create a new watchlist", parents=[_json_parent])
@@ -76,11 +76,11 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # delete
     s = sub.add_parser("delete", help="Delete a watchlist", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
 
     # add entry
     s = sub.add_parser("add", help="Add an entry to a watchlist", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--type", dest="asset_type", default="stock",
                    choices=["stock", "currency", "crypto"])
@@ -90,25 +90,25 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # remove entry
     s = sub.add_parser("remove", help="Remove an entry from a watchlist", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
 
     # note
     s = sub.add_parser("note", help="Set notes on an entry", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("text", metavar="TEXT")
 
     # target
     s = sub.add_parser("target", help="Set price targets on an entry", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--buy", dest="target_buy", type=float, default=None, metavar="PRICE")
     s.add_argument("--sell", dest="target_sell", type=float, default=None, metavar="PRICE")
 
     # meta
     s = sub.add_parser("meta", help="Set metadata key(s) on an entry (KEY=VALUE ...)", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("pairs", nargs="+", metavar="KEY=VALUE")
 
@@ -118,17 +118,17 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
     al_sub.required = True
 
     s = al_sub.add_parser("show", help="Show alert config for an entry", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
 
     s = al_sub.add_parser("set", help="Add/update a detector on an entry (KEY=VALUE ...)", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--kind", required=True, metavar="KIND")
     s.add_argument("args", nargs="*", metavar="KEY=VALUE")
 
     s = al_sub.add_parser("remove", help="Remove a detector from an entry", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--kind", required=True, metavar="KIND")
 

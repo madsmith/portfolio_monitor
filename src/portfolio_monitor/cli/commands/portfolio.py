@@ -97,7 +97,7 @@ def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # show
     s = sub.add_parser("show", help="Show details for a specific portfolio", parents=[_json_parent])
-    s.add_argument("id", metavar="ID")
+    s.add_argument("id", metavar="PORTFOLIO_ID", help="Portfolio ID")
 
     p.set_defaults(func=run_portfolio)
 
