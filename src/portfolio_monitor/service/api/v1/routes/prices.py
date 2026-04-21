@@ -10,7 +10,7 @@ from portfolio_monitor.data.market_info import MarketInfo, MarketStatus
 from portfolio_monitor.data.timespan import AggregateTimespan
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
-_MAX_HISTORY = timedelta(days=7)
+_MAX_HISTORY = timedelta(days=365)
 
 
 def _parse_symbol(request: Request) -> AssetSymbol | None:

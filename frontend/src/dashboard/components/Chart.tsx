@@ -8,6 +8,9 @@ const PERIODS = [
   { label: "1D", last: "1d", span: "1m",  refreshMs:  1 * 60_000, trendMaxMs:  60 * 60_000, compactGapMs: 4 * 60 * 60_000 },
   { label: "3D", last: "3d", span: "5m",  refreshMs:  5 * 60_000, trendMaxMs: 180 * 60_000, compactGapMs: 4 * 60 * 60_000 },
   { label: "7D", last: "7d", span: "10m", refreshMs: 10 * 60_000, trendMaxMs: 420 * 60_000, compactGapMs: 4 * 60 * 60_000 },
+  { label: "30D", last: "30d", span: "1h", refreshMs: 60 * 60_000, trendMaxMs: 1800 * 60_000, compactGapMs: 24 * 60 * 60_000 },
+  { label: "180D", last: "180d", span: "1d", refreshMs: 24 * 60 * 60_000, trendMaxMs: 10800 * 60_000, compactGapMs: 7 * 24 * 60 * 60_000 },
+  { label: "365D", last: "365d", span: "1d", refreshMs: 24 * 60 * 60_000, trendMaxMs: 21600 * 60_000, compactGapMs: 30 * 24 * 60 * 60_000 },
 ] as const;
 
 type Period = typeof PERIODS[number];
@@ -32,6 +35,9 @@ const PERIOD_MS: Record<string, number> = {
   "1d": 24 * 60 * 60_000,
   "3d": 3 * 24 * 60 * 60_000,
   "7d": 7 * 24 * 60 * 60_000,
+  "30d": 30 * 24 * 60 * 60_000,
+  "180d": 180 * 24 * 60 * 60_000,
+  "365d": 365 * 24 * 60 * 60_000,
 };
 
 function parsePeriodMs(last: string): number {
@@ -39,7 +45,7 @@ function parsePeriodMs(last: string): number {
 }
 
 function fmtAxisTime(d: Date, period: Period): string {
-  if (period.last === "3d" || period.last === "7d") {
+  if (period.last === "3d" || period.last === "7d" || period.last === "30d" || period.last === "180d" || period.last === "365d") {
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   }
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
