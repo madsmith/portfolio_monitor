@@ -198,7 +198,7 @@ export function WatchlistView({ watchlists }: { watchlists: WatchlistSummary[] }
       api.getPreviousClose(e.asset_type, e.ticker)
         .then((data) => {
           if (!active) return;
-          setPrevClose((prev) => ({ ...prev, [prevCloseKey(e)]: data.price }));
+          setPrevClose((prev) => ({ ...prev, [prevCloseKey(e)]: data.close }));
         })
         .catch(() => {});
     }

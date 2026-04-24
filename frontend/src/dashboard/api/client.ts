@@ -181,7 +181,7 @@ export const api = {
   getPortfolio: (id: string): Promise<PortfolioDetail> =>
     authGet(`/api/v1/portfolio/${id}`),
 
-  getPreviousClose: (assetType: string, ticker: string): Promise<{ price: number; timestamp: string }> =>
+  getPreviousClose: (assetType: string, ticker: string): Promise<{ open: number; high: number; low: number; close: number; volume: number; timestamp: string }> =>
     authGet(`/api/v1/price/${assetType}/${ticker}/previous-close`),
 
   getOpenClose: (assetType: string, ticker: string, date?: string): Promise<DailyOpenClose> => {

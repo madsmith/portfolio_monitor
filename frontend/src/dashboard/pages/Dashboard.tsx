@@ -70,7 +70,7 @@ export default function Dashboard() {
     const key = hourKey(d.id);
     prevCloseCacheRef.current[key] ??= Promise.allSettled(
       [...d.stocks, ...d.currencies, ...d.crypto].map((a) =>
-        api.getPreviousClose(a.asset_type, a.ticker).then((data) => ({ key: prevCloseKey(a), price: data.price }))
+        api.getPreviousClose(a.asset_type, a.ticker).then((data) => ({ key: prevCloseKey(a), price: data.close }))
       )
     ).then((results) => {
       const closes: Record<string, number> = {};

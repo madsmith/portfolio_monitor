@@ -5,6 +5,19 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
+_EASTERN = ZoneInfo("America/New_York")
+
+
+def eastern_midnight(date_str: str) -> datetime:
+    """Return midnight Eastern for a YYYY-MM-DD string.
+
+    Polygon daily bars are timestamped at midnight Eastern (04:00 or 05:00 UTC
+    depending on DST). Storing as UTC midnight causes off-by-one date display
+    when converting back to Eastern for rendering.
+    """
+    d = datetime.strptime(date_str, "%Y-%m-%d")
+    return datetime(d.year, d.month, d.day, tzinfo=_EASTERN)
+
 # Matches "NNunit" where unit is one of: mo, s, m, h, d, w (case-insensitive)
 _PERIOD_RE = re.compile(r"^(\d+)(mo|[smhdwy])$", re.IGNORECASE)
 

@@ -4,11 +4,12 @@ from typing import Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
 
 from polygon import RESTClient as PolygonRESTClient
-from polygon.rest.aggs import Agg, DailyOpenCloseAgg, PreviousCloseAgg
+from polygon.rest.aggs import Agg, DailyOpenCloseAgg
 from urllib3 import HTTPResponse
 from urllib3.exceptions import RequestError
 
 from portfolio_monitor.config import PortfolioMonitorConfig
+from portfolio_monitor.core.datetime import eastern_midnight
 from portfolio_monitor.data.aggregate_cache import (
     Aggregate,
     AggregateCache,
@@ -175,52 +176,42 @@ class PolygonDataProvider(DataProvider):
             return cached
 
         try:
-            logger.debug("Fetching previous close aggregate for %s from API", symbol)
-            trade = self._polygon_client.get_previous_close_agg(
-                ticker=symbol.lookup_symbol
+            logger.debug("Fetching previous close for %s on %s from API", symbol, prev_close_dt.date())
+            result = self._polygon_client.get_daily_open_close_agg(
+                ticker=symbol.lookup_symbol,
+                date=prev_close_dt.date(),
             )
         except RequestError:
-            logger.warning(
-                "Error fetching previous close for %s, will retry next tick", symbol
-            )
+            logger.warning("Error fetching previous close for %s, will retry next tick", symbol)
             return None
         except Exception:
             logger.exception("Error fetching previous close for %s", symbol)
             return None
 
-        if isinstance(trade, list):
-            if len(trade) == 0:
-                logger.warning("No previous close data for %s", symbol.lookup_symbol)
-                return None
-            trade = trade[0]
-        if isinstance(trade, PreviousCloseAgg):
-            if (
-                trade.timestamp is None
-                or trade.open is None
-                or trade.high is None
-                or trade.low is None
-                or trade.close is None
-                or trade.volume is None
-            ):
-                logger.warning("Invalid previous close data for %s: %s", symbol, trade)
-                return None
+        if not isinstance(result, DailyOpenCloseAgg):
+            logger.warning("Unexpected previous close response type for %s: %s", symbol, type(result))
+            return None
+        if result.status != "OK":
+            logger.warning("Previous close status not OK for %s: %s", symbol, result.status)
+            return None
+        if None in (result.open, result.high, result.low, result.close, result.volume):
+            logger.warning("Incomplete previous close data for %s: %s", symbol, result)
+            return None
 
-            aggregate = Aggregate(
-                symbol,
-                _polygon_timestamp_to_datetime(trade.timestamp),
-                trade.open,
-                trade.high,
-                trade.low,
-                trade.close,
-                trade.volume,
-                MarketInfo.get_market_day_timespan(symbol),
-            )
-            if cache_write:
-                logger.debug("Caching previous close aggregate for %s: %s", symbol, aggregate)
-            return aggregate
-
-        logger.warning("Unknown trade type for %s: %s", symbol, type(trade))
-        return None
+        date_open = eastern_midnight(result.from_)
+        aggregate = Aggregate(
+            symbol,
+            date_open,
+            result.open,
+            result.high,
+            result.low,
+            result.close,
+            result.volume,
+            MarketInfo.get_market_day_timespan(symbol),
+        )
+        if cache_write:
+            logger.debug("Caching previous close aggregate for %s: %s", symbol, aggregate)
+        return aggregate
 
     async def get_open_close(
         self, symbol: AssetSymbol, date: datetime | None = None
@@ -234,7 +225,7 @@ class PolygonDataProvider(DataProvider):
         Returns:
             DailyOpenCloseAggregate or None on error / no data.
         """
-        target = (date or datetime.now()).date()
+        target = (date or datetime.now(ZoneInfo("UTC"))).astimezone(ZoneInfo("America/New_York")).date()
         try:
             logger.debug("Fetching open/close for %s on %s from API", symbol, target)
             result = self._polygon_client.get_daily_open_close_agg(
@@ -254,11 +245,11 @@ class PolygonDataProvider(DataProvider):
         if result.status != "OK":
             logger.warning("Open/close status not OK for %s: %s", symbol, result.status)
             return None
-        if None in (result.open, result.high, result.low, result.close, result.volume):
+        if None in (result.open, result.high, result.low, result.volume):
             logger.warning("Incomplete open/close data for %s: %s", symbol, result)
             return None
 
-        date_open = datetime.strptime(result.from_, "%Y-%m-%d").replace(tzinfo=ZoneInfo("UTC"))
+        date_open = eastern_midnight(result.from_)
         return DailyOpenCloseAggregate(
             symbol=symbol,
             date_open=date_open,
@@ -486,3 +477,5 @@ class PolygonDataProvider(DataProvider):
 
 def _polygon_timestamp_to_datetime(timestamp: int | float) -> datetime:
     return datetime.fromtimestamp(timestamp / 1000, ZoneInfo("UTC"))
+
+

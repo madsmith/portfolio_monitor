@@ -86,7 +86,11 @@ class Aggregate(OHLCV):
 
 @dataclass
 class DailyOpenCloseAggregate(OHLCV):
-    """Daily OHLCV aggregate enriched with pre-market and after-hours prices."""
+    """Daily OHLCV aggregate enriched with pre-market and after-hours prices.
+
+    close may be None during an active session (Polygon omits it until the day ends).
+    """
+    close: float | None  # type: ignore[assignment]  # override base; None during active session
     pre_market: float | None
     after_hours: float | None
 
@@ -98,7 +102,7 @@ class DailyOpenCloseAggregate(OHLCV):
             "open": round(self.open, p),
             "high": round(self.high, p),
             "low": round(self.low, p),
-            "close": round(self.close, p),
+            "close": round(self.close, p) if self.close is not None else None,
             "volume": round(self.volume, 2),
             "pre_market": round(self.pre_market, p) if self.pre_market is not None else None,
             "after_hours": round(self.after_hours, p) if self.after_hours is not None else None,

@@ -5,6 +5,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core.datetime import parse_date, parse_period
+from portfolio_monitor.data.aggregate_cache import DailyOpenCloseAggregate
 from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.data.market_info import MarketInfo, MarketStatus
 from portfolio_monitor.data.timespan import AggregateTimespan
@@ -65,7 +66,15 @@ def previous_close_handler(data_provider: DataProvider):
         aggregate = await data_provider.get_previous_close(symbol)
         if aggregate is None:
             return JSONResponse({"error": "price unavailable"}, status_code=404)
-        return JSONResponse(_agg_response(symbol, aggregate))
+        return JSONResponse({
+            "symbol": symbol.to_dict(),
+            "timestamp": aggregate.date_open.isoformat(),
+            "open": aggregate.open,
+            "high": aggregate.high,
+            "low": aggregate.low,
+            "close": aggregate.close,
+            "volume": aggregate.volume,
+        })
 
     return get_previous_close
 
@@ -76,17 +85,6 @@ def price_history_handler(data_provider: DataProvider):
         if symbol is None:
             return JSONResponse({"error": "invalid asset type"}, status_code=400)
 
-        last_str = request.query_params.get("last")
-        if not last_str:
-            return JSONResponse({"error": "missing required parameter: last"}, status_code=400)
-        try:
-            delta = parse_period(last_str)
-        except ValueError:
-            return JSONResponse({"error": f"invalid period: {last_str!r}"}, status_code=400)
-
-        if delta > _MAX_HISTORY:
-            return JSONResponse({"error": "period exceeds maximum of 7 days"}, status_code=400)
-
         span_str = request.query_params.get("span")
         if span_str:
             try:
@@ -95,6 +93,16 @@ def price_history_handler(data_provider: DataProvider):
                 return JSONResponse({"error": f"invalid span: {span_str!r}"}, status_code=400)
         else:
             span = AggregateTimespan.default()
+
+        single_candle = "last" not in request.query_params
+        last_str = request.query_params.get("last") or str(span)
+        try:
+            delta = parse_period(last_str)
+        except ValueError:
+            return JSONResponse({"error": f"invalid period: {last_str!r}"}, status_code=400)
+
+        if delta > _MAX_HISTORY:
+            return JSONResponse({"error": f"period exceeds maximum of {_MAX_HISTORY.days} days"}, status_code=400)
 
         time_str = request.query_params.get("time")
         if time_str:
@@ -110,7 +118,14 @@ def price_history_handler(data_provider: DataProvider):
         aggregates = await data_provider.get_range(symbol, from_time, to_time, cache_write=True, span=span)
 
         if not aggregates:
-            return JSONResponse({"error": "no data available"}, status_code=404)
+            if not single_candle:
+                return JSONResponse({"error": "no data available"}, status_code=404)
+            aggregate = await data_provider.get_aggregate(symbol)
+            if aggregate is None:
+                return JSONResponse({"error": "no data available"}, status_code=404)
+            aggregates = [aggregate]
+        elif single_candle:
+            aggregates = aggregates[-1:]
 
         return JSONResponse({
             "symbol": symbol.to_dict(),
@@ -144,11 +159,11 @@ def open_close_handler(data_provider: DataProvider):
             if date is None:
                 return JSONResponse({"error": f"invalid date: {date_str!r}"}, status_code=400)
             if date.tzinfo is None:
-                date = date.replace(tzinfo=ZoneInfo("UTC"))
+                date = date.replace(tzinfo=ZoneInfo("America/New_York"))
         else:
             date = None
 
-        result = await data_provider.get_open_close(symbol, date)
+        result: DailyOpenCloseAggregate = await data_provider.get_open_close(symbol, date)
         if result is None:
             return JSONResponse({"error": "data unavailable"}, status_code=404)
         return JSONResponse(result.to_dict())
