@@ -3,7 +3,7 @@ from decimal import Decimal
 import hashlib
 from typing import Any
 
-from portfolio_monitor.core.currency import Currency, CurrencyType
+from portfolio_monitor.core import Currency, CurrencyType
 from portfolio_monitor.service.types import AssetSymbol
 
 from .asset import Asset

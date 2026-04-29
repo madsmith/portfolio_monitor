@@ -1,4 +1,4 @@
-from .base import Alert, Detector, DetectorArgSpec, DetectorInfo, DetectorBase, TimeRangeDetectorBase, SampleRangeDetectorBase
+from .base import Alert, Detector, DetectorArgSpec, DetectorInfo, DetectorBase, TimeRangeDetectorBase, SampleRangeDetectorBase, _round_floats
 
 from .engine import AlertChange, DeviationEngine
 from .events import AlertFired, AlertUpdated, AlertCleared

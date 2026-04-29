@@ -1,7 +1,7 @@
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 
-from portfolio_monitor.utils.trace import get_trace_logger
+from portfolio_monitor.utils import get_trace_logger
 
 logger = get_trace_logger(__name__)
 

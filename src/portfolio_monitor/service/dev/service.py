@@ -7,12 +7,10 @@ from appconf import OmegaConfigLoader
 import uvicorn
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.aggregate_cache import MemoryOnlyAggregateCache
-from portfolio_monitor.data.events import AggregateUpdated
-from portfolio_monitor.data.provider import PolygonDataProvider
+from portfolio_monitor.data import AggregateUpdated, MemoryOnlyAggregateCache, PolygonDataProvider
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio.service import PortfolioService
+from portfolio_monitor.portfolio import PortfolioService
 from portfolio_monitor.watchlist.service import WatchlistService
 from portfolio_monitor.service.alerts import (
     AlertRouter,

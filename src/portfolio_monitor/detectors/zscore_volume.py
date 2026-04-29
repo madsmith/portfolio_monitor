@@ -1,6 +1,6 @@
 import numpy as np
 
-from portfolio_monitor.data.aggregate_cache import Aggregate
+from portfolio_monitor.data import Aggregate
 from portfolio_monitor.detectors import DetectorRegistry, TimeRangeDetectorBase
 from portfolio_monitor.service.types import AssetSymbol
 

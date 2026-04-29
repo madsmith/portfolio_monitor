@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING
 
 from omegaconf import OmegaConf
 
-from portfolio_monitor.core.currency import Currency
+from portfolio_monitor.core import Currency
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.events import AggregateUpdated
+from portfolio_monitor.data import AggregateUpdated
 from portfolio_monitor.service.types import AssetSymbol
 
 if TYPE_CHECKING:

@@ -4,8 +4,8 @@ from zoneinfo import ZoneInfo
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from portfolio_monitor.core.datetime import parse_date
-from portfolio_monitor.data.market_info import MarketInfo, MarketStatus
+from portfolio_monitor.core import parse_date
+from portfolio_monitor.data import MarketInfo, MarketStatus
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 _UTC = ZoneInfo("UTC")

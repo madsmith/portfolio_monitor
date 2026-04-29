@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.serialization import (
 from pydantic import BaseModel
 from websockets.asyncio.client import ClientConnection
 
-from portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.detectors import Alert
 from portfolio_monitor.service.alerts.delivery.openclaw_agent_http import _compact_alert
 from .base import AlertDelivery
 from portfolio_monitor import __version__

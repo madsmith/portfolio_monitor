@@ -1,7 +1,6 @@
 import logging
 
-from portfolio_monitor.data.aggregate_cache import Aggregate
-from portfolio_monitor.data.provider import PolygonDataProvider
+from portfolio_monitor.data import Aggregate, PolygonDataProvider
 from portfolio_monitor.portfolio import Portfolio
 from portfolio_monitor.service.types import AssetSymbol
 

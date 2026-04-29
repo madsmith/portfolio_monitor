@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from portfolio_monitor.cli.request import make_client
 from portfolio_monitor.cli.display import ColumnMeta, render_table
-from portfolio_monitor.data.timespan import AggregateTimespan, Timespan
+from portfolio_monitor.data import AggregateTimespan, Timespan
 
 _ET = ZoneInfo("America/New_York")
 _DAY_SPANS = {Timespan.DAY, Timespan.WEEK, Timespan.MONTH, Timespan.QUARTER, Timespan.YEAR}

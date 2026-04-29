@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.detectors import Alert
 
 
 @runtime_checkable

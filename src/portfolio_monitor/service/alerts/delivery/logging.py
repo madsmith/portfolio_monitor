@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.detectors import Alert
 from portfolio_monitor.utils import get_trace_logger
 
 logger = get_trace_logger(__name__)

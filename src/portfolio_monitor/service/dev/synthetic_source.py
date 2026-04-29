@@ -4,8 +4,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.aggregate_cache import Aggregate
-from portfolio_monitor.data.events import AggregateUpdated
+from portfolio_monitor.data import Aggregate, AggregateUpdated
 from portfolio_monitor.service.types import AssetSymbol
 
 from .price_generator import PriceGenerator, Regime

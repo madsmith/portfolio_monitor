@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.detectors import Alert
 from portfolio_monitor.detectors.events import AlertCleared, AlertFired, AlertUpdated
 from portfolio_monitor.service.alerts.delivery import AlertDelivery
 

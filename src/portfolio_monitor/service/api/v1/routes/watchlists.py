@@ -3,7 +3,7 @@ import json
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.data import DataProvider
 from portfolio_monitor.service.context import AuthContext
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 from portfolio_monitor.watchlist.models import Watchlist, WatchlistEntry

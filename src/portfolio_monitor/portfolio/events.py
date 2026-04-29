@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from portfolio_monitor.core.currency import Currency
+from portfolio_monitor.core import Currency
 from portfolio_monitor.service.types import AssetSymbol
 
 

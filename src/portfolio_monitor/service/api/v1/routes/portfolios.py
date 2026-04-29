@@ -1,9 +1,9 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from portfolio_monitor.core.currency import Currency
+from portfolio_monitor.core import Currency
 from portfolio_monitor.portfolio import Asset, Lot, Portfolio
-from portfolio_monitor.portfolio.service import PortfolioService
+from portfolio_monitor.portfolio import PortfolioService
 from portfolio_monitor.service.context import AuthContext
 
 

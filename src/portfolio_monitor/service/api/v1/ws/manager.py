@@ -5,7 +5,7 @@ from pydantic import TypeAdapter, ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.data import DataProvider
 from portfolio_monitor.portfolio.events import PriceUpdated
 from portfolio_monitor.service.settings import SessionStore
 from portfolio_monitor.service.types import AssetSymbol

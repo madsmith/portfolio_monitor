@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from portfolio_monitor.core.currency import Currency
+from portfolio_monitor.core import Currency
 
 logger = logging.getLogger(__name__)
 

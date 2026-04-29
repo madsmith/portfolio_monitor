@@ -20,13 +20,10 @@ from uvicorn.server import Server
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache
-from portfolio_monitor.data.events import AggregateUpdated
-from portfolio_monitor.data.market_info import MarketInfo
-from portfolio_monitor.data.provider import PolygonDataProvider
+from portfolio_monitor.data import Aggregate, AggregateCache, AggregateUpdated, MarketInfo, PolygonDataProvider
 from portfolio_monitor.detectors import DeviationEngine, DetectorRegistry
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio.service import PortfolioService
+from portfolio_monitor.portfolio import PortfolioService
 from portfolio_monitor.service.alerts import (
     AlertRouter,
     LoggingAlertDelivery,

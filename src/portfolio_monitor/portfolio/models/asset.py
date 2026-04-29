@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
-from portfolio_monitor.core.currency import Currency
+from portfolio_monitor.core import Currency
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 from .lot import Lot

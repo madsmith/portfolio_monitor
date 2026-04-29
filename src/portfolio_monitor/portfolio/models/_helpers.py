@@ -1,6 +1,6 @@
 from typing import Any
 
-from portfolio_monitor.core.currency import Currency
+from portfolio_monitor.core import Currency
 
 
 def format_number(value: Any) -> str:

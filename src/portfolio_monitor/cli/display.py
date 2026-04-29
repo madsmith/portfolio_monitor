@@ -29,7 +29,7 @@ import typing
 
 from pydantic import BaseModel
 
-from portfolio_monitor.core.currency import Currency, CurrencyType
+from portfolio_monitor.core import Currency, CurrencyType
 
 __all__ = ["ColumnMeta", "fmt_value", "model_to_dict", "render_table"]
 

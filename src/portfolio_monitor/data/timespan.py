@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from portfolio_monitor.core.datetime import parse_period_parts
+from portfolio_monitor.core import parse_period_parts
 
 
 class Timespan(str, Enum):

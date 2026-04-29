@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.events import AggregateUpdated
-from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.data import AggregateUpdated, DataProvider
 from portfolio_monitor.detectors.base import Alert
 from portfolio_monitor.detectors.engine import AlertChange, DeviationEngine
 from portfolio_monitor.detectors.events import AlertCleared, AlertFired, AlertUpdated

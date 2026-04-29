@@ -10,13 +10,12 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Respon
 from starlette.routing import Route
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.aggregate_cache import AggregateCache
-from portfolio_monitor.data.events import AggregateUpdated
-from portfolio_monitor.detectors.engine import DeviationEngine
+from portfolio_monitor.data import AggregateCache, AggregateUpdated
+from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.events import AlertFired
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio.service import PortfolioService
-from portfolio_monitor.service.alerts.router import AlertRouter
+from portfolio_monitor.portfolio import PortfolioService
+from portfolio_monitor.service.alerts import AlertRouter
 from portfolio_monitor.service.dev.price_generator import Regime
 from portfolio_monitor.service.dev.synthetic_source import SyntheticDataSource  # noqa: TC001
 

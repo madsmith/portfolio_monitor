@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal, Sequence
 
-from portfolio_monitor.data.aggregate_cache import Aggregate
-from portfolio_monitor.data.provider import DataProvider
+from portfolio_monitor.data import Aggregate, DataProvider
 from portfolio_monitor.detectors.base import Alert, Detector
 from portfolio_monitor.detectors.registry import DetectorRegistry
 from portfolio_monitor.service.types import AssetSymbol

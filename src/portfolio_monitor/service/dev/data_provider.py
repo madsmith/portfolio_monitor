@@ -1,9 +1,7 @@
 import logging
 from datetime import datetime
 
-from portfolio_monitor.data.aggregate_cache import Aggregate, AggregateCache, DailyOpenCloseAggregate
-from portfolio_monitor.data.provider import DataProvider
-from portfolio_monitor.data.timespan import AggregateTimespan
+from portfolio_monitor.data import Aggregate, AggregateCache, AggregateTimespan, DataProvider, DailyOpenCloseAggregate
 from portfolio_monitor.service.types import AssetSymbol
 
 from .price_generator import PriceGenerator

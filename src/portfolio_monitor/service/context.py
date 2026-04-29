@@ -4,8 +4,8 @@ from starlette.requests import Request
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data.provider import DataProvider
-from portfolio_monitor.portfolio.service import PortfolioService
+from portfolio_monitor.data import DataProvider
+from portfolio_monitor.portfolio import PortfolioService
 from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.watchlist.service import WatchlistService
 

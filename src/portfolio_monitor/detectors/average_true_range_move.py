@@ -2,7 +2,7 @@ from collections import deque
 from datetime import timedelta
 import logging
 
-from portfolio_monitor.data.aggregate_cache import Aggregate
+from portfolio_monitor.data import Aggregate
 from portfolio_monitor.detectors import DetectorRegistry
 from portfolio_monitor.detectors.base import DetectorBase
 from portfolio_monitor.service.types import AssetSymbol
