@@ -20,3 +20,4 @@ incoming_frame.json
 tmp/
 config/settings.yaml
 config/sessions.yaml
+.env
