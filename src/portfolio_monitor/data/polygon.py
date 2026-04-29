@@ -48,8 +48,11 @@ class PolygonDataProvider(DataProvider):
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(
             config.polygon_api_key
         )
+        # urllib3 PoolManager defaults maxsize=1 per pool; increase to match concurrency limit
+        self._polygon_client.client.connection_pool_kw["maxsize"] = config.polygon_max_concurrent
         self._rate_limit_sleep: float = 12.1  # Sleep time when rate limited (slightly over 12 seconds per Polygon docs)
         self._max_retries: int = 5
+        self._api_semaphore: asyncio.Semaphore = asyncio.Semaphore(config.polygon_max_concurrent)
 
     @logfire.instrument("polygon.get_aggregate {symbol.ticker}")
     async def get_aggregate(
@@ -85,15 +88,17 @@ class PolygonDataProvider(DataProvider):
             for attempt in range(self._max_retries):
                 try:
                     logger.debug("Fetching aggregate for %s from API (attempt %d)", symbol, attempt + 1)
-                    with logfire.span("polygon.api.get_aggs {symbol.ticker}", symbol=symbol):
-                        aggs = self._polygon_client.get_aggs(
-                            ticker=symbol.lookup_symbol,
-                            multiplier=1,
-                            timespan="minute",
-                            from_=from_time,
-                            to=to_time,
-                            limit=1,
-                        )
+                    async with self._api_semaphore:
+                        with logfire.span("polygon.api.get_aggs {symbol.ticker}", symbol=symbol):
+                            aggs = await asyncio.to_thread(
+                                self._polygon_client.get_aggs,
+                                ticker=symbol.lookup_symbol,
+                                multiplier=1,
+                                timespan="minute",
+                                from_=from_time,
+                                to=to_time,
+                                limit=1,
+                            )
                     break
                 except RequestError:
                     if attempt < self._max_retries - 1:
@@ -147,8 +152,6 @@ class PolygonDataProvider(DataProvider):
         Returns:
             Aggregate with timespan of one trading session, or None on error.
         """
-        import traceback
-        logfire_set_attribute("stack", "".join(traceback.format_stack()))
         now = datetime.now(ZoneInfo("UTC"))
         prev_close_dt = MarketInfo.get_previous_market_close(symbol, now)
         cached = self._aggregate_cache.get_close(symbol, prev_close_dt)
@@ -160,11 +163,13 @@ class PolygonDataProvider(DataProvider):
         logfire_set_attribute("source", "api")
         try:
             logger.debug("Fetching previous close for %s on %s from API", symbol, prev_close_dt.date())
-            with logfire.span("polygon.api.daily_open_close {symbol.ticker}", symbol=symbol):
-                result = self._polygon_client.get_daily_open_close_agg(
-                    ticker=symbol.lookup_symbol,
-                    date=prev_close_dt.date(),
-                )
+            async with self._api_semaphore:
+                with logfire.span("polygon.api.daily_open_close {symbol.ticker}", symbol=symbol):
+                    result = await asyncio.to_thread(
+                        self._polygon_client.get_daily_open_close_agg,
+                        ticker=symbol.lookup_symbol,
+                        date=prev_close_dt.date(),
+                    )
         except RequestError:
             logger.warning("Error fetching previous close for %s, will retry next tick", symbol)
             return None
@@ -213,11 +218,13 @@ class PolygonDataProvider(DataProvider):
         target = (date or datetime.now(ZoneInfo("UTC"))).astimezone(ZoneInfo("America/New_York")).date()
         try:
             logger.debug("Fetching open/close for %s on %s from API", symbol, target)
-            with logfire.span("polygon.api.daily_open_close {symbol.ticker}", symbol=symbol):
-                result = self._polygon_client.get_daily_open_close_agg(
-                    ticker=symbol.lookup_symbol,
-                    date=target,
-                )
+            async with self._api_semaphore:
+                with logfire.span("polygon.api.daily_open_close {symbol.ticker}", symbol=symbol):
+                    result = await asyncio.to_thread(
+                        self._polygon_client.get_daily_open_close_agg,
+                        ticker=symbol.lookup_symbol,
+                        date=target,
+                    )
         except RequestError:
             logger.warning("Rate limit fetching open/close for %s", symbol)
             return None
@@ -414,14 +421,16 @@ class PolygonDataProvider(DataProvider):
             for attempt in range(self._max_retries):
                 try:
                     logger.debug("Fetching range for %s from API (attempt %d): %s to %s (span: %s)", symbol, attempt + 1, from_, to, effective_span)
-                    with logfire.span("polygon.api.get_aggs {symbol.ticker}", symbol=symbol):
-                        aggs = self._polygon_client.get_aggs(
-                            ticker=symbol.lookup_symbol,
-                            multiplier=effective_span.multiplier,
-                            timespan=str(effective_span.timespan),
-                            from_=from_,
-                            to=to,
-                        )
+                    async with self._api_semaphore:
+                        with logfire.span("polygon.api.get_aggs {symbol.ticker}", symbol=symbol):
+                            aggs = await asyncio.to_thread(
+                                self._polygon_client.get_aggs,
+                                ticker=symbol.lookup_symbol,
+                                multiplier=effective_span.multiplier,
+                                timespan=str(effective_span.timespan),
+                                from_=from_,
+                                to=to,
+                            )
                     break
                 except RequestError:
                     if attempt < self._max_retries - 1:

@@ -82,32 +82,7 @@ class MonitorService:
         try:
             while self.running:
                 now: datetime = datetime.now(ZoneInfo("UTC"))
-                next_update = now + update_interval
-
-                # TODO: add option to offset data by configurable delay to support limited access to realtime data (e.g. 15-minute delayed data from Polygon free tier)
-                symbols_polled = 0
-                with logfire.span("monitor.tick", symbol_count=len(self._symbols)):
-                    for record in self._symbols.values():
-                        symbol: AssetSymbol = record.symbol
-
-                        if not MarketInfo.is_market_open(symbol, now):
-                            continue
-
-                        if record.time_updated and now <= record.time_updated + update_interval:
-                            logger.debug("Skipping update for %s - too soon", symbol)
-                            next_update = min(next_update, record.time_updated + update_interval)
-                            continue
-
-                        logger.debug("Updating %s", symbol)
-                        aggregate: Aggregate | None = await self._data_provider.get_aggregate(symbol)
-                        if aggregate:
-                            record.time_updated = aggregate.date_open + aggregate.timespan
-                            next_update = min(next_update, record.time_updated + update_interval)
-                            await self._bus.publish(
-                                AggregateUpdated(symbol=symbol, aggregate=aggregate)
-                            )
-                        symbols_polled += 1
-                    logfire_set_attribute("symbols_polled", symbols_polled)
+                next_update = await self._tick(now, update_interval)
 
                 sleep_seconds = max(
                     (next_update - now).total_seconds(),
@@ -126,3 +101,39 @@ class MonitorService:
         except Exception:
             logger.exception("Error in monitor loop")
             self.running = False
+
+    @logfire.instrument("monitor.tick")
+    async def _tick(self, now: datetime, update_interval: timedelta) -> datetime:
+        # TODO: add option to offset data by configurable delay to support limited access to realtime data (e.g. 15-minute delayed data from Polygon free tier)
+        next_update = now + update_interval
+
+        # Determine which symbols are due for an update
+        due_records: list[AssetUpdateRecord] = []
+        for record in self._symbols.values():
+            if not MarketInfo.is_market_open(record.symbol, now):
+                continue
+            if record.time_updated and now <= record.time_updated + update_interval:
+                logger.debug("Skipping update for %s - too soon", record.symbol)
+                next_update = min(next_update, record.time_updated + update_interval)
+                continue
+            due_records.append(record)
+
+        logfire_set_attribute("symbol_count", len(self._symbols))
+        logfire_set_attribute("symbols_polled", len(due_records))
+
+        # Fetch all due symbols concurrently; rate limiting is enforced inside the provider
+        results = await asyncio.gather(
+            *[self._data_provider.get_aggregate(r.symbol) for r in due_records],
+            return_exceptions=True,
+        )
+
+        for record, result in zip(due_records, results):
+            if isinstance(result, Exception):
+                logger.warning("Error fetching aggregate for %s: %s", record.symbol, result)
+                continue
+            if result:
+                record.time_updated = result.date_open + result.timespan
+                next_update = min(next_update, record.time_updated + update_interval)
+                await self._bus.publish(AggregateUpdated(symbol=record.symbol, aggregate=result))
+
+        return next_update
