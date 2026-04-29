@@ -1,9 +1,11 @@
 import hmac
 
+import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.service.settings import AccountStore, Role, SessionStore
+from portfolio_monitor.utils import logfire_set_attribute
 
 
 def login_handler(
@@ -14,6 +16,7 @@ def login_handler(
 ):
     """Return a login route handler that validates against the account store and the default admin."""
 
+    @logfire.instrument("api.auth.login")
     async def login(request: Request) -> JSONResponse:
         try:
             data = await request.json()
@@ -21,6 +24,7 @@ def login_handler(
             return JSONResponse({"error": "invalid request body"}, status_code=400)
 
         req_username = str(data.get("username", ""))
+        logfire_set_attribute("username", req_username)
         req_password = str(data.get("password", ""))
 
         # Check default admin credentials (constant-time comparison)

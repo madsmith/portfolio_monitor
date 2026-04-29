@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+import logfire
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
@@ -11,6 +12,7 @@ from starlette.routing import Route
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import AggregateCache, AggregateUpdated
+from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.events import AlertFired
 from portfolio_monitor.detectors.service import DetectionService
@@ -105,6 +107,7 @@ class ControlPanelApp:
     # API endpoints
     # ------------------------------------------------------------------
 
+    @logfire.instrument("control_panel.get_state")
     async def get_state(self, request: Request) -> JSONResponse:
         all_symbols = list(
             {asset.symbol for p in self._portfolio_service.get_all_portfolios() for asset in p.assets()}
@@ -141,15 +144,19 @@ class ControlPanelApp:
             }
         )
 
+    @logfire.instrument("control_panel.set_bias")
     async def set_bias(self, request: Request) -> JSONResponse:
         if self._source is None:
             return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
         body = await request.json()
         ticker = body["ticker"]
         bias_pct = float(body["bias_pct"])
+        logfire_set_attribute("ticker", ticker)
+        logfire_set_attribute("bias_pct", bias_pct)
         self._source.set_bias(ticker, bias_pct)
         return JSONResponse({"ok": True, "ticker": ticker, "bias_pct": bias_pct})
 
+    @logfire.instrument("control_panel.toggle_pause")
     async def toggle_pause(self, request: Request) -> JSONResponse:
         if self._source is None:
             return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
@@ -159,24 +166,30 @@ class ControlPanelApp:
             self._source.pause()
         return JSONResponse({"ok": True, "paused": self._source.paused})
 
+    @logfire.instrument("control_panel.set_regime")
     async def set_regime(self, request: Request) -> JSONResponse:
         if self._source is None:
             return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
         body = await request.json()
         regime = Regime(body["regime"].lower())
+        logfire_set_attribute("regime", regime.value)
         self._source.set_regime(regime)
         return JSONResponse({"ok": True, "regime": regime.value})
 
+    @logfire.instrument("control_panel.set_tick_interval")
     async def set_tick_interval(self, request: Request) -> JSONResponse:
         if self._source is None:
             return JSONResponse({"ok": False, "error": "not available in live mode"}, status_code=405)
         body = await request.json()
         interval = float(body["interval"])
+        logfire_set_attribute("interval", interval)
         self._source.tick_interval = interval
         return JSONResponse({"ok": True, "tick_interval": self._source.tick_interval})
 
+    @logfire.instrument("control_panel.toggle_detector")
     async def toggle_detector(self, request: Request) -> JSONResponse:
         name = request.path_params["name"]
+        logfire_set_attribute("detector", name)
         if name in self._alert_router.suppressed_detectors:
             self._alert_router.suppressed_detectors.discard(name)
             enabled = True
@@ -185,6 +198,7 @@ class ControlPanelApp:
             enabled = False
         return JSONResponse({"ok": True, "detector": name, "enabled": enabled})
 
+    @logfire.instrument("control_panel.reset")
     async def reset(self, request: Request) -> JSONResponse:
         """Clear detector state, re-prime with fresh history."""
         if self._source is None:
@@ -210,11 +224,13 @@ class ControlPanelApp:
 
         return JSONResponse({"ok": True, "primed_aggregates": len(history)})
 
+    @logfire.instrument("control_panel.clear_alerts")
     async def clear_alerts(self, request: Request) -> JSONResponse:
         """Clear the alert log in DetectionService."""
         self._detection_service.clear_alerts()
         return JSONResponse({"ok": True})
 
+    @logfire.instrument("control_panel.stop_server")
     async def stop_server(self, request: Request) -> JSONResponse:
         """Shut down the dev server."""
         if self._stop_callback:

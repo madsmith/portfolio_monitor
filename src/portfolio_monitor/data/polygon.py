@@ -1,5 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
+
+import logfire
 from zoneinfo import ZoneInfo
 
 from polygon import RESTClient as PolygonRESTClient
@@ -18,7 +20,7 @@ from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.data.provider import DataProvider
 from portfolio_monitor.data.timespan import AggregateTimespan
 from portfolio_monitor.service.types import AssetSymbol
-from portfolio_monitor.utils import get_trace_logger
+from portfolio_monitor.utils import get_trace_logger, logfire_set_attribute
 
 logger = get_trace_logger(__name__)
 
@@ -49,6 +51,7 @@ class PolygonDataProvider(DataProvider):
         self._rate_limit_sleep: float = 12.1  # Sleep time when rate limited (slightly over 12 seconds per Polygon docs)
         self._max_retries: int = 5
 
+    @logfire.instrument("polygon.get_aggregate {symbol.ticker}")
     async def get_aggregate(
         self, symbol: AssetSymbol, *, cache_write: bool = False
     ) -> Aggregate | None:
@@ -68,8 +71,10 @@ class PolygonDataProvider(DataProvider):
         # Check if we have recent data in cache
         if current and (now - current.date_open) < self._delay:
             logger.debug("Fetching aggregate for %s from cache", symbol)
+            logfire_set_attribute("source", "cache")
             return current
 
+        logfire_set_attribute("source", "api")
         # Otherwise fetch from API
         try:
             # Get the most recent 1-minute bar
@@ -80,14 +85,15 @@ class PolygonDataProvider(DataProvider):
             for attempt in range(self._max_retries):
                 try:
                     logger.debug("Fetching aggregate for %s from API (attempt %d)", symbol, attempt + 1)
-                    aggs = self._polygon_client.get_aggs(
-                        ticker=symbol.lookup_symbol,
-                        multiplier=1,
-                        timespan="minute",
-                        from_=from_time,
-                        to=to_time,
-                        limit=1,
-                    )
+                    with logfire.span("polygon.api.get_aggs {symbol.ticker}", symbol=symbol):
+                        aggs = self._polygon_client.get_aggs(
+                            ticker=symbol.lookup_symbol,
+                            multiplier=1,
+                            timespan="minute",
+                            from_=from_time,
+                            to=to_time,
+                            limit=1,
+                        )
                     break
                 except RequestError:
                     if attempt < self._max_retries - 1:
@@ -130,6 +136,7 @@ class PolygonDataProvider(DataProvider):
 
         return current  # Fall back to cached value even if it's old
 
+    @logfire.instrument("polygon.get_previous_close {symbol.ticker}")
     async def get_previous_close(
         self, symbol: AssetSymbol, *, cache_write: bool = False
     ) -> Aggregate | None:
@@ -140,19 +147,24 @@ class PolygonDataProvider(DataProvider):
         Returns:
             Aggregate with timespan of one trading session, or None on error.
         """
+        import traceback
+        logfire_set_attribute("stack", "".join(traceback.format_stack()))
         now = datetime.now(ZoneInfo("UTC"))
         prev_close_dt = MarketInfo.get_previous_market_close(symbol, now)
         cached = self._aggregate_cache.get_close(symbol, prev_close_dt)
         if cached is not None:
             logger.debug("Fetching previous close aggregate for %s from cache", symbol)
+            logfire_set_attribute("source", "cache")
             return cached
 
+        logfire_set_attribute("source", "api")
         try:
             logger.debug("Fetching previous close for %s on %s from API", symbol, prev_close_dt.date())
-            result = self._polygon_client.get_daily_open_close_agg(
-                ticker=symbol.lookup_symbol,
-                date=prev_close_dt.date(),
-            )
+            with logfire.span("polygon.api.daily_open_close {symbol.ticker}", symbol=symbol):
+                result = self._polygon_client.get_daily_open_close_agg(
+                    ticker=symbol.lookup_symbol,
+                    date=prev_close_dt.date(),
+                )
         except RequestError:
             logger.warning("Error fetching previous close for %s, will retry next tick", symbol)
             return None
@@ -185,6 +197,7 @@ class PolygonDataProvider(DataProvider):
             logger.debug("Caching previous close aggregate for %s: %s", symbol, aggregate)
         return aggregate
 
+    @logfire.instrument("polygon.get_open_close {symbol.ticker}")
     async def get_open_close(
         self, symbol: AssetSymbol, date: datetime | None = None
     ) -> DailyOpenCloseAggregate | None:
@@ -200,10 +213,11 @@ class PolygonDataProvider(DataProvider):
         target = (date or datetime.now(ZoneInfo("UTC"))).astimezone(ZoneInfo("America/New_York")).date()
         try:
             logger.debug("Fetching open/close for %s on %s from API", symbol, target)
-            result = self._polygon_client.get_daily_open_close_agg(
-                ticker=symbol.lookup_symbol,
-                date=target,
-            )
+            with logfire.span("polygon.api.daily_open_close {symbol.ticker}", symbol=symbol):
+                result = self._polygon_client.get_daily_open_close_agg(
+                    ticker=symbol.lookup_symbol,
+                    date=target,
+                )
         except RequestError:
             logger.warning("Rate limit fetching open/close for %s", symbol)
             return None
@@ -234,6 +248,7 @@ class PolygonDataProvider(DataProvider):
             after_hours=result.after_hours,
         )
 
+    @logfire.instrument("polygon.get_range {symbol.ticker}")
     async def get_range(
         self,
         symbol: AssetSymbol,
@@ -284,6 +299,7 @@ class PolygonDataProvider(DataProvider):
         missing_ranges: list[DateRange] = self._find_missing_ranges(
             symbol, cached_aggregates, from_utc, to_utc
         )
+        logfire_set_attribute("missing_range_count", len(missing_ranges))
 
         # If we have all the data we need, return it
         if not missing_ranges:
@@ -366,6 +382,7 @@ class PolygonDataProvider(DataProvider):
 
         return ranges
 
+    @logfire.instrument("polygon._fetch_range {symbol.ticker}")
     async def _fetch_range(
         self,
         symbol: AssetSymbol,
@@ -397,13 +414,14 @@ class PolygonDataProvider(DataProvider):
             for attempt in range(self._max_retries):
                 try:
                     logger.debug("Fetching range for %s from API (attempt %d): %s to %s (span: %s)", symbol, attempt + 1, from_, to, effective_span)
-                    aggs = self._polygon_client.get_aggs(
-                        ticker=symbol.lookup_symbol,
-                        multiplier=effective_span.multiplier,
-                        timespan=str(effective_span.timespan),
-                        from_=from_,
-                        to=to,
-                    )
+                    with logfire.span("polygon.api.get_aggs {symbol.ticker}", symbol=symbol):
+                        aggs = self._polygon_client.get_aggs(
+                            ticker=symbol.lookup_symbol,
+                            multiplier=effective_span.multiplier,
+                            timespan=str(effective_span.timespan),
+                            from_=from_,
+                            to=to,
+                        )
                     break
                 except RequestError:
                     if attempt < self._max_retries - 1:
@@ -444,6 +462,7 @@ class PolygonDataProvider(DataProvider):
                 f"Error fetching range for {symbol} ({from_} to {to}): {e}"
             )
 
+        logfire_set_attribute("result_count", len(result))
         return result
 
 

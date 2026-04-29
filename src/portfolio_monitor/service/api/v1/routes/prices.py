@@ -1,12 +1,14 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core import parse_date, parse_period
 from portfolio_monitor.data import AggregateTimespan, DataProvider, DailyOpenCloseAggregate, MarketInfo, MarketStatus
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
+from portfolio_monitor.utils import logfire_set_attribute
 
 _MAX_HISTORY = timedelta(days=365)
 
@@ -30,10 +32,13 @@ def _agg_response(symbol: AssetSymbol, aggregate) -> dict:
 
 
 def current_price_handler(data_provider: DataProvider):
+    @logfire.instrument("api.prices.current")
     async def get_current_price(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)
         if symbol is None:
             return JSONResponse({"error": "invalid asset type"}, status_code=400)
+        logfire_set_attribute("ticker", symbol.ticker)
+        logfire_set_attribute("asset_type", symbol.asset_type.value)
         aggregate = await data_provider.get_aggregate(symbol)
         if aggregate is None:
             current_time = datetime.now()
@@ -56,10 +61,13 @@ def current_price_handler(data_provider: DataProvider):
 
 
 def previous_close_handler(data_provider: DataProvider):
+    @logfire.instrument("api.prices.previous_close")
     async def get_previous_close(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)
         if symbol is None:
             return JSONResponse({"error": "invalid asset type"}, status_code=400)
+        logfire_set_attribute("ticker", symbol.ticker)
+        logfire_set_attribute("asset_type", symbol.asset_type.value)
         aggregate = await data_provider.get_previous_close(symbol)
         if aggregate is None:
             return JSONResponse({"error": "price unavailable"}, status_code=404)
@@ -77,10 +85,13 @@ def previous_close_handler(data_provider: DataProvider):
 
 
 def price_history_handler(data_provider: DataProvider):
+    @logfire.instrument("api.prices.history")
     async def get_price_history(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)
         if symbol is None:
             return JSONResponse({"error": "invalid asset type"}, status_code=400)
+        logfire_set_attribute("ticker", symbol.ticker)
+        logfire_set_attribute("asset_type", symbol.asset_type.value)
 
         span_str = request.query_params.get("span")
         if span_str:
@@ -145,10 +156,13 @@ def price_history_handler(data_provider: DataProvider):
 
 
 def open_close_handler(data_provider: DataProvider):
+    @logfire.instrument("api.prices.open_close")
     async def get_open_close(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)
         if symbol is None:
             return JSONResponse({"error": "invalid asset type"}, status_code=400)
+        logfire_set_attribute("ticker", symbol.ticker)
+        logfire_set_attribute("asset_type", symbol.asset_type.value)
 
         date_str = request.query_params.get("date")
         if date_str:

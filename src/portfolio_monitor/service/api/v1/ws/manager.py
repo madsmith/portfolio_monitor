@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+import logfire
 from pydantic import TypeAdapter, ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -9,6 +10,7 @@ from portfolio_monitor.data import DataProvider
 from portfolio_monitor.portfolio.events import PriceUpdated
 from portfolio_monitor.service.settings import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.utils import logfire_set_attribute
 
 from .messages import (
     AssetSymbolParam,
@@ -84,11 +86,13 @@ class WebSocketManager:
             self._connections.pop(ws, None)
             logger.debug("WS disconnected (total=%d)", len(self._connections))
 
+    @logfire.instrument("ws.message")
     async def _handle_message(self, ws: WebSocket, text: str) -> None:
         try:
             msg = _client_message.validate_json(text)
         except (ValidationError, ValueError):
             return
+        logfire_set_attribute("message_type", msg.type)
         match msg:
             case SubscribeAssetSymbolMessage():
                 self._connections[ws].update(s.to_asset_symbol() for s in msg.symbols)

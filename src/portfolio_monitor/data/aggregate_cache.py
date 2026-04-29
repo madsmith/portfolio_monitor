@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import sqlite3
+
+import logfire
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -12,6 +14,7 @@ from sortedcontainers import SortedDict
 from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 from portfolio_monitor.core import datetime_from_ms, ms_from_datetime
+from portfolio_monitor.utils import logfire_set_attribute
 
 # Price decimal places by asset type for JSON serialization
 _PRICE_PRECISION: dict[AssetTypes, int] = {
@@ -301,6 +304,7 @@ class AggregateCache:
 
         logger.info("AggregateCache closed successfully")
 
+    @logfire.instrument("cache.load")
     async def load(self):
         """
         Load the cache from an sqlite database
@@ -336,6 +340,7 @@ class AggregateCache:
             )
 
             rows = cursor.fetchall()
+            logfire_set_attribute("row_count", len(rows))
             for (
                 ticker,
                 date_utc_ms,
@@ -353,7 +358,7 @@ class AggregateCache:
                 aggregate = Aggregate(
                     symbol, date, open_, high, low, close, volume, timespan
                 )
-                await self.add(aggregate)
+                self._add_to_memory_cache(aggregate)
 
         return self
 
@@ -376,7 +381,8 @@ class AggregateCache:
 
                     if batch:
                         try:
-                            await asyncio.to_thread(self._add_batch_to_db, batch)
+                            with logfire.span("cache.db_write", batch_size=len(batch)):
+                                await asyncio.to_thread(self._add_batch_to_db, batch)
                         except asyncio.CancelledError:
                             logger.warning(
                                 "Processing was cancelled, committing current batch before exit"
@@ -454,11 +460,13 @@ class AggregateCache:
             )
             conn.commit()
 
+    @logfire.instrument("cache.get_current {symbol.ticker}")
     def get_current(self, symbol: AssetSymbol) -> Aggregate | None:
         if symbol not in self._memory_cache:
             return None
         return self._memory_cache[symbol].peekitem(-1)[1]
 
+    @logfire.instrument("cache.get_range {symbol.ticker}")
     def get_range(
         self, symbol: AssetSymbol, from_: datetime, to: datetime
     ) -> list[Aggregate]:
@@ -466,14 +474,18 @@ class AggregateCache:
         Return cached aggregates for *symbol* within [from_, to] inclusive.
         """
         if symbol not in self._memory_cache:
+            logfire_set_attribute("result_count", 0)
             return []
 
         from_ms = ms_from_datetime(from_)
         to_ms = ms_from_datetime(to)
         cache = self._memory_cache[symbol]
 
-        return [cache[ts_ms] for ts_ms in cache.irange(from_ms, to_ms)]
+        result = [cache[ts_ms] for ts_ms in cache.irange(from_ms, to_ms)]
+        logfire_set_attribute("result_count", len(result))
+        return result
 
+    @logfire.instrument("cache.get_close {symbol.ticker}")
     def get_close(self, symbol: AssetSymbol, date: datetime) -> "Aggregate | None":
         """Return the cached aggregate for the trading session that closes on *date*.
 

@@ -1,12 +1,14 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core import parse_date
 from portfolio_monitor.data import MarketInfo, MarketStatus
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
+from portfolio_monitor.utils import logfire_set_attribute
 
 _UTC = ZoneInfo("UTC")
 
@@ -38,10 +40,13 @@ def _status_str(symbol: AssetSymbol, at_time: datetime) -> str:
     return MarketInfo.get_market_status(symbol, at_time).value
 
 
+@logfire.instrument("api.market.hours")
 def market_hours_handler(request: Request) -> JSONResponse:
     symbol = _parse_symbol(request)
     if symbol is None:
         return JSONResponse({"error": "invalid asset type"}, status_code=400)
+    logfire_set_attribute("ticker", symbol.ticker)
+    logfire_set_attribute("asset_type", symbol.asset_type.value)
 
     at_time = _parse_time(request)
     if at_time == "error":
@@ -57,10 +62,13 @@ def market_hours_handler(request: Request) -> JSONResponse:
     })
 
 
+@logfire.instrument("api.market.close")
 def market_close_handler(request: Request) -> JSONResponse:
     symbol = _parse_symbol(request)
     if symbol is None:
         return JSONResponse({"error": "invalid asset type"}, status_code=400)
+    logfire_set_attribute("ticker", symbol.ticker)
+    logfire_set_attribute("asset_type", symbol.asset_type.value)
 
     at_time = _parse_time(request)
     if at_time == "error":
@@ -76,10 +84,13 @@ def market_close_handler(request: Request) -> JSONResponse:
     })
 
 
+@logfire.instrument("api.market.open")
 def market_open_handler(request: Request) -> JSONResponse:
     symbol = _parse_symbol(request)
     if symbol is None:
         return JSONResponse({"error": "invalid asset type"}, status_code=400)
+    logfire_set_attribute("ticker", symbol.ticker)
+    logfire_set_attribute("asset_type", symbol.asset_type.value)
 
     at_time = _parse_time(request)
     if at_time == "error":

@@ -1,12 +1,15 @@
+import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.service.settings import AccountStore, Role, SessionStore
+from portfolio_monitor.utils import logfire_set_attribute
 
 
 def accounts_handler(account_store: AccountStore, session_store: SessionStore, default_username: str):
     """Return route handlers for account management (admin-only) and per-account alerts."""
 
+    @logfire.instrument("api.accounts.list")
     async def list_accounts(request: Request) -> JSONResponse:
         accounts = [
             {"username": a.username, "role": str(a.role)}
@@ -17,12 +20,14 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
             [{"username": default_username, "role": "admin", "is_default": True}] + accounts
         )
 
+    @logfire.instrument("api.accounts.create")
     async def create_account(request: Request) -> JSONResponse:
         try:
             data = await request.json()
         except Exception:
             return JSONResponse({"error": "invalid request body"}, status_code=400)
         username = str(data.get("username", "")).strip()
+        logfire_set_attribute("username", username)
         password = str(data.get("password", ""))
         role_str = str(data.get("role", "normal"))
         if not username or not password:
@@ -40,8 +45,10 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         account_store.save()
         return JSONResponse({"username": account.username, "role": str(account.role)}, status_code=201)
 
+    @logfire.instrument("api.accounts.delete")
     async def delete_account(request: Request) -> JSONResponse:
         username = request.path_params["username"]
+        logfire_set_attribute("username", username)
         if username == default_username:
             return JSONResponse({"error": "cannot delete the default admin account"}, status_code=403)
         deleted = account_store.delete(username)
@@ -50,9 +57,11 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         account_store.save()
         return JSONResponse({"ok": True})
 
+    @logfire.instrument("api.accounts.update")
     async def update_account(request: Request) -> JSONResponse:
         """Update role for an account."""
         username = request.path_params["username"]
+        logfire_set_attribute("username", username)
         if username == default_username:
             return JSONResponse({"error": "cannot modify the default admin account"}, status_code=403)
         try:
@@ -69,9 +78,11 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         account_store.save()
         return JSONResponse({"ok": True})
 
+    @logfire.instrument("api.accounts.reset_password")
     async def reset_password(request: Request) -> JSONResponse:
         """Reset password for an account (admin or self)."""
         target_username = request.path_params["username"]
+        logfire_set_attribute("username", target_username)
         caller = request.user.display_name
         is_admin = "role:admin" in request.auth.scopes
         # Admins can reset anyone's password; others can only reset their own
@@ -94,8 +105,10 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         account_store.save()
         return JSONResponse({"ok": True})
 
+    @logfire.instrument("api.accounts.alerts.get")
     async def get_account_alerts(request: Request) -> JSONResponse:
         username = request.path_params["username"]
+        logfire_set_attribute("username", username)
         if username == default_username:
             return JSONResponse(account_store.get_default_admin_alerts())
         account = account_store.get(username)
@@ -103,8 +116,10 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
             return JSONResponse({"error": "account not found"}, status_code=404)
         return JSONResponse(account.alerts)
 
+    @logfire.instrument("api.accounts.alerts.update")
     async def update_account_alerts(request: Request) -> JSONResponse:
         username = request.path_params["username"]
+        logfire_set_attribute("username", username)
         try:
             alerts = await request.json()
         except Exception:

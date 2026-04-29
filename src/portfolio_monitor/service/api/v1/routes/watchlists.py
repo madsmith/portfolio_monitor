@@ -1,9 +1,11 @@
 import json
 
+import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.data import DataProvider
+from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.service.context import AuthContext
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 from portfolio_monitor.watchlist.models import Watchlist, WatchlistEntry
@@ -45,10 +47,12 @@ def _watchlist_detail(wl: Watchlist) -> dict:
 
 
 def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataProvider):
+    @logfire.instrument("api.watchlists.list")
     async def list_watchlists(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         return JSONResponse([_watchlist_summary(wl) for wl in watchlist_service.get_watchlists(auth)])
 
+    @logfire.instrument("api.watchlists.create")
     async def create_watchlist(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         body = await request.json()
@@ -59,22 +63,27 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
         wl = await watchlist_service.create_watchlist(name, owner)
         return JSONResponse(_watchlist_detail(wl), status_code=201)
 
+    @logfire.instrument("api.watchlists.get")
     async def get_watchlist(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         wl = watchlist_service.get_watchlist(request.path_params["id"], auth)
+        logfire_set_attribute("watchlist_id", request.path_params["id"])
         if wl is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         # For entries with no live price (e.g. market closed, new entry), fall back
         # to get_aggregate which returns previous close when the market is closed.
         fallbacks: dict[str, float] = {}
-        for entry in wl.entries:
-            if entry.current_price is None:
-                agg = await data_provider.get_aggregate(entry.symbol)
-                if agg is not None:
-                    fallbacks[entry.symbol.ticker] = agg.close
+        with logfire.span("watchlist.get.price_fallback", entry_count=len(wl.entries)):
+            for entry in wl.entries:
+                if entry.current_price is None:
+                    agg = await data_provider.get_aggregate(entry.symbol)
+                    if agg is not None:
+                        fallbacks[entry.symbol.ticker] = agg.close
+            logfire_set_attribute("fallback_count", len(fallbacks))
         entries = [_entry_dict(e, fallbacks.get(e.symbol.ticker)) for e in wl.entries]
         return JSONResponse({"id": wl.id, "name": wl.name, "owner": wl.owner, "entries": entries})
 
+    @logfire.instrument("api.watchlists.delete")
     async def delete_watchlist(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         deleted = await watchlist_service.delete_watchlist(request.path_params["id"], auth)
@@ -82,6 +91,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
         return JSONResponse({"ok": True})
 
+    @logfire.instrument("api.watchlists.entry.add")
     async def add_entry(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         wl_id = request.path_params["id"]
@@ -107,6 +117,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
         return JSONResponse(_watchlist_detail(wl))
 
+    @logfire.instrument("api.watchlists.entry.remove")
     async def remove_entry(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         wl = await watchlist_service.remove_entry(
@@ -118,6 +129,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
         return JSONResponse(_watchlist_detail(wl))
 
+    @logfire.instrument("api.watchlists.entry.update")
     async def update_entry(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         body = await request.json()
@@ -137,6 +149,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
         return JSONResponse(_watchlist_detail(wl))
 
+    @logfire.instrument("api.watchlists.entry.alerts.get")
     async def get_entry_alerts(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         wl = watchlist_service.get_watchlist(request.path_params["id"], auth)
@@ -147,6 +160,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             return JSONResponse({"error": "entry not found"}, status_code=404)
         return JSONResponse(entry.alerts)
 
+    @logfire.instrument("api.watchlists.entry.alerts.update")
     async def update_entry_alerts(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         alerts = await request.json()

@@ -3,8 +3,11 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import logfire
+
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import Aggregate, AggregateUpdated, DataProvider, MarketInfo
+from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.portfolio import PortfolioService
 from portfolio_monitor.service.types import AssetSymbol, AssetUpdateRecord
 
@@ -82,25 +85,29 @@ class MonitorService:
                 next_update = now + update_interval
 
                 # TODO: add option to offset data by configurable delay to support limited access to realtime data (e.g. 15-minute delayed data from Polygon free tier)
-                for record in self._symbols.values():
-                    symbol: AssetSymbol = record.symbol
+                symbols_polled = 0
+                with logfire.span("monitor.tick", symbol_count=len(self._symbols)):
+                    for record in self._symbols.values():
+                        symbol: AssetSymbol = record.symbol
 
-                    if not MarketInfo.is_market_open(symbol, now):
-                        continue
+                        if not MarketInfo.is_market_open(symbol, now):
+                            continue
 
-                    if record.time_updated and now <= record.time_updated + update_interval:
-                        logger.debug("Skipping update for %s - too soon", symbol)
-                        next_update = min(next_update, record.time_updated + update_interval)
-                        continue
+                        if record.time_updated and now <= record.time_updated + update_interval:
+                            logger.debug("Skipping update for %s - too soon", symbol)
+                            next_update = min(next_update, record.time_updated + update_interval)
+                            continue
 
-                    logger.debug("Updating %s", symbol)
-                    aggregate: Aggregate | None = await self._data_provider.get_aggregate(symbol)
-                    if aggregate:
-                        record.time_updated = aggregate.date_open + aggregate.timespan
-                        next_update = min(next_update, record.time_updated + update_interval)
-                        await self._bus.publish(
-                            AggregateUpdated(symbol=symbol, aggregate=aggregate)
-                        )
+                        logger.debug("Updating %s", symbol)
+                        aggregate: Aggregate | None = await self._data_provider.get_aggregate(symbol)
+                        if aggregate:
+                            record.time_updated = aggregate.date_open + aggregate.timespan
+                            next_update = min(next_update, record.time_updated + update_interval)
+                            await self._bus.publish(
+                                AggregateUpdated(symbol=symbol, aggregate=aggregate)
+                            )
+                        symbols_polled += 1
+                    logfire_set_attribute("symbols_polled", symbols_polled)
 
                 sleep_seconds = max(
                     (next_update - now).total_seconds(),

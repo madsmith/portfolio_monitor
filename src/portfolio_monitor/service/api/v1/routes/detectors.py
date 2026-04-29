@@ -1,11 +1,13 @@
 import inspect
 
+import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.detectors import DetectorRegistry
 
 
+@logfire.instrument("api.detectors.list")
 async def list_detectors(request: Request) -> JSONResponse:
     """Return all registered detector kinds with their constructor arg specs."""
     infos = DetectorRegistry.list_detector_infos()

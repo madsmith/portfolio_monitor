@@ -58,114 +58,117 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         raise ValueError("Portfolio path not configured")
 
     # Load aggregate cache
-    aggregate_cache = AggregateCache(config.aggregate_cache_path)
-    aggregate_cache.initialize()
-    await aggregate_cache.load()
+    with logfire.span("service.startup.cache_load"):
+        aggregate_cache = AggregateCache(config.aggregate_cache_path)
+        aggregate_cache.initialize()
+        await aggregate_cache.load()
 
-    # Create event bus
-    bus = EventBus()
+    with logfire.span("service.startup.wiring"):
+        # Create event bus
+        bus = EventBus()
 
-    # Wire aggregate cache to persist on AggregateUpdated
-    async def _persist_aggregate(event: AggregateUpdated) -> None:
-        await aggregate_cache.add(event.aggregate)
+        # Wire aggregate cache to persist on AggregateUpdated
+        async def _persist_aggregate(event: AggregateUpdated) -> None:
+            await aggregate_cache.add(event.aggregate)
 
-    bus.subscribe(AggregateUpdated, _persist_aggregate)
+        bus.subscribe(AggregateUpdated, _persist_aggregate)
 
-    # Create data provider
-    data_provider = PolygonDataProvider(config, aggregate_cache)
+        # Create data provider
+        data_provider = PolygonDataProvider(config, aggregate_cache)
 
-    # Initialize account and session stores
-    account_store = AccountStore(config.settings_path)
-    account_store.load()
+        # Initialize account and session stores
+        account_store = AccountStore(config.settings_path)
+        account_store.load()
 
-    # Seed default admin alerts from alerts.yaml on first run
-    if not account_store.get_default_admin_alerts():
-        try:
-            raw = OmegaConfigLoader.load(Path("config/alerts.yaml"))
-            resolved = OmegaConf.to_container(raw.get("alerts", {}), resolve=True)
-            if isinstance(resolved, dict):
-                account_store.set_default_admin_alerts(resolved)  # type: ignore[arg-type]
-                account_store.save()
-                logger.info("Seeded default admin alerts from config/alerts.yaml")
-        except Exception as e:
-            logger.warning("Could not seed alerts from alerts.yaml: %s", e)
+        # Seed default admin alerts from alerts.yaml on first run
+        if not account_store.get_default_admin_alerts():
+            try:
+                raw = OmegaConfigLoader.load(Path("config/alerts.yaml"))
+                resolved = OmegaConf.to_container(raw.get("alerts", {}), resolve=True)
+                if isinstance(resolved, dict):
+                    account_store.set_default_admin_alerts(resolved)  # type: ignore[arg-type]
+                    account_store.save()
+                    logger.info("Seeded default admin alerts from config/alerts.yaml")
+            except Exception as e:
+                logger.warning("Could not seed alerts from alerts.yaml: %s", e)
 
-    session_store = SessionStore(config.session_store_path)
-    session_store.load()
+        session_store = SessionStore(config.session_store_path)
+        session_store.load()
 
-    portfolio_service = PortfolioService(bus=bus, portfolio_path=config.portfolio_path)
-    watchlist_service = WatchlistService(bus=bus, watchlist_path=config.watchlist_path)
+        portfolio_service = PortfolioService(bus=bus, portfolio_path=config.portfolio_path)
+        watchlist_service = WatchlistService(bus=bus, watchlist_path=config.watchlist_path)
 
-    # Build per-account detection engine (includes watchlist entry alert configs)
-    detection_engine, detector_accounts = _build_per_account_engine(
-        account_store,
-        portfolio_service,
-        watchlist_service,
-        default_admin_username=config.dashboard_username or "default",
-    )
-
-    # Create services — subscriptions happen in constructors
-    detection_service = DetectionService(
-        bus=bus,
-        detection_engine=detection_engine,
-        data_provider=data_provider,
-    )
-    alert_router = AlertRouter(bus=bus)
-    for detector_id, usernames in detector_accounts.items():
-        for username in usernames:
-            alert_router.register_detector_account(detector_id, username)
-    if is_dev:
-        # Suppress all alert delivery by default in dev mode;
-        # detectors still process data and build history.
-        alert_router.suppressed_detectors = {
-            detector.name()
-            for detectors in detection_engine.asset_detectors.values()
-            for detector in detectors
-        }
-    alert_router.add_target(LoggingAlertDelivery())
-    # TODO: make configurable or state driven.
-    if config.openclaw_alert_enable_http and config.openclaw_auth_key and config.openclaw_agent_id:
-        alert_router.add_target(
-            OpenClawAgentHttpDelivery(
-                config.openclaw_host,
-                config.openclaw_port,
-                config.openclaw_auth_key,
-                config.openclaw_agent_id,
-                name="Portfolio Alert",
-                session_key=config.openclaw_session_key,
-            )
-        )
-    if config.openclaw_alert_enable_ws and (config.openclaw_gateway_token or config.openclaw_gateway_password) and config.openclaw_agent_id:
-        alert_router.add_target(
-            OpenClawGatewayWsDelivery(
-                config.openclaw_host,
-                config.openclaw_port,
-                config.openclaw_agent_id,
-                gateway_token=config.openclaw_gateway_token or None,
-                gateway_password=config.openclaw_gateway_password or None,
-                device_identity_file=config.openclaw_gateway_device_identity_file,
-                name="Portfolio Alert",
-                session_key=config.openclaw_session_key,
-                extra_prompt=config.openclaw_alert_extra_prompt,
-            )
+        # Build per-account detection engine (includes watchlist entry alert configs)
+        detection_engine, detector_accounts = _build_per_account_engine(
+            account_store,
+            portfolio_service,
+            watchlist_service,
+            default_admin_username=config.dashboard_username or "default",
         )
 
-    monitor = MonitorService(
-        bus=bus,
-        data_provider=data_provider,
-        portfolio_service=portfolio_service,
-    )
-    # Pre-register watchlist symbols in monitor so they're polled from startup
-    for wl in watchlist_service.get_all_watchlists():
-        for entry in wl.entries:
-            monitor.register_symbol(entry.symbol)
+        # Create services — subscriptions happen in constructors
+        detection_service = DetectionService(
+            bus=bus,
+            detection_engine=detection_engine,
+            data_provider=data_provider,
+        )
+        alert_router = AlertRouter(bus=bus)
+        for detector_id, usernames in detector_accounts.items():
+            for username in usernames:
+                alert_router.register_detector_account(detector_id, username)
+        if is_dev:
+            # Suppress all alert delivery by default in dev mode;
+            # detectors still process data and build history.
+            alert_router.suppressed_detectors = {
+                detector.name()
+                for detectors in detection_engine.asset_detectors.values()
+                for detector in detectors
+            }
+        alert_router.add_target(LoggingAlertDelivery())
+        # TODO: make configurable or state driven.
+        if config.openclaw_alert_enable_http and config.openclaw_auth_key and config.openclaw_agent_id:
+            alert_router.add_target(
+                OpenClawAgentHttpDelivery(
+                    config.openclaw_host,
+                    config.openclaw_port,
+                    config.openclaw_auth_key,
+                    config.openclaw_agent_id,
+                    name="Portfolio Alert",
+                    session_key=config.openclaw_session_key,
+                )
+            )
+        if config.openclaw_alert_enable_ws and (config.openclaw_gateway_token or config.openclaw_gateway_password) and config.openclaw_agent_id:
+            alert_router.add_target(
+                OpenClawGatewayWsDelivery(
+                    config.openclaw_host,
+                    config.openclaw_port,
+                    config.openclaw_agent_id,
+                    gateway_token=config.openclaw_gateway_token or None,
+                    gateway_password=config.openclaw_gateway_password or None,
+                    device_identity_file=config.openclaw_gateway_device_identity_file,
+                    name="Portfolio Alert",
+                    session_key=config.openclaw_session_key,
+                    extra_prompt=config.openclaw_alert_extra_prompt,
+                )
+            )
 
-    # Wire live detection adapter for watchlist entry changes
-    _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor, detection_service, data_provider)
+        monitor = MonitorService(
+            bus=bus,
+            data_provider=data_provider,
+            portfolio_service=portfolio_service,
+        )
+        # Pre-register watchlist symbols in monitor so they're polled from startup
+        for wl in watchlist_service.get_all_watchlists():
+            for entry in wl.entries:
+                monitor.register_symbol(entry.symbol)
+
+        # Wire live detection adapter for watchlist entry changes
+        _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor, detection_service, data_provider)
 
     # Prime services
-    all_watchlist_symbols = list({e.symbol for wl in watchlist_service.get_all_watchlists() for e in wl.entries})
-    await prime(config, bus, portfolio_service, data_provider, detection_service, extra_symbols=all_watchlist_symbols)
+    with logfire.span("service.startup.prime"):
+        all_watchlist_symbols = list({e.symbol for wl in watchlist_service.get_all_watchlists() for e in wl.entries})
+        await prime(config, bus, portfolio_service, data_provider, detection_service, extra_symbols=all_watchlist_symbols)
 
     # Start API server
     ctx = PortfolioMonitorContext(
@@ -275,10 +278,11 @@ async def prime(
     await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
 
     logger.info("Seeding prices for %d symbols...", len(all_symbols))
-    for symbol in all_symbols:
-        agg = await data_provider.get_aggregate(symbol)
-        if agg:
-            await bus.publish(AggregateUpdated(symbol=symbol, aggregate=agg))
+    with logfire.span("service.prime.seed_prices", symbol_count=len(all_symbols)):
+        for symbol in all_symbols:
+            agg = await data_provider.get_aggregate(symbol)
+            if agg:
+                await bus.publish(AggregateUpdated(symbol=symbol, aggregate=agg))
 
     if config.deep_prime:
         logger.info("Deep priming - fetching all symbols from Polygon...")
@@ -580,7 +584,7 @@ def main() -> None:
     log_level = logging.DEBUG if config.debug else logging.INFO
     logging.basicConfig(level=log_level, format=logging.BASIC_FORMAT)
 
-    logfire.configure(service_name="Portfolio Monitor")
+    logfire.configure(service_name="Portfolio Monitor", scrubbing=False)
 
     try:
         asyncio.run(run_service(config, is_dev=config.dev_console))

@@ -1,7 +1,9 @@
+import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core import Currency
+from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.portfolio import Asset, Lot, Portfolio
 from portfolio_monitor.portfolio import PortfolioService
 from portfolio_monitor.service.context import AuthContext
@@ -64,18 +66,24 @@ def _portfolio_detail(p: Portfolio) -> dict:
 
 
 def portfolios_handler(portfolio_service: PortfolioService):
+    @logfire.instrument("api.portfolios.list")
     async def list_portfolios(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
+        logfire_set_attribute("username", auth.username)
         portfolios = portfolio_service.get_portfolios(auth)
+        logfire_set_attribute("portfolio_count", len(portfolios))
         return JSONResponse([_portfolio_summary(p) for p in portfolios])
 
     return list_portfolios
 
 
 def portfolio_handler(portfolio_service: PortfolioService):
+    @logfire.instrument("api.portfolios.get")
     async def get_portfolio(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
         portfolio_id = request.path_params["id"]
+        logfire_set_attribute("portfolio_id", portfolio_id)
+        logfire_set_attribute("username", auth.username)
         portfolio = portfolio_service.get_portfolio(portfolio_id, auth)
         if portfolio is None:
             return JSONResponse({"error": "not found"}, status_code=404)
