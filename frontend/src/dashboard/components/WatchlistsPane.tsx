@@ -162,7 +162,7 @@ function WatchlistSelector({
 // Main WatchlistView
 // ---------------------------------------------------------------------------
 
-export function WatchlistView({ watchlists }: { watchlists: WatchlistSummary[] }) {
+export function WatchlistsPane({ watchlists }: { watchlists: WatchlistSummary[] }) {
   const [selectedId, setSelectedId] = useState<string>(watchlists[0]?.id ?? "");
 
   // When watchlists load after a hard refresh, selectedId may be "" — sync it.

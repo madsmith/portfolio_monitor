@@ -188,7 +188,7 @@ function AssetSection({ title, assets, prevClose }: { title: string; assets: Ass
   );
 }
 
-export function PortfolioDetailContent({
+export function PortfolioDetailPane({
   detail,
   loading,
   error,

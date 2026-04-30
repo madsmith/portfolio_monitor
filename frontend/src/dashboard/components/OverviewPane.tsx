@@ -2,7 +2,7 @@ import type { PortfolioSummary } from "../api/client";
 import { fmtMoney, fmtPct, fmtChg, plColor, type TodayChange } from "../lib/formatters";
 import { DataTable, type ColDef } from "./DataTable";
 
-export function Overview({
+export function OverviewPane({
   portfolios,
   loading,
   error,

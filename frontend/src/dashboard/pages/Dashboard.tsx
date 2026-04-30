@@ -3,10 +3,10 @@ import { useMatch, useNavigate } from "react-router-dom";
 import { api, clearToken, getUsername, type PortfolioDetail, type PortfolioSummary, type WatchlistSummary } from "../api/client";
 import { type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
 import { applyPriceUpdate, computeTodayChange, prevCloseKey, type TodayChange } from "../lib/formatters";
-import { Overview } from "../components/Overview";
-import { PortfolioDetailContent } from "../components/PortfolioDetail";
-import { PortfolioPerformance } from "../components/PortfolioPerformance";
-import { WatchlistView } from "../components/WatchlistView";
+import { OverviewPane } from "../components/OverviewPane";
+import { PortfolioDetailPane } from "../components/PortfolioDetailPane";
+import { PortfolioPerformancePane } from "../components/PortfolioPerformancePane";
+import { WatchlistsPane } from "../components/WatchlistsPane";
 import Settings from "./Settings";
 
 function toWsSymbol(a: { ticker: string; asset_type: string }): WsAssetSymbol {
@@ -270,21 +270,19 @@ export default function Dashboard() {
           {portfolios.map((p) => (
             <Tab key={p.id} label={p.name} active={p.id === activeId} onClick={() => navigate(`/portfolio/${p.id}`)} />
           ))}
-          {watchlists.length > 0 && (
-            <Tab label="Watchlist" active={isWatchlistActive} onClick={() => navigate("/watchlist")} />
-          )}
+          <Tab label="Watchlists" active={isWatchlistActive} onClick={() => navigate("/watchlist")} />
           <div className="flex-1" />
           <Tab label="Settings" active={isSettingsActive} onClick={() => navigate("/settings")} />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[#404868]" />
         </div>
 
-        <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6">
+        <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6 min-h-[120px]">
           {isSettingsActive ? (
             <Settings />
           ) : isWatchlistActive ? (
-            <WatchlistView watchlists={watchlists} />
+            <WatchlistsPane watchlists={watchlists} />
           ) : activeId === null ? (
-            <Overview
+            <OverviewPane
               portfolios={portfolios}
               loading={portfoliosLoading}
               error={portfoliosError}
@@ -292,13 +290,13 @@ export default function Dashboard() {
               todayChange={portfolioTodayChange}
             />
           ) : isPerfActive ? (
-            <PortfolioPerformance
+            <PortfolioPerformancePane
               detail={detail}
               loading={detailLoading}
               error={detailError}
             />
           ) : (
-            <PortfolioDetailContent
+            <PortfolioDetailPane
               detail={detail}
               loading={detailLoading}
               error={detailError}

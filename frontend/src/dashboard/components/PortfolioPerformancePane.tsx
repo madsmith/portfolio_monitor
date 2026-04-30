@@ -122,7 +122,7 @@ function PerformanceTable({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
   );
 }
 
-export function PortfolioPerformance({
+export function PortfolioPerformancePane({
   detail,
   loading,
   error,
