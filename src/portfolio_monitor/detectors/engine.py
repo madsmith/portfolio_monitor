@@ -14,7 +14,7 @@ DetectorSpec = Detector | dict[str, Any]
 logger = logging.getLogger(__name__)
 
 # Set to True to prime detectors sequentially (useful for debugging)
-PRIME_SEQUENTIALLY: bool = True
+PRIME_SEQUENTIALLY: bool = False
 
 
 @dataclass

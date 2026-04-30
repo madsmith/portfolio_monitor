@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import logging
 import sqlite3
 
@@ -268,7 +269,11 @@ class AggregateCache:
                 not self._pending_db_updates.empty()
                 and not self._update_in_progress.is_set()
             ):
-                task = asyncio.create_task(self._process_updates())
+                self._update_in_progress.set()
+                task = asyncio.create_task(
+                    self._process_updates(),
+                    context=contextvars.Context(),
+                )
                 # We'll wait for it below
 
         # Wait until the queue is empty and processing is complete
@@ -365,32 +370,39 @@ class AggregateCache:
     async def _process_updates(self):
         """Process pending updates with periodic yielding"""
         async with self._process_lock:
-            self._update_in_progress.set()
             try:
                 batch_size = 100
+                total_written = 0
+                batches = 0
 
-                while not self._pending_db_updates.empty():
-                    batch = []
+                with logfire.span("cache.flush"):
+                    while not self._pending_db_updates.empty():
+                        batch = []
 
-                    # Get a batch
-                    while len(batch) < batch_size:
-                        try:
-                            batch.append(self._pending_db_updates.get_nowait())
-                        except asyncio.QueueEmpty:
-                            break
+                        # Get a batch
+                        while len(batch) < batch_size:
+                            try:
+                                batch.append(self._pending_db_updates.get_nowait())
+                            except asyncio.QueueEmpty:
+                                break
 
-                    if batch:
-                        try:
-                            with logfire.span("cache.db_write", batch_size=len(batch)):
-                                await asyncio.to_thread(self._add_batch_to_db, batch)
-                        except asyncio.CancelledError:
-                            logger.warning(
-                                "Processing was cancelled, committing current batch before exit"
-                            )
-                            raise
+                        if batch:
+                            try:
+                                with logfire.span("cache.db_write", batch_size=len(batch)):
+                                    await asyncio.to_thread(self._add_batch_to_db, batch)
+                                total_written += len(batch)
+                                batches += 1
+                            except asyncio.CancelledError:
+                                logger.warning(
+                                    "Processing was cancelled, committing current batch before exit"
+                                )
+                                raise
 
-                    # Always yield after each batch for responsiveness
-                    await asyncio.sleep(0)
+                        # Always yield after each batch for responsiveness
+                        await asyncio.sleep(0)
+
+                    logfire_set_attribute("total_written", total_written)
+                    logfire_set_attribute("batch_count", batches)
 
             except Exception as e:
                 logger.error(f"Error processing updates: {e}")
@@ -406,7 +418,14 @@ class AggregateCache:
         # Spawn a task to process updates if needed
         async with self._spawn_lock:  # Use spawn_lock to guard task creation
             if not self._update_in_progress.is_set():
-                task = asyncio.create_task(self._process_updates())
+                # Set the event NOW (synchronously, under the lock) so that
+                # other coroutines reaching this point before the task starts
+                # don't create a second task that will find an empty queue.
+                self._update_in_progress.set()
+                task = asyncio.create_task(
+                    self._process_updates(),
+                    context=contextvars.Context(),  # detach from caller's OTel span
+                )
                 # Name the task for debugging
                 task.set_name(f"AggregateCache._process_updates-{id(task)}")
                 # Track the task for cleanup

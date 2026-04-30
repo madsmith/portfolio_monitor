@@ -271,11 +271,12 @@ async def prime(
     extra_symbols: list[AssetSymbol] | None = None,
 ) -> None:
     """Prime detection engine and seed prices for all portfolio + watchlist symbols."""
-    all_symbols: list[AssetSymbol] = list(
-        {asset.symbol for portfolio in portfolio_service.get_all_portfolios() for asset in portfolio.assets()}
-        | set(extra_symbols or [])
-    )
-    await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
+    with logfire.span("service.prime.detection_service"):
+        all_symbols: list[AssetSymbol] = list(
+            {asset.symbol for portfolio in portfolio_service.get_all_portfolios() for asset in portfolio.assets()}
+            | set(extra_symbols or [])
+        )
+        await detection_service.prime(all_symbols, datetime.now(ZoneInfo("UTC")))
 
     logger.info("Seeding prices for %d symbols...", len(all_symbols))
     with logfire.span("service.prime.seed_prices", symbol_count=len(all_symbols)):
@@ -286,9 +287,9 @@ async def prime(
 
     if config.deep_prime:
         logger.info("Deep priming - fetching all symbols from Polygon...")
-
-        for symbol in all_symbols:
-            await _deep_prime(symbol, data_provider)
+        with logfire.span("service.prime.deep_prime", symbol_count=len(all_symbols)):
+            for symbol in all_symbols:
+                await _deep_prime(symbol, data_provider)
 
 async def _deep_prime(symbol: AssetSymbol, data_provider: PolygonDataProvider) -> None:
     """Deep prime a symbol by fetching all data from Polygon."""
@@ -584,7 +585,11 @@ def main() -> None:
     log_level = logging.DEBUG if config.debug else logging.INFO
     logging.basicConfig(level=log_level, format=logging.BASIC_FORMAT)
 
-    logfire.configure(service_name="Portfolio Monitor", scrubbing=False)
+    logfire.configure(
+        service_name="Portfolio Monitor",
+        scrubbing=False,
+        console={ "min_log_level": "warning" }
+    )
 
     try:
         asyncio.run(run_service(config, is_dev=config.dev_console))
