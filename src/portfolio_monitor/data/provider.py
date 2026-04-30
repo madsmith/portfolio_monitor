@@ -30,5 +30,5 @@ class DataProvider(Protocol):
     ) -> list[Aggregate]: ...
 
     async def get_open_close(
-        self, symbol: AssetSymbol, date: datetime | None = None
+        self, symbol: AssetSymbol, date: datetime | None = None, *, cache_write: bool = False
     ) -> DailyOpenCloseAggregate | None: ...

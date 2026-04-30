@@ -68,7 +68,7 @@ class PolygonDataProvider(DataProvider):
             Most recent Aggregate or None if not available
         """
         # Try to get from cache first
-        current: Aggregate | None = self._aggregate_cache.get_current(symbol)
+        current: Aggregate | None = await self._aggregate_cache.get_current(symbol)
         now: datetime = datetime.now(ZoneInfo("UTC"))
 
         # Check if we have recent data in cache
@@ -154,7 +154,7 @@ class PolygonDataProvider(DataProvider):
         """
         now = datetime.now(ZoneInfo("UTC"))
         prev_close_dt = MarketInfo.get_previous_market_close(symbol, now)
-        cached = self._aggregate_cache.get_close(symbol, prev_close_dt)
+        cached = await self._aggregate_cache.get_close(symbol, prev_close_dt)
         if cached is not None:
             logger.debug("Fetching previous close aggregate for %s from cache", symbol)
             logfire_set_attribute("source", "cache")
@@ -200,21 +200,32 @@ class PolygonDataProvider(DataProvider):
         )
         if cache_write:
             logger.debug("Caching previous close aggregate for %s: %s", symbol, aggregate)
+            await self._aggregate_cache.add(aggregate)
         return aggregate
 
     @logfire.instrument("polygon.get_open_close {symbol.ticker}")
     async def get_open_close(
-        self, symbol: AssetSymbol, date: datetime | None = None
+        self, symbol: AssetSymbol, date: datetime | None = None, *, cache_write: bool = False
     ) -> DailyOpenCloseAggregate | None:
         """Fetch the daily open/close aggregate for a symbol on the given date.
+
+        Checks the aggregate cache first; only calls Polygon if not found.
 
         Args:
             symbol: Asset symbol
             date: The trading date to query; defaults to today (UTC).
+            cache_write: If True, write the Polygon result back to the cache.
 
         Returns:
             DailyOpenCloseAggregate or None on error / no data.
         """
+        cached = await self._aggregate_cache.get_open_close(symbol, date)
+        if cached is not None:
+            logger.debug("Fetching open/close for %s from cache", symbol)
+            logfire_set_attribute("source", "cache")
+            return cached
+
+        logfire_set_attribute("source", "api")
         target = (date or datetime.now(ZoneInfo("UTC"))).astimezone(ZoneInfo("America/New_York")).date()
         try:
             logger.debug("Fetching open/close for %s on %s from API", symbol, target)
@@ -246,7 +257,7 @@ class PolygonDataProvider(DataProvider):
             return None
 
         date_open = eastern_midnight(result.from_)
-        return DailyOpenCloseAggregate(
+        aggregate = DailyOpenCloseAggregate(
             symbol=symbol,
             date_open=date_open,
             open=result.open,
@@ -257,6 +268,10 @@ class PolygonDataProvider(DataProvider):
             pre_market=result.pre_market,
             after_hours=result.after_hours,
         )
+        if cache_write:
+            logger.debug("Caching open/close for %s: %s", symbol, aggregate)
+            await self._aggregate_cache.add_open_close(aggregate)
+        return aggregate
 
     @logfire.instrument("polygon.get_range {symbol.ticker}")
     async def get_range(

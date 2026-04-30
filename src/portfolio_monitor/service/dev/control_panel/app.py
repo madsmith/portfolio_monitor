@@ -117,7 +117,7 @@ class ControlPanelApp:
             if self._source is not None:
                 price = self._source.generator.get_price(symbol.ticker)
             else:
-                agg = self._cache.get_current(symbol)
+                agg = await self._cache.get_current(symbol)
                 price = agg.close if agg is not None else None
             symbols_data.append(
                 {

@@ -32,7 +32,7 @@ class DevDataProvider(DataProvider):
         self, symbol: AssetSymbol, *, cache_write: bool = False
     ) -> Aggregate | None:
         """Return the most recently cached aggregate for the symbol."""
-        return self._cache.get_current(symbol)
+        return await self._cache.get_current(symbol)
 
     async def get_previous_close(
         self, symbol: AssetSymbol, *, cache_write: bool = False
@@ -41,7 +41,7 @@ class DevDataProvider(DataProvider):
         seed = self._seed_aggregates.get(symbol.ticker)
         if seed is not None:
             return seed
-        return self._cache.get_current(symbol)
+        return await self._cache.get_current(symbol)
 
     async def get_range(
         self,
