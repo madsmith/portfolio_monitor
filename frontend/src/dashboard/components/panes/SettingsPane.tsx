@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, getRole, getUsername, type AccountSummary, type AlertConfig, type DetectorInfo } from "../api/client";
+import { api, getRole, getUsername, type AccountSummary, type AlertConfig, type DetectorInfo } from "../../api/client";
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -610,7 +610,7 @@ function InnerTab({ label, active, onClick }: { label: string; active: boolean; 
 // Main Settings page
 // ---------------------------------------------------------------------------
 
-export default function Settings() {
+export default function SettingsPane() {
   const isAdmin = getRole() === "admin";
   const [activeTab, setActiveTab] = useState<"users" | "alerts">(isAdmin ? "users" : "alerts");
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);

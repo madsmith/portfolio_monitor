@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
-import { api, type WatchlistDetail, type WatchlistEntry, type WatchlistSummary } from "../api/client";
-import { fmtChg, fmtMoney, fmtPct, plColor, prevCloseKey } from "../lib/formatters";
-import { Chart } from "./Chart";
+import { api, type WatchlistDetail, type WatchlistEntry, type WatchlistSummary } from "../../api/client";
+import { fmtChg, fmtMoney, fmtPct, plColor, prevCloseKey } from "../../lib/formatters";
+import { Chart } from "../Chart";
 
 // ---------------------------------------------------------------------------
 // Entry table

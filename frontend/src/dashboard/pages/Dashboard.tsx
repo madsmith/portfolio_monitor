@@ -3,11 +3,11 @@ import { useMatch, useNavigate } from "react-router-dom";
 import { api, clearToken, getUsername, type PortfolioDetail, type PortfolioSummary, type WatchlistSummary } from "../api/client";
 import { type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
 import { applyPriceUpdate, computeTodayChange, prevCloseKey, type TodayChange } from "../lib/formatters";
-import { OverviewPane } from "../components/OverviewPane";
-import { PortfolioDetailPane } from "../components/PortfolioDetailPane";
-import { PortfolioPerformancePane } from "../components/PortfolioPerformancePane";
-import { WatchlistsPane } from "../components/WatchlistsPane";
-import Settings from "./Settings";
+import { OverviewPane } from "../components/panes/OverviewPane";
+import { PortfolioDetailPane } from "../components/panes/PortfolioDetailPane";
+import { PortfolioPerformancePane } from "../components/panes/PortfolioPerformancePane";
+import { WatchlistsPane } from "../components/panes/WatchlistsPane";
+import SettingsPane from "../components/panes/SettingsPane";
 
 function toWsSymbol(a: { ticker: string; asset_type: string }): WsAssetSymbol {
   return { ticker: a.ticker, type: a.asset_type };
@@ -278,7 +278,7 @@ export default function Dashboard() {
 
         <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6 min-h-[120px]">
           {isSettingsActive ? (
-            <Settings />
+            <SettingsPane />
           ) : isWatchlistActive ? (
             <WatchlistsPane watchlists={watchlists} />
           ) : activeId === null ? (

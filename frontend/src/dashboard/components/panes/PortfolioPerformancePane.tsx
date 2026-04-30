@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type Asset, type DailyClose, type PortfolioDetail } from "../api/client";
-import { fmtMoney, fmtPct } from "../lib/formatters";
+import { api, type Asset, type DailyClose, type PortfolioDetail } from "../../api/client";
+import { fmtMoney, fmtPct } from "../../lib/formatters";
 
 type PeriodKey = "1d" | "1w" | "1m" | "3m" | "6m" | "1y";
 

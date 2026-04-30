@@ -1,6 +1,6 @@
-import type { PortfolioSummary } from "../api/client";
-import { fmtMoney, fmtPct, fmtChg, plColor, type TodayChange } from "../lib/formatters";
-import { DataTable, type ColDef } from "./DataTable";
+import type { PortfolioSummary } from "../../api/client";
+import { fmtMoney, fmtPct, fmtChg, plColor, type TodayChange } from "../../lib/formatters";
+import { DataTable, type ColDef } from "../DataTable";
 
 export function OverviewPane({
   portfolios,

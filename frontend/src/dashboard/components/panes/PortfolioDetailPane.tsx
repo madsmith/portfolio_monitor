@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Asset, Lot, PortfolioDetail } from "../api/client";
-import { fmtMoney, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../lib/formatters";
-import { DataTable, type ColDef } from "./DataTable";
-import { Chart } from "./Chart";
+import type { Asset, Lot, PortfolioDetail } from "../../api/client";
+import { fmtMoney, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../../lib/formatters";
+import { DataTable, type ColDef } from "../DataTable";
+import { Chart } from "../Chart";
 
 type EnrichedAsset = Asset & {
   dayChgPrice: number | null;
