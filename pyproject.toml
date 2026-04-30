@@ -33,6 +33,7 @@ dependencies = [
     "websockets>=13.0",
     "cryptography>=44.0.0",
     "pydantic>=2.12.5",
+    "opentelemetry-instrumentation-urllib3>=0.57b0",
 ]
 
 [project.scripts]

@@ -15,6 +15,7 @@ import uvicorn
 from appconf.omegaconf import OmegaConfig, OmegaConfigLoader
 from appconf.omegaconf.errors import PrivateConfigError
 from omegaconf import OmegaConf
+from opentelemetry.instrumentation.urllib3 import URLLib3Instrumentor
 from starlette.applications import Starlette
 from uvicorn.server import Server
 
@@ -590,6 +591,8 @@ def main() -> None:
         scrubbing=False,
         console={ "min_log_level": "warning" }
     )
+
+    URLLib3Instrumentor().instrument()
 
     try:
         asyncio.run(run_service(config, is_dev=config.dev_console))
