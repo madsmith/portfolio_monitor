@@ -342,7 +342,11 @@ class AggregateCache:
                 # We'll wait for it below
 
         # Wait until the queue is empty and processing is complete
-        while not self._pending_db_updates.empty() or self._update_in_progress.is_set():
+        while (
+            not self._pending_minute_updates.empty()
+            or not self._pending_daily_updates.empty()
+            or self._update_in_progress.is_set()
+        ):
             try:
                 await asyncio.sleep(0.1)  # Small sleep to avoid busy waiting
             except asyncio.CancelledError:
