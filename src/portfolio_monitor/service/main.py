@@ -591,12 +591,13 @@ def main() -> None:
     log_level = logging.DEBUG if config.debug else logging.INFO
     logging.basicConfig(level=log_level, format=logging.BASIC_FORMAT)
 
+    logfire.configure(
+        service_name="Portfolio Monitor",
+        scrubbing=False,
+        console={"min_log_level": "warning"},
+        send_to_logfire=args.logfire,
+    )
     if args.logfire:
-        logfire.configure(
-            service_name="Portfolio Monitor",
-            scrubbing=False,
-            console={"min_log_level": "warning"},
-        )
         URLLib3Instrumentor().instrument()
 
     try:
