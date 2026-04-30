@@ -184,9 +184,10 @@ export const api = {
   getPreviousClose: (assetType: string, ticker: string): Promise<{ open: number; high: number; low: number; close: number; volume: number; timestamp: string }> =>
     authGet(`/api/v1/price/${assetType}/${ticker}/previous-close`),
 
-  getOpenClose: (assetType: string, ticker: string, date?: string): Promise<DailyOpenClose> => {
+  getOpenClose: (assetType: string, ticker: string, date?: string, returnPrevious?: boolean): Promise<DailyOpenClose> => {
     const params = new URLSearchParams();
     if (date) params.set("date", date);
+    if (returnPrevious) params.set("return_previous", "true");
     const qs = params.size ? `?${params}` : "";
     return authGet(`/api/v1/price/${assetType}/${ticker}/open-close${qs}`);
   },

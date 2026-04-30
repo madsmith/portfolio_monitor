@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Asset, Lot, PortfolioDetail } from "../api/client";
 import { fmtMoney, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../lib/formatters";
 import { DataTable, type ColDef } from "./DataTable";
@@ -198,6 +199,8 @@ export function PortfolioDetailContent({
   error: string | null;
   prevClose: Record<string, number>;
 }) {
+  const navigate = useNavigate();
+
   if (loading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;
   if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;
   if (!detail) return null;
@@ -235,6 +238,14 @@ export function PortfolioDetailContent({
           );
           return acc;
         }, [])}
+      </div>
+      <div className="flex justify-end mb-3">
+        <button
+          onClick={() => navigate(`/portfolio/${detail.id}/performance`)}
+          className="text-xs text-slate-500 hover:text-sky-400 transition-colors cursor-pointer"
+        >
+          Performance →
+        </button>
       </div>
       <AssetSection title="Stocks" assets={detail.stocks} prevClose={prevClose} />
       <AssetSection title="Currencies" assets={detail.currencies} prevClose={prevClose} />

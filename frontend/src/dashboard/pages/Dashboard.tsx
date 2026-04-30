@@ -5,6 +5,7 @@ import { type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws
 import { applyPriceUpdate, computeTodayChange, prevCloseKey, type TodayChange } from "../lib/formatters";
 import { Overview } from "../components/Overview";
 import { PortfolioDetailContent } from "../components/PortfolioDetail";
+import { PortfolioPerformance } from "../components/PortfolioPerformance";
 import { WatchlistView } from "../components/WatchlistView";
 import Settings from "./Settings";
 
@@ -31,9 +32,11 @@ function Tab({ label, active, onClick }: { label: string; active: boolean; onCli
 export default function Dashboard() {
   const navigate = useNavigate();
   const match = useMatch("/portfolio/:id");
+  const perfMatch = useMatch("/portfolio/:id/performance");
   const settingsMatch = useMatch("/settings");
   const watchlistMatch = useMatch("/watchlist");
-  const activeId = (settingsMatch || watchlistMatch) ? null : (match?.params.id ?? null);
+  const activeId = (settingsMatch || watchlistMatch) ? null : (match?.params.id ?? perfMatch?.params.id ?? null);
+  const isPerfActive = perfMatch !== null;
   const isSettingsActive = settingsMatch !== null;
   const isWatchlistActive = watchlistMatch !== null;
   const currentUsername = getUsername();
@@ -287,6 +290,12 @@ export default function Dashboard() {
               error={portfoliosError}
               onSelect={(id) => navigate(`/portfolio/${id}`)}
               todayChange={portfolioTodayChange}
+            />
+          ) : isPerfActive ? (
+            <PortfolioPerformance
+              detail={detail}
+              loading={detailLoading}
+              error={detailError}
             />
           ) : (
             <PortfolioDetailContent

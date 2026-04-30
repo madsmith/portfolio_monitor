@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import logfire
 from zoneinfo import ZoneInfo
 
-from polygon import RESTClient as PolygonRESTClient
+from polygon import RESTClient as PolygonRESTClient, BadResponse
 from polygon.rest.aggs import Agg, DailyOpenCloseAgg
 from urllib3 import HTTPResponse
 from urllib3.exceptions import RequestError
@@ -227,6 +227,9 @@ class PolygonDataProvider(DataProvider):
                     )
         except RequestError:
             logger.warning("Rate limit fetching open/close for %s", symbol)
+            return None
+        except BadResponse as e:
+            logger.debug("Bad response fetching open/close for %s: %s", symbol, e)
             return None
         except Exception:
             logger.exception("Error fetching open/close for %s", symbol)

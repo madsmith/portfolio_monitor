@@ -174,7 +174,18 @@ def open_close_handler(data_provider: DataProvider):
         else:
             date = None
 
+        return_previous = request.query_params.get("return_previous", "").lower() in ("1", "true")
+
         result: DailyOpenCloseAggregate = await data_provider.get_open_close(symbol, date)
+
+        if result is None and return_previous:
+            candidate = date or datetime.now(ZoneInfo("UTC"))
+            for _ in range(7):
+                candidate -= timedelta(days=1)
+                result = await data_provider.get_open_close(symbol, candidate)
+                if result is not None:
+                    break
+
         if result is None:
             return JSONResponse({"error": "data unavailable"}, status_code=404)
         return JSONResponse(result.to_dict())
