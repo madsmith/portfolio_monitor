@@ -531,6 +531,11 @@ def arg_parser() -> argparse.ArgumentParser:
         default=5.0,
         help="Dev mode: seconds between synthetic price ticks (default: 5.0)",
     )
+    run_parser.add_argument(
+        "--logfire",
+        action="store_true",
+        help="Enable Logfire instrumentation",
+    )
 
     return parser
 
@@ -586,13 +591,13 @@ def main() -> None:
     log_level = logging.DEBUG if config.debug else logging.INFO
     logging.basicConfig(level=log_level, format=logging.BASIC_FORMAT)
 
-    logfire.configure(
-        service_name="Portfolio Monitor",
-        scrubbing=False,
-        console={ "min_log_level": "warning" }
-    )
-
-    URLLib3Instrumentor().instrument()
+    if args.logfire:
+        logfire.configure(
+            service_name="Portfolio Monitor",
+            scrubbing=False,
+            console={"min_log_level": "warning"},
+        )
+        URLLib3Instrumentor().instrument()
 
     try:
         asyncio.run(run_service(config, is_dev=config.dev_console))
