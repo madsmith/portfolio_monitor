@@ -16,6 +16,7 @@ config_private.yaml
 config/portfolios
 config/aggregate_cache.db
 config/device*identity.json
+config/watchlists
 incoming_frame.json
 tmp/
 config/settings.yaml

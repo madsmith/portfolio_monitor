@@ -254,4 +254,26 @@ export const api = {
 
   getWatchlist: (id: string): Promise<WatchlistDetail> =>
     authGet(`/api/v1/watchlist/${id}`),
+
+  createWatchlist: (name: string): Promise<WatchlistDetail> =>
+    authPost("/api/v1/watchlist", { name }),
+
+  deleteWatchlist: (id: string): Promise<{ ok: boolean }> =>
+    authDelete(`/api/v1/watchlist/${encodeURIComponent(id)}`),
+
+  addWatchlistEntry: (
+    id: string,
+    entry: { ticker: string; asset_type: string; notes?: string; target_buy?: number | null; target_sell?: number | null }
+  ): Promise<WatchlistDetail> =>
+    authPost(`/api/v1/watchlist/${encodeURIComponent(id)}/entries`, entry),
+
+  removeWatchlistEntry: (id: string, ticker: string): Promise<WatchlistDetail> =>
+    authDelete(`/api/v1/watchlist/${encodeURIComponent(id)}/entries/${encodeURIComponent(ticker)}`),
+
+  updateWatchlistEntry: (
+    id: string,
+    ticker: string,
+    fields: { notes?: string; target_buy?: number | null; target_sell?: number | null }
+  ): Promise<WatchlistDetail> =>
+    authPut(`/api/v1/watchlist/${encodeURIComponent(id)}/entries/${encodeURIComponent(ticker)}`, fields),
 };
