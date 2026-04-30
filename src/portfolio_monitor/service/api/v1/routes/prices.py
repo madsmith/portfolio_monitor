@@ -155,6 +155,47 @@ def price_history_handler(data_provider: DataProvider):
     return get_price_history
 
 
+def daily_range_handler(data_provider: DataProvider):
+    @logfire.instrument("api.prices.daily_range")
+    async def get_daily_range(request: Request) -> JSONResponse:
+        symbol = _parse_symbol(request)
+        if symbol is None:
+            return JSONResponse({"error": "invalid asset type"}, status_code=400)
+        logfire_set_attribute("ticker", symbol.ticker)
+        logfire_set_attribute("asset_type", symbol.asset_type.value)
+
+        from_str = request.query_params.get("from")
+        if from_str:
+            from_dt = parse_date(from_str)
+            if from_dt is None:
+                return JSONResponse({"error": f"invalid from date: {from_str!r}"}, status_code=400)
+            if from_dt.tzinfo is None:
+                from_dt = from_dt.replace(tzinfo=ZoneInfo("America/New_York"))
+        else:
+            from_dt = datetime.now(ZoneInfo("UTC")) - timedelta(days=365)
+
+        to_dt = datetime.now(ZoneInfo("UTC"))
+
+        aggregates = await data_provider.get_daily_range(symbol, from_dt, to_dt, cache_write=True)
+
+        return JSONResponse({
+            "symbol": symbol.to_dict(),
+            "days": [
+                {
+                    "date": agg.date_open.date().isoformat(),
+                    "open": agg.open,
+                    "high": agg.high,
+                    "low": agg.low,
+                    "close": agg.close,
+                    "volume": agg.volume,
+                }
+                for agg in aggregates
+            ],
+        })
+
+    return get_daily_range
+
+
 def open_close_handler(data_provider: DataProvider):
     @logfire.instrument("api.prices.open_close")
     async def get_open_close(request: Request) -> JSONResponse:

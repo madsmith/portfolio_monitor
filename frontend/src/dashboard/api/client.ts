@@ -114,6 +114,20 @@ export type DailyOpenClose = {
   after_hours: number | null;
 };
 
+export type DailyClose = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type DailyRange = {
+  symbol: { ticker: string; asset_type: string };
+  days: DailyClose[];
+};
+
 export type PriceHistory = {
   symbol: { ticker: string; asset_type: string };
   from: string;
@@ -190,6 +204,10 @@ export const api = {
     if (returnPrevious) params.set("return_previous", "true");
     const qs = params.size ? `?${params}` : "";
     return authGet(`/api/v1/price/${assetType}/${ticker}/open-close${qs}`);
+  },
+
+  getDailyRange: (assetType: string, ticker: string, from: string): Promise<DailyRange> => {
+    return authGet(`/api/v1/price/${assetType}/${ticker}/daily-range?from=${encodeURIComponent(from)}`);
   },
 
   getPriceHistory: (assetType: string, ticker: string, last: string, span?: string): Promise<PriceHistory> => {

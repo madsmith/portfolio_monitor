@@ -68,3 +68,14 @@ class DevDataProvider(DataProvider):
     ) -> DailyOpenCloseAggregate | None:
         """Not supported in dev mode — returns None."""
         return None
+
+    async def get_daily_range(
+        self,
+        symbol: AssetSymbol,
+        from_: datetime,
+        to: datetime,
+        *,
+        cache_write: bool = False,
+    ) -> list[DailyOpenCloseAggregate]:
+        """Not supported in dev mode — returns empty list."""
+        return []

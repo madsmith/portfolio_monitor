@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type Asset, type PortfolioDetail } from "../api/client";
+import { api, type Asset, type DailyClose, type PortfolioDetail } from "../api/client";
 import { fmtMoney, fmtPct } from "../lib/formatters";
 
 type PeriodKey = "1d" | "1w" | "1m" | "3m" | "6m" | "1y";
@@ -18,6 +18,16 @@ function daysAgoDate(days: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
+}
+
+/** Return the close of the last trading day on or before targetDate, or null. */
+function closestClose(days: DailyClose[], targetDate: string): number | null {
+  let result: number | null = null;
+  for (const day of days) {
+    if (day.date <= targetDate) result = day.close;
+    else break;
+  }
+  return result;
 }
 
 function pctChange(current: number | null, historic: number | null): number | null {
@@ -129,26 +139,33 @@ export function PortfolioPerformance({
     const assets = [...detail.stocks, ...detail.currencies, ...detail.crypto];
     setAssetPerfs(assets.map((a) => ({ asset: a, prices: null, error: false })));
 
+    const yearAgo = daysAgoDate(365);
+
     for (const asset of assets) {
-      Promise.allSettled(
-        PERIODS.map((p) =>
-          api
-            .getOpenClose(asset.asset_type, asset.ticker, daysAgoDate(p.days), true)
-            .then((r) => ({ key: p.key, close: r.close }))
-        )
-      ).then((results) => {
-        const prices = Object.fromEntries(PERIODS.map((p) => [p.key, null])) as PeriodPrices;
-        for (const r of results) {
-          if (r.status === "fulfilled") prices[r.value.key] = r.value.close;
-        }
-        setAssetPerfs((prev) =>
-          prev.map((p) =>
-            p.asset.ticker === asset.ticker && p.asset.asset_type === asset.asset_type
-              ? { ...p, prices }
-              : p
-          )
-        );
-      });
+      api
+        .getDailyRange(asset.asset_type, asset.ticker, yearAgo)
+        .then(({ days }) => {
+          // days is sorted ascending by date from the API
+          const prices = Object.fromEntries(
+            PERIODS.map((p) => [p.key, closestClose(days, daysAgoDate(p.days))])
+          ) as PeriodPrices;
+          setAssetPerfs((prev) =>
+            prev.map((p) =>
+              p.asset.ticker === asset.ticker && p.asset.asset_type === asset.asset_type
+                ? { ...p, prices }
+                : p
+            )
+          );
+        })
+        .catch(() => {
+          setAssetPerfs((prev) =>
+            prev.map((p) =>
+              p.asset.ticker === asset.ticker && p.asset.asset_type === asset.asset_type
+                ? { ...p, error: true }
+                : p
+            )
+          );
+        });
     }
   }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -1,7 +1,7 @@
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
@@ -68,6 +68,15 @@ class OpenCloseRow(BaseModel):
     after_hours: Annotated[float | None, ColumnMeta("After-Hours",  fmt="currency")]
 
 
+class DailyRangeRow(BaseModel):
+    date:   Annotated[str,   ColumnMeta("Date")]
+    open:   Annotated[float, ColumnMeta("Open",   fmt="currency")]
+    high:   Annotated[float, ColumnMeta("High",   fmt="currency")]
+    low:    Annotated[float, ColumnMeta("Low",    fmt="currency")]
+    close:  Annotated[float, ColumnMeta("Close",  fmt="currency")]
+    volume: Annotated[float, ColumnMeta("Volume", fmt="volume")]
+
+
 def add_price_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "price",
@@ -100,6 +109,19 @@ def add_price_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Return the session OHLCV with pre-market and after-hours prices. "
              "Use --time to specify the date (default: today).",
     )
+    p.add_argument(
+        "--daily-range",
+        dest="daily_range",
+        action="store_true",
+        help="Return daily OHLCV for a date range (default: last 365 days). "
+             "Use --from to set the start date.",
+    )
+    p.add_argument(
+        "--from",
+        dest="from_date",
+        metavar="DATE",
+        help="Start date for --daily-range (YYYY-MM-DD, default: 30 days ago)",
+    )
     history = p.add_argument_group("history options")
     history.add_argument(
         "--last",
@@ -130,8 +152,9 @@ def add_price_parser(subparsers: argparse._SubParsersAction) -> None:
 def run_price(args: argparse.Namespace) -> None:
     client = make_client(args)
 
-    if args.previous_close and args.open_close:
-        print("error: --previous-close and --open-close are mutually exclusive", file=sys.stderr)
+    mode_flags = [args.previous_close, args.open_close, args.daily_range]
+    if sum(mode_flags) > 1:
+        print("error: --previous-close, --open-close, and --daily-range are mutually exclusive", file=sys.stderr)
         sys.exit(1)
 
     if args.previous_close:
@@ -146,6 +169,13 @@ def run_price(args: argparse.Namespace) -> None:
             print("error: --open-close cannot be combined with --span or --last", file=sys.stderr)
             sys.exit(1)
         _run_open_close(client, args)
+        return
+
+    if args.daily_range:
+        if args.span or args.last or args.time:
+            print("error: --daily-range cannot be combined with --span, --last, or --time", file=sys.stderr)
+            sys.exit(1)
+        _run_daily_range(client, args)
         return
 
     path = f"/api/v1/price/{args.asset_type}/{args.ticker}/history"
@@ -260,6 +290,43 @@ def _run_previous_close(client, args: argparse.Namespace) -> None:
         close=out.close,
         volume=out.volume,
     )])
+
+
+def _run_daily_range(client, args: argparse.Namespace) -> None:
+    path = f"/api/v1/price/{args.asset_type}/{args.ticker}/daily-range"
+    params: dict[str, str] = {}
+    if args.from_date:
+        params["from"] = args.from_date
+    else:
+        params["from"] = (datetime.now(ZoneInfo("UTC")) - timedelta(days=30)).date().isoformat()
+
+    response = client.get(path, params=params)
+    if response.status_code == 404:
+        print(f"error: no data available for {args.ticker} ({args.asset_type})", file=sys.stderr)
+        sys.exit(1)
+    if not response.is_success:
+        print(f"error: server returned {response.status_code}", file=sys.stderr)
+        sys.exit(1)
+
+    data = response.json()
+    days = data["days"]
+
+    if args.json_out:
+        print(json.dumps(days, indent=2))
+        return
+
+    rows = [
+        DailyRangeRow(
+            date=day["date"],
+            open=day["open"],
+            high=day["high"],
+            low=day["low"],
+            close=day["close"],
+            volume=day["volume"],
+        )
+        for day in days
+    ]
+    render_table(rows)
 
 
 def _run_open_close(client, args: argparse.Namespace) -> None:

@@ -662,6 +662,23 @@ class AggregateCache:
         logfire_set_attribute("source", "db")
         return await asyncio.to_thread(self._db_get_open_close, symbol, target_ms)
 
+    @logfire.instrument("cache.get_open_close_range {symbol.ticker}")
+    async def get_open_close_range(
+        self, symbol: AssetSymbol, from_: datetime, to: datetime
+    ) -> list[DailyOpenCloseAggregate]:
+        """Return daily open-close aggregates for symbol within [from_, to] inclusive.
+
+        Checks memory first, then falls back to SQLite.
+        """
+        results = self._daily_cache.get_range(symbol, from_, to)
+        if results:
+            logfire_set_attribute("source", "memory")
+            return results
+        if self._cache_file is None:
+            return []
+        logfire_set_attribute("source", "db")
+        return await asyncio.to_thread(self._db_get_open_close_range, symbol, from_, to)
+
     # -------------------------------------------------------------------------
     # SQLite read helpers (sync; always run via asyncio.to_thread)
     # -------------------------------------------------------------------------
@@ -720,6 +737,39 @@ class AggregateCache:
             pre_market=pre_market,
             after_hours=after_hours,
         )
+
+
+    def _db_get_open_close_range(
+        self, symbol: AssetSymbol, from_: datetime, to: datetime
+    ) -> list[DailyOpenCloseAggregate]:
+        start_ms = ms_from_datetime(from_)
+        end_ms = ms_from_datetime(to)
+        with sqlite3.connect(self._cache_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT date_utc, open, high, low, close, volume, pre_market, after_hours, asset_type
+                   FROM aggregates_open_close
+                   WHERE symbol = ? AND date_utc >= ? AND date_utc <= ?
+                   ORDER BY date_utc ASC""",
+                (symbol.ticker, start_ms, end_ms),
+            )
+            rows = cursor.fetchall()
+        result = []
+        for date_utc_ms, open_, high, low, close, volume, pre_market, after_hours, asset_type in rows:
+            date = datetime_from_ms(date_utc_ms, ZoneInfo("UTC"))
+            resolved = AssetSymbol(symbol.ticker, AssetTypes(asset_type)) if asset_type else symbol
+            result.append(DailyOpenCloseAggregate(
+                symbol=resolved,
+                date_open=date,
+                open=open_,
+                high=high,
+                low=low,
+                close=close,
+                volume=volume,
+                pre_market=pre_market,
+                after_hours=after_hours,
+            ))
+        return result
 
 
 class MemoryOnlyAggregateCache(AggregateCache):

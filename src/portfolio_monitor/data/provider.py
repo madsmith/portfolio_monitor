@@ -32,3 +32,12 @@ class DataProvider(Protocol):
     async def get_open_close(
         self, symbol: AssetSymbol, date: datetime | None = None, *, cache_write: bool = False
     ) -> DailyOpenCloseAggregate | None: ...
+
+    async def get_daily_range(
+        self,
+        symbol: AssetSymbol,
+        from_: datetime,
+        to: datetime,
+        *,
+        cache_write: bool = False,
+    ) -> list[DailyOpenCloseAggregate]: ...

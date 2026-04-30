@@ -273,6 +273,76 @@ class PolygonDataProvider(DataProvider):
             await self._aggregate_cache.add_open_close(aggregate)
         return aggregate
 
+    @logfire.instrument("polygon.get_daily_range {symbol.ticker}")
+    async def get_daily_range(
+        self,
+        symbol: AssetSymbol,
+        from_: datetime,
+        to: datetime,
+        *,
+        cache_write: bool = False,
+    ) -> list[DailyOpenCloseAggregate]:
+        """Fetch a range of daily OHLCV aggregates.
+
+        Checks the aggregate cache first. Falls back to Polygon get_aggs(timespan='day')
+        when fewer than 50 cached entries are found (indicating the bulk fetch hasn't
+        run yet). Writes to cache when cache_write=True.
+        """
+        cached = await self._aggregate_cache.get_open_close_range(symbol, from_, to)
+        if len(cached) >= 50:
+            logfire_set_attribute("source", "cache")
+            return cached
+
+        logfire_set_attribute("source", "api")
+        try:
+            logger.debug("Fetching daily range for %s from %s to %s from API", symbol, from_.date(), to.date())
+            async with self._api_semaphore:
+                with logfire.span("polygon.api.get_aggs_daily {symbol.ticker}", symbol=symbol):
+                    aggs = await asyncio.to_thread(
+                        self._polygon_client.get_aggs,
+                        ticker=symbol.lookup_symbol,
+                        multiplier=1,
+                        timespan="day",
+                        from_=from_,
+                        to=to,
+                        limit=500,
+                    )
+        except RequestError:
+            logger.warning("Rate limit fetching daily range for %s", symbol)
+            return cached
+        except Exception:
+            logger.exception("Error fetching daily range for %s", symbol)
+            return cached
+
+        if not isinstance(aggs, list):
+            return cached
+
+        result: list[DailyOpenCloseAggregate] = []
+        for agg in aggs:
+            if None in (agg.timestamp, agg.open, agg.high, agg.low, agg.close, agg.volume):
+                continue
+            # Reconstruct Eastern midnight to match get_daily_open_close_agg convention
+            dt_utc = datetime.fromtimestamp(agg.timestamp / 1000, ZoneInfo("UTC"))
+            date_str = dt_utc.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+            date_open = eastern_midnight(date_str)
+            aggregate = DailyOpenCloseAggregate(
+                symbol=symbol,
+                date_open=date_open,
+                open=agg.open,
+                high=agg.high,
+                low=agg.low,
+                close=agg.close,
+                volume=agg.volume,
+                pre_market=None,
+                after_hours=None,
+            )
+            result.append(aggregate)
+            if cache_write:
+                await self._aggregate_cache.add_open_close(aggregate)
+
+        logfire_set_attribute("result_count", len(result))
+        return result
+
     @logfire.instrument("polygon.get_range {symbol.ticker}")
     async def get_range(
         self,

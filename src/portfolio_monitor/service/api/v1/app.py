@@ -10,7 +10,7 @@ from .routes.login import login_handler
 from .routes.me import me_handler
 from .routes.market_info import market_close_handler, market_hours_handler, market_open_handler
 from .routes.portfolios import portfolio_handler, portfolios_handler
-from .routes.prices import current_price_handler, open_close_handler, previous_close_handler, price_history_handler
+from .routes.prices import current_price_handler, daily_range_handler, open_close_handler, previous_close_handler, price_history_handler
 from .routes.watchlists import watchlists_handler
 from .ws import WebSocketManager
 
@@ -88,6 +88,7 @@ class APIv1ServiceApp(Router):
                 Route("/price/{type}/{ticker}/previous-close", require_auth(previous_close_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/history", require_auth(price_history_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/open-close", require_auth(open_close_handler(ctx.data_provider)), methods=["GET"]),
+                Route("/price/{type}/{ticker}/daily-range", require_auth(daily_range_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/market_info/{type}/{ticker}/hours", market_hours_handler, methods=["GET"]),
                 Route("/market_info/{type}/{ticker}/close", market_close_handler, methods=["GET"]),
                 Route("/market_info/{type}/{ticker}/open",  market_open_handler,  methods=["GET"]),
