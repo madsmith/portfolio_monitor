@@ -104,14 +104,20 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             asset_type = AssetTypes(raw_type)
         except ValueError:
             return JSONResponse({"error": f"invalid asset_type: {raw_type}"}, status_code=400)
+        initial_price: float | None = float(body["initial_price"]) if body.get("initial_price") is not None else None
         entry = WatchlistEntry(
             symbol=AssetSymbol(ticker, asset_type),
             notes=str(body.get("notes") or ""),
             target_buy=float(body["target_buy"]) if body.get("target_buy") is not None else None,
             target_sell=float(body["target_sell"]) if body.get("target_sell") is not None else None,
+            initial_price=initial_price,
             meta=dict(body.get("meta") or {}),
             alerts=dict(body.get("alerts") or {}),
         )
+        if entry.initial_price is None:
+            agg = await data_provider.get_aggregate(entry.symbol)
+            if agg is not None:
+                entry.initial_price = float(agg.close)
         wl = await watchlist_service.add_entry(wl_id, entry, auth)
         if wl is None:
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
