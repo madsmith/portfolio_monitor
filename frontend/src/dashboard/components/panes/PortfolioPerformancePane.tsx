@@ -64,30 +64,74 @@ function PerfCell({ pct }: { pct: number | null }) {
   );
 }
 
+type SortCol = "ticker" | "value" | PeriodKey;
+
 function PerformanceTable({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
+  const [sortCol, setSortCol] = useState<SortCol | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function handleSort(col: SortCol, defaultDir: "asc" | "desc" = "desc") {
+    if (sortCol === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortCol(col);
+      setSortDir(defaultDir);
+    }
+  }
+
+  function getSortValue(ap: AssetPerf): string | number {
+    if (sortCol === "ticker") return ap.asset.ticker;
+    if (sortCol === "value") return ap.asset.current_value ?? 0;
+    const pct = ap.prices ? pctChange(ap.asset.current_price, ap.prices[sortCol!]) : null;
+    return pct ?? (sortDir === "asc" ? Infinity : -Infinity);
+  }
+
+  const sorted = sortCol === null ? assetPerfs : [...assetPerfs].sort((a, b) => {
+    const av = getSortValue(a);
+    const bv = getSortValue(b);
+    const cmp = typeof av === "string" && typeof bv === "string"
+      ? av.localeCompare(bv)
+      : (av as number) - (bv as number);
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  function sortIndicator(col: SortCol) {
+    if (sortCol === col) return <span className="text-slate-300 ml-0.5">{sortDir === "asc" ? "↑" : "↓"}</span>;
+    return <span className="text-slate-700 ml-0.5">⇅</span>;
+  }
+
+  const thBase = "text-[0.65rem] uppercase tracking-wide font-semibold px-3 py-2 cursor-pointer select-none hover:text-slate-300 transition-colors";
+
   return (
     <div className="border border-[#404868] rounded-md overflow-hidden overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-[#404868]">
-            <th className="text-left text-[0.65rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2">
-              Asset
+            <th
+              onClick={() => handleSort("ticker", "asc")}
+              className={`text-left text-slate-500 ${thBase}`}
+            >
+              <span className="inline-flex items-center">Asset {sortIndicator("ticker")}</span>
             </th>
-            <th className="text-right text-[0.65rem] uppercase tracking-wide text-slate-500 font-semibold px-3 py-2 hidden sm:table-cell">
-              Value
+            <th
+              onClick={() => handleSort("value")}
+              className={`text-right text-slate-500 ${thBase} hidden sm:table-cell`}
+            >
+              <span className="inline-flex items-center justify-end">Value {sortIndicator("value")}</span>
             </th>
             {PERIODS.map((p) => (
               <th
                 key={p.key}
-                className="text-right text-[0.65rem] uppercase tracking-wide text-slate-500 font-semibold px-1.5 py-2"
+                onClick={() => handleSort(p.key)}
+                className={`text-right text-slate-500 ${thBase} px-1.5`}
               >
-                {p.label}
+                <span className="inline-flex items-center justify-end">{p.label} {sortIndicator(p.key)}</span>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {assetPerfs.map(({ asset, prices, error }) => (
+          {sorted.map(({ asset, prices, error }) => (
             <tr
               key={`${asset.ticker}:${asset.asset_type}`}
               className="border-b border-[#2a2d3a] last:border-b-0"
