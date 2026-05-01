@@ -34,6 +34,363 @@ function parseOptFloat(s: string): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
+const inputCls = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-slate-400";
+
+// ---------------------------------------------------------------------------
+// EditableCell — table cell with click-to-edit input in edit mode
+// ---------------------------------------------------------------------------
+
+function EditableCell({
+  tdClassName,
+  inputClassName,
+  displayClassName,
+  isActive,
+  editing,
+  cellValue,
+  onOpen,
+  onChange,
+  onCommit,
+  onCancel,
+  children,
+}: {
+  tdClassName: string;
+  inputClassName: string;
+  displayClassName: string;
+  isActive: boolean;
+  editing: boolean;
+  cellValue: string;
+  onOpen: () => void;
+  onChange: (v: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <td className={tdClassName}>
+      {isActive ? (
+        <input
+          autoFocus
+          value={cellValue}
+          onChange={(ev) => onChange(ev.target.value)}
+          onKeyDown={(ev) => {
+            if (ev.key === "Enter") onCommit();
+            if (ev.key === "Escape") onCancel();
+          }}
+          onBlur={onCommit}
+          className={`${inputCls} ${inputClassName}`}
+        />
+      ) : (
+        <span
+          onClick={editing ? onOpen : undefined}
+          className={`block px-2 py-1 rounded ${editing ? "cursor-pointer hover:text-slate-100 hover:bg-[#1a1d2a] transition-colors" : ""} ${displayClassName}`}
+        >
+          {children}
+        </span>
+      )}
+    </td>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EditRow — inline edit form shown below a row in edit mode
+// ---------------------------------------------------------------------------
+
+function EditRow({
+  colSpan,
+  initialNotes,
+  initialBuy,
+  initialSell,
+  isSaving,
+  onSave,
+  onCancel,
+}: {
+  colSpan: number;
+  initialNotes: string;
+  initialBuy: string;
+  initialSell: string;
+  isSaving: boolean;
+  onSave: (notes: string, buy: string, sell: string) => void;
+  onCancel: () => void;
+}) {
+  const [notes, setNotes] = useState(initialNotes);
+  const [buy, setBuy] = useState(initialBuy);
+  const [sell, setSell] = useState(initialSell);
+
+  return (
+    <tr className="border-b border-[#2a2d3a] bg-[#151825]">
+      <td colSpan={colSpan} className="px-3 py-3">
+        <div className="flex flex-wrap gap-3 items-start">
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Notes</span>
+            <input
+              value={notes}
+              onChange={(ev) => setNotes(ev.target.value)}
+              className={`${inputCls} w-48`}
+              placeholder="Optional"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Buy target</span>
+            <input
+              value={buy}
+              onChange={(ev) => setBuy(ev.target.value)}
+              className={`${inputCls} w-28 tabular-nums`}
+              placeholder="—"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Sell target</span>
+            <input
+              value={sell}
+              onChange={(ev) => setSell(ev.target.value)}
+              className={`${inputCls} w-28 tabular-nums`}
+              placeholder="—"
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter") onSave(notes, buy, sell);
+              }}
+            />
+          </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-[0.65rem] invisible select-none">_</span>
+            <button
+              onClick={() => onSave(notes, buy, sell)}
+              disabled={isSaving}
+              className="px-3 py-1 bg-[#252a40] border border-[#5060a0] text-slate-100 rounded text-xs hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {isSaving ? "Saving…" : "Save"}
+            </button>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[0.65rem] invisible select-none">_</span>
+            <button
+              onClick={onCancel}
+              className="px-3 py-1 text-slate-400 hover:text-slate-200 text-xs transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AddEntryRow — inline form at the bottom of the table for adding a new entry
+// ---------------------------------------------------------------------------
+
+function AddEntryRow({
+  colSpan,
+  draft,
+  onDraftChange,
+  onAdd,
+  saving,
+}: {
+  colSpan: number;
+  draft: AddEntryDraft;
+  onDraftChange: (d: AddEntryDraft) => void;
+  onAdd: () => void;
+  saving: boolean;
+}) {
+  return (
+    <tr className="bg-[#0f1117]">
+      <td colSpan={colSpan} className="px-3 py-3">
+        <div className="flex flex-wrap gap-3 items-start">
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Ticker</span>
+            <input
+              value={draft.ticker}
+              onChange={(ev) => onDraftChange({ ...draft, ticker: ev.target.value.toUpperCase() })}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" && draft.ticker.trim()) onAdd();
+              }}
+              className={`${inputCls} w-24 uppercase`}
+              placeholder="AAPL"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Type</span>
+            <div className="relative">
+              <select
+                value={draft.asset_type}
+                onChange={(ev) => onDraftChange({ ...draft, asset_type: ev.target.value })}
+                className={`${inputCls} appearance-none cursor-pointer pr-6 w-full`}
+              >
+                {ASSET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[0.6rem]">▾</span>
+            </div>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Notes</span>
+            <input
+              value={draft.notes}
+              onChange={(ev) => onDraftChange({ ...draft, notes: ev.target.value })}
+              className={`${inputCls} w-40`}
+              placeholder="Optional"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Buy target</span>
+            <input
+              value={draft.target_buy}
+              onChange={(ev) => onDraftChange({ ...draft, target_buy: ev.target.value })}
+              className={`${inputCls} w-24 tabular-nums`}
+              placeholder="—"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Sell target</span>
+            <input
+              value={draft.target_sell}
+              onChange={(ev) => onDraftChange({ ...draft, target_sell: ev.target.value })}
+              className={`${inputCls} w-24 tabular-nums`}
+              placeholder="—"
+            />
+          </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-[0.65rem] invisible select-none">_</span>
+            <button
+              onClick={onAdd}
+              disabled={!draft.ticker.trim() || saving}
+              className="px-3 py-1.5 bg-[#252a40] border border-[#5060a0] text-slate-100 rounded text-xs hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {saving ? "Adding…" : "+ Add entry"}
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WatchlistRow — a single data row (view + inline-edit cells + action buttons)
+// ---------------------------------------------------------------------------
+
+type CellField = "notes" | "target_buy" | "target_sell";
+
+function WatchlistRow({
+  entry,
+  editing,
+  priceChgMode,
+  isDeleting,
+  isSaving,
+  isExpanded,
+  editingCell,
+  cellValue,
+  onCellChange,
+  onOpenCell,
+  onCommitCell,
+  onCancelCell,
+  onToggleExpand,
+  onToggleChart,
+  onDelete,
+}: {
+  entry: EnrichedEntry;
+  editing: boolean;
+  priceChgMode: "dollar" | "percent";
+  isDeleting: boolean;
+  isSaving: boolean;
+  isExpanded: boolean;
+  editingCell: { ticker: string; field: CellField } | null;
+  cellValue: string;
+  onCellChange: (v: string) => void;
+  onOpenCell: (field: CellField, raw: string) => void;
+  onCommitCell: (field: CellField, value: string) => void;
+  onCancelCell: () => void;
+  onToggleExpand: () => void;
+  onToggleChart: () => void;
+  onDelete: () => void;
+}) {
+  const e = entry;
+  const activeField = editingCell?.ticker === e.ticker ? editingCell.field : null;
+
+  return (
+    <tr className={`border-b border-[#2a2d3a] last:border-b-0 transition-colors ${isDeleting ? "opacity-40" : ""}`}>
+      <td className="px-2 sm:px-3 py-2 font-semibold">
+        <button
+          onClick={() => !editing && onToggleChart()}
+          disabled={editing}
+          className={`transition-colors ${editing ? "text-slate-100 cursor-default" : "hover:text-sky-400 cursor-pointer text-slate-100"}`}
+        >
+          {e.ticker}
+        </button>
+      </td>
+      <td className="hidden sm:table-cell px-2 sm:px-3 py-2 text-slate-500 text-xs">{e.asset_type}</td>
+      <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(e.current_price)}</td>
+      <td className={`px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(e.dayChgPrice)}`}>
+        {priceChgMode === "dollar" ? fmtChg(e.dayChgPrice) : fmtPct(e.dayChgPct)}
+      </td>
+      <td className={`hidden md:table-cell px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(e.sinceAdded)}`}>
+        {fmtPct(e.sinceAdded)}
+      </td>
+      <EditableCell
+        tdClassName="hidden lg:table-cell px-1 py-1"
+        inputClassName="w-20 tabular-nums text-right"
+        displayClassName="text-right tabular-nums text-slate-400"
+        isActive={activeField === "target_buy"}
+        editing={editing}
+        cellValue={cellValue}
+        onChange={onCellChange}
+        onOpen={() => onOpenCell("target_buy", e.target_buy != null ? String(e.target_buy) : "")}
+        onCommit={() => onCommitCell("target_buy", cellValue)}
+        onCancel={onCancelCell}
+      >
+        {fmtMoney(e.target_buy)}
+      </EditableCell>
+      <EditableCell
+        tdClassName="hidden lg:table-cell px-1 py-1"
+        inputClassName="w-20 tabular-nums text-right"
+        displayClassName="text-right tabular-nums text-slate-400"
+        isActive={activeField === "target_sell"}
+        editing={editing}
+        cellValue={cellValue}
+        onChange={onCellChange}
+        onOpen={() => onOpenCell("target_sell", e.target_sell != null ? String(e.target_sell) : "")}
+        onCommit={() => onCommitCell("target_sell", cellValue)}
+        onCancel={onCancelCell}
+      >
+        {fmtMoney(e.target_sell)}
+      </EditableCell>
+      <EditableCell
+        tdClassName="hidden xl:table-cell px-1 py-1 max-w-[200px]"
+        inputClassName="w-40"
+        displayClassName="text-xs truncate text-slate-500"
+        isActive={activeField === "notes"}
+        editing={editing}
+        cellValue={cellValue}
+        onChange={onCellChange}
+        onOpen={() => onOpenCell("notes", e.notes ?? "")}
+        onCommit={() => onCommitCell("notes", cellValue)}
+        onCancel={onCancelCell}
+      >
+        {e.notes || "—"}
+      </EditableCell>
+      {editing && (
+        <td className="px-2 py-2 text-right whitespace-nowrap">
+          <button
+            onClick={onToggleExpand}
+            disabled={isDeleting}
+            title={isExpanded ? "Close" : "Edit"}
+            className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer disabled:opacity-40 mr-3"
+          >
+            {isExpanded ? "✕" : "✏"}
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={isDeleting || isSaving}
+            title="Remove"
+            className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-40"
+          >
+            ✕
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // WatchlistTable — view + edit mode
 // ---------------------------------------------------------------------------
@@ -57,7 +414,7 @@ function WatchlistTable({
   savingTicker: string | null;
   deletingTicker: string | null;
   onDeleteRow: (ticker: string) => void;
-  onSaveRow: (ticker: string, fields: { notes: string; target_buy: number | null; target_sell: number | null }) => Promise<void>;
+  onSaveRow: (ticker: string, fields: { notes?: string; target_buy?: number | null; target_sell?: number | null }) => Promise<void>;
   addDraft: AddEntryDraft;
   onAddDraftChange: (d: AddEntryDraft) => void;
   onAddEntry: () => void;
@@ -66,23 +423,19 @@ function WatchlistTable({
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [chartTickers, setChartTickers] = useState<Set<string>>(new Set());
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
-  const [editNotes, setEditNotes] = useState("");
-  const [editBuy, setEditBuy] = useState("");
-  const [editSell, setEditSell] = useState("");
+
+  // Inline cell editing
+  const [editingCell, setEditingCell] = useState<{ ticker: string; field: "notes" | "target_buy" | "target_sell" } | null>(null);
+  const [cellValue, setCellValue] = useState("");
+  const cellSavedRef = useRef(false);
+  const origCellValueRef = useRef("");
 
   useEffect(() => {
-    if (!editing) setExpandedTicker(null);
-  }, [editing]);
-
-  useEffect(() => {
-    if (!expandedTicker) return;
-    const entry = entries.find((e) => e.ticker === expandedTicker);
-    if (entry) {
-      setEditNotes(entry.notes ?? "");
-      setEditBuy(entry.target_buy != null ? String(entry.target_buy) : "");
-      setEditSell(entry.target_sell != null ? String(entry.target_sell) : "");
+    if (!editing) {
+      setExpandedTicker(null);
+      setEditingCell(null);
     }
-  }, [expandedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editing]);
 
   function toggleExpand(ticker: string) {
     setExpandedTicker((prev) => (prev === ticker ? null : ticker));
@@ -96,13 +449,35 @@ function WatchlistTable({
     });
   }
 
-  async function handleSave(ticker: string) {
+  async function handleSave(ticker: string, notes: string, buy: string, sell: string) {
     await onSaveRow(ticker, {
-      notes: editNotes,
-      target_buy: parseOptFloat(editBuy),
-      target_sell: parseOptFloat(editSell),
+      notes,
+      target_buy: parseOptFloat(buy),
+      target_sell: parseOptFloat(sell),
     });
     setExpandedTicker(null);
+  }
+
+  function openCell(ticker: string, field: "notes" | "target_buy" | "target_sell", raw: string) {
+    cellSavedRef.current = false;
+    origCellValueRef.current = raw;
+    
+    setCellValue(raw);
+    setEditingCell({ ticker, field });
+  }
+
+  async function commitCell(ticker: string, field: "notes" | "target_buy" | "target_sell", value: string) {
+    if (cellSavedRef.current) return;
+    cellSavedRef.current = true;
+    setEditingCell(null);
+
+    if (value !== origCellValueRef.current) {
+      const fields: { notes?: string; target_buy?: number | null; target_sell?: number | null } = {};
+      if (field === "notes") fields.notes = value;
+      else if (field === "target_buy") fields.target_buy = parseOptFloat(value);
+      else if (field === "target_sell") fields.target_sell = parseOptFloat(value);
+      await onSaveRow(ticker, fields);
+    }
   }
 
   const enriched: EnrichedEntry[] = entries.map((e) => {
@@ -119,8 +494,6 @@ function WatchlistTable({
   });
 
   const COLS = editing ? 9 : 8;
-
-  const inputCls = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-slate-400";
 
   return (
     <table className="w-full text-sm border-collapse">
@@ -165,86 +538,34 @@ function WatchlistTable({
           const isDeleting = deletingTicker === e.ticker;
           return (
             <Fragment key={e.ticker}>
-              <tr className={`border-b border-[#2a2d3a] last:border-b-0 transition-colors ${isDeleting ? "opacity-40" : ""}`}>
-                <td className="px-2 sm:px-3 py-2 font-semibold">
-                  <button
-                    onClick={() => !editing && toggleChart(e.ticker)}
-                    disabled={editing}
-                    className={`transition-colors ${editing ? "text-slate-100 cursor-default" : "hover:text-sky-400 cursor-pointer text-slate-100"}`}
-                  >
-                    {e.ticker}
-                  </button>
-                </td>
-                <td className="hidden sm:table-cell px-2 sm:px-3 py-2 text-slate-500 text-xs">{e.asset_type}</td>
-                <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(e.current_price)}</td>
-                <td className={`px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(e.dayChgPrice)}`}>
-                  {priceChgMode === "dollar" ? fmtChg(e.dayChgPrice) : fmtPct(e.dayChgPct)}
-                </td>
-                <td className={`hidden md:table-cell px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(e.sinceAdded)}`}>
-                  {fmtPct(e.sinceAdded)}
-                </td>
-                <td className="hidden lg:table-cell px-2 sm:px-3 py-2 text-right tabular-nums text-slate-400">{fmtMoney(e.target_buy)}</td>
-                <td className="hidden lg:table-cell px-2 sm:px-3 py-2 text-right tabular-nums text-slate-400">{fmtMoney(e.target_sell)}</td>
-                <td className="hidden xl:table-cell px-2 sm:px-3 py-2 text-slate-500 text-xs truncate max-w-[200px]">{e.notes || "—"}</td>
-                {editing && (
-                  <td className="px-2 py-2 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => toggleExpand(e.ticker)}
-                      disabled={isDeleting}
-                      title={isExpanded ? "Close" : "Edit"}
-                      className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer disabled:opacity-40 mr-3"
-                    >
-                      {isExpanded ? "✕" : "✏"}
-                    </button>
-                    <button
-                      onClick={() => onDeleteRow(e.ticker)}
-                      disabled={isDeleting || isSaving}
-                      title="Remove"
-                      className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-40"
-                    >
-                      ✕
-                    </button>
-                  </td>
-                )}
-              </tr>
+              <WatchlistRow
+                entry={e}
+                editing={editing}
+                priceChgMode={priceChgMode}
+                isDeleting={isDeleting}
+                isSaving={isSaving}
+                isExpanded={isExpanded}
+                editingCell={editingCell}
+                cellValue={cellValue}
+                onCellChange={setCellValue}
+                onOpenCell={(field, raw) => openCell(e.ticker, field, raw)}
+                onCommitCell={(field, value) => commitCell(e.ticker, field, value)}
+                onCancelCell={() => { cellSavedRef.current = true; setEditingCell(null); }}
+                onToggleExpand={() => toggleExpand(e.ticker)}
+                onToggleChart={() => toggleChart(e.ticker)}
+                onDelete={() => onDeleteRow(e.ticker)}
+              />
 
               {isExpanded && (
-                <tr className="border-b border-[#2a2d3a] bg-[#151825]">
-                  <td colSpan={COLS} className="px-3 py-3">
-                    <div className="flex flex-wrap gap-3 items-start">
-                      <label className="flex flex-col gap-1">
-                        <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Notes</span>
-                        <input value={editNotes} onChange={(ev) => setEditNotes(ev.target.value)}
-                          className={`${inputCls} w-48`} placeholder="Optional" />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Buy target</span>
-                        <input value={editBuy} onChange={(ev) => setEditBuy(ev.target.value)}
-                          className={`${inputCls} w-28 tabular-nums`} placeholder="—" />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Sell target</span>
-                        <input value={editSell} onChange={(ev) => setEditSell(ev.target.value)}
-                          className={`${inputCls} w-28 tabular-nums`} placeholder="—"
-                          onKeyDown={(ev) => { if (ev.key === "Enter") handleSave(e.ticker); }} />
-                      </label>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[0.65rem] invisible select-none">_</span>
-                        <button onClick={() => handleSave(e.ticker)} disabled={isSaving}
-                          className="px-3 py-1 bg-[#252a40] border border-[#5060a0] text-slate-100 rounded text-xs hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50">
-                          {isSaving ? "Saving…" : "Save"}
-                        </button>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[0.65rem] invisible select-none">_</span>
-                        <button onClick={() => setExpandedTicker(null)}
-                          className="px-3 py-1 text-slate-400 hover:text-slate-200 text-xs transition-colors cursor-pointer">
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
+                <EditRow
+                  colSpan={COLS}
+                  initialNotes={e.notes ?? ""}
+                  initialBuy={e.target_buy != null ? String(e.target_buy) : ""}
+                  initialSell={e.target_sell != null ? String(e.target_sell) : ""}
+                  isSaving={isSaving}
+                  onSave={(notes, buy, sell) => handleSave(e.ticker, notes, buy, sell)}
+                  onCancel={() => setExpandedTicker(null)}
+                />
               )}
 
               {!editing && chartTickers.has(e.ticker) && (
@@ -259,55 +580,13 @@ function WatchlistTable({
         })}
 
         {editing && (
-          <tr className="bg-[#0f1117]">
-            <td colSpan={COLS} className="px-3 py-3">
-              <div className="flex flex-wrap gap-3 items-start">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Ticker</span>
-                  <input value={addDraft.ticker}
-                    onChange={(ev) => onAddDraftChange({ ...addDraft, ticker: ev.target.value.toUpperCase() })}
-                    onKeyDown={(ev) => { if (ev.key === "Enter" && addDraft.ticker.trim()) onAddEntry(); }}
-                    className={`${inputCls} w-24 uppercase`} placeholder="AAPL" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Type</span>
-                  <div className="relative">
-                    <select value={addDraft.asset_type}
-                      onChange={(ev) => onAddDraftChange({ ...addDraft, asset_type: ev.target.value })}
-                      className={`${inputCls} appearance-none cursor-pointer pr-6 w-full`}>
-                      {ASSET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[0.6rem]">▾</span>
-                  </div>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Notes</span>
-                  <input value={addDraft.notes}
-                    onChange={(ev) => onAddDraftChange({ ...addDraft, notes: ev.target.value })}
-                    className={`${inputCls} w-40`} placeholder="Optional" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Buy target</span>
-                  <input value={addDraft.target_buy}
-                    onChange={(ev) => onAddDraftChange({ ...addDraft, target_buy: ev.target.value })}
-                    className={`${inputCls} w-24 tabular-nums`} placeholder="—" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Sell target</span>
-                  <input value={addDraft.target_sell}
-                    onChange={(ev) => onAddDraftChange({ ...addDraft, target_sell: ev.target.value })}
-                    className={`${inputCls} w-24 tabular-nums`} placeholder="—" />
-                </label>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[0.65rem] invisible select-none">_</span>
-                  <button onClick={onAddEntry} disabled={!addDraft.ticker.trim() || addSaving}
-                    className="px-3 py-1.5 bg-[#252a40] border border-[#5060a0] text-slate-100 rounded text-xs hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50">
-                    {addSaving ? "Adding…" : "+ Add entry"}
-                  </button>
-                </div>
-              </div>
-            </td>
-          </tr>
+          <AddEntryRow
+            colSpan={COLS}
+            draft={addDraft}
+            onDraftChange={onAddDraftChange}
+            onAdd={onAddEntry}
+            saving={addSaving}
+          />
         )}
       </tbody>
     </table>
@@ -442,7 +721,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
 
   async function handleSaveRow(
     ticker: string,
-    fields: { notes: string; target_buy: number | null; target_sell: number | null }
+    fields: { notes?: string; target_buy?: number | null; target_sell?: number | null }
   ): Promise<void> {
     if (!selectedId) return;
     setSavingTicker(ticker);
@@ -482,7 +761,10 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
         {summaries.map((wl) => (
           <button
             key={wl.id}
-            onClick={() => { setSelectedId(wl.id); setCreating(false); }}
+            onClick={() => {
+            setSelectedId(wl.id);
+            setCreating(false);
+          }}
             className={[
               "px-3 py-1 text-xs font-medium rounded-full border transition-colors cursor-pointer",
               wl.id === selectedId && !creating
@@ -519,7 +801,10 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
               )
             )}
             <button
-              onClick={() => { setEditing((e) => !e); setDeleteConfirm(false); }}
+              onClick={() => {
+                setEditing((e) => !e);
+                setDeleteConfirm(false);
+              }}
               className={[
                 btnBase,
                 editing
@@ -533,7 +818,11 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
         )}
 
         <button
-          onClick={() => { setCreating(true); setEditing(false); setSelectedId(""); }}
+          onClick={() => {
+            setCreating(true);
+            setEditing(false);
+            setSelectedId("");
+          }}
           className={`${btnBase} border-[#2a2d3a] text-slate-400 hover:border-[#404868] hover:text-slate-300`}
         >
           + New
@@ -549,7 +838,11 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
             onChange={(ev) => setNewName(ev.target.value)}
             onKeyDown={(ev) => {
               if (ev.key === "Enter") handleCreateWatchlist();
-              if (ev.key === "Escape") { setCreating(false); setNewName(""); setSelectedId(summaries[0]?.id ?? ""); }
+              if (ev.key === "Escape") {
+                setCreating(false);
+                setNewName("");
+                setSelectedId(summaries[0]?.id ?? "");
+              }
             }}
             className="bg-[#0f1117] border border-[#404868] rounded px-3 py-1.5 text-sm text-slate-200 w-52 focus:outline-none focus:border-slate-400"
             placeholder="Watchlist name"
@@ -558,7 +851,12 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
             className="px-3 py-1.5 bg-[#252a40] border border-[#5060a0] text-slate-100 rounded text-xs hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50">
             {createSaving ? "Creating…" : "Create"}
           </button>
-          <button onClick={() => { setCreating(false); setNewName(""); setCreateError(null); setSelectedId(summaries[0]?.id ?? ""); }}
+          <button onClick={() => {
+            setCreating(false);
+            setNewName("");
+            setCreateError(null);
+            setSelectedId(summaries[0]?.id ?? "");
+          }}
             className="px-3 py-1.5 text-slate-400 hover:text-slate-200 text-xs transition-colors cursor-pointer">
             Cancel
           </button>

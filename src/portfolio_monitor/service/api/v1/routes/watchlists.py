@@ -140,8 +140,8 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
         auth = AuthContext.from_request(request)
         body = await request.json()
         _UNSET = object()
-        target_buy = float(body["target_buy"]) if "target_buy" in body else _UNSET
-        target_sell = float(body["target_sell"]) if "target_sell" in body else _UNSET
+        target_buy = (float(body["target_buy"]) if body["target_buy"] is not None else None) if "target_buy" in body else _UNSET
+        target_sell = (float(body["target_sell"]) if body["target_sell"] is not None else None) if "target_sell" in body else _UNSET
         wl = await watchlist_service.update_entry_fields(
             request.path_params["id"],
             request.path_params["ticker"].upper(),
