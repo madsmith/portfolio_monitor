@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   type WatchlistDetail,
@@ -7,6 +7,7 @@ import {
 } from "../../api/client";
 import { fmtChg, fmtMoney, fmtPct, plColor, prevCloseKey } from "../../lib/formatters";
 import { Chart } from "../Chart";
+import { DataTable, type ColDef } from "../DataTable";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -493,103 +494,80 @@ function WatchlistTable({
     return { ...e, current_price: price, dayChgPrice, dayChgPct, sinceAdded };
   });
 
-  const COLS = editing ? 9 : 8;
+  const columns: ColDef<EnrichedEntry>[] = [
+    { key: "ticker",     label: "Ticker",      align: "left",  sortValue: (e) => e.ticker,       defaultDir: "asc" },
+    { key: "type",       label: "Type",        align: "left",  sortValue: (e) => e.asset_type,   defaultDir: "asc", vis: "hidden sm:table-cell" },
+    { key: "price",      label: "Price",       align: "right", sortValue: (e) => e.current_price },
+    { key: "dayChg",     label: "Day Chg",     align: "right",
+      sortValue: (e) => priceChgMode === "dollar" ? e.dayChgPrice : e.dayChgPct,
+      badge: priceChgMode === "dollar" ? "$" : "%",
+      onBadge: () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
+    { key: "sinceAdded", label: "Since Added", align: "right", sortValue: (e) => e.sinceAdded,   vis: "hidden md:table-cell" },
+    { key: "buy",        label: "Buy",         align: "right", vis: "hidden lg:table-cell" },
+    { key: "sell",       label: "Sell",        align: "right", vis: "hidden lg:table-cell" },
+    { key: "notes",      label: "Notes",       align: "left",  vis: "hidden xl:table-cell" },
+    ...(editing ? [{ key: "actions", label: "", align: "right" as const }] : []),
+  ];
 
   return (
-    <table className="w-full text-sm border-collapse">
-      <thead>
-        <tr>
-          {(
-            [
-              ["Ticker",      "text-left",  ""],
-              ["Type",        "text-left",  "hidden sm:table-cell"],
-              ["Price",       "text-right", ""],
-              ["Day Chg",     "text-right", ""],
-              ["Since Added", "text-right", "hidden md:table-cell"],
-              ["Buy",         "text-right", "hidden lg:table-cell"],
-              ["Sell",        "text-right", "hidden lg:table-cell"],
-              ["Notes",       "text-left",  "hidden xl:table-cell"],
-              ...(editing ? [["", "text-right", ""]] : []),
-            ] as [string, string, string][]
-          ).map(([label, align, vis], i) => (
-            <th
-              key={i}
-              className={`${align} ${vis} text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-2 sm:px-3 py-2 border-b border-[#404868]`}
-            >
-              {label === "Day Chg" ? (
-                <span className="inline-flex items-center justify-end">
-                  Day Chg
-                  <span
-                    onClick={() => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar"))}
-                    className="ml-1 px-1 rounded bg-[#2a2d3a] text-slate-400 hover:text-slate-100 hover:bg-[#404868] cursor-pointer transition-colors normal-case tracking-normal font-normal"
-                  >
-                    {priceChgMode === "dollar" ? "$" : "%"}
-                  </span>
-                </span>
-              ) : label}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {enriched.map((e) => {
-          const isExpanded = expandedTicker === e.ticker;
-          const isSaving = savingTicker === e.ticker;
-          const isDeleting = deletingTicker === e.ticker;
-          return (
-            <Fragment key={e.ticker}>
-              <WatchlistRow
-                entry={e}
-                editing={editing}
-                priceChgMode={priceChgMode}
-                isDeleting={isDeleting}
+    <DataTable
+      columns={columns}
+      rows={enriched}
+      getKey={(e) => e.ticker}
+      renderRow={(e) => {
+        const isExpanded = expandedTicker === e.ticker;
+        const isSaving = savingTicker === e.ticker;
+        const isDeleting = deletingTicker === e.ticker;
+        return (
+          <>
+            <WatchlistRow
+              entry={e}
+              editing={editing}
+              priceChgMode={priceChgMode}
+              isDeleting={isDeleting}
+              isSaving={isSaving}
+              isExpanded={isExpanded}
+              editingCell={editingCell}
+              cellValue={cellValue}
+              onCellChange={setCellValue}
+              onOpenCell={(field, raw) => openCell(e.ticker, field, raw)}
+              onCommitCell={(field, value) => commitCell(e.ticker, field, value)}
+              onCancelCell={() => { cellSavedRef.current = true; setEditingCell(null); }}
+              onToggleExpand={() => toggleExpand(e.ticker)}
+              onToggleChart={() => toggleChart(e.ticker)}
+              onDelete={() => onDeleteRow(e.ticker)}
+            />
+            {isExpanded && (
+              <EditRow
+                colSpan={columns.length}
+                initialNotes={e.notes ?? ""}
+                initialBuy={e.target_buy != null ? String(e.target_buy) : ""}
+                initialSell={e.target_sell != null ? String(e.target_sell) : ""}
                 isSaving={isSaving}
-                isExpanded={isExpanded}
-                editingCell={editingCell}
-                cellValue={cellValue}
-                onCellChange={setCellValue}
-                onOpenCell={(field, raw) => openCell(e.ticker, field, raw)}
-                onCommitCell={(field, value) => commitCell(e.ticker, field, value)}
-                onCancelCell={() => { cellSavedRef.current = true; setEditingCell(null); }}
-                onToggleExpand={() => toggleExpand(e.ticker)}
-                onToggleChart={() => toggleChart(e.ticker)}
-                onDelete={() => onDeleteRow(e.ticker)}
+                onSave={(notes, buy, sell) => handleSave(e.ticker, notes, buy, sell)}
+                onCancel={() => setExpandedTicker(null)}
               />
-
-              {isExpanded && (
-                <EditRow
-                  colSpan={COLS}
-                  initialNotes={e.notes ?? ""}
-                  initialBuy={e.target_buy != null ? String(e.target_buy) : ""}
-                  initialSell={e.target_sell != null ? String(e.target_sell) : ""}
-                  isSaving={isSaving}
-                  onSave={(notes, buy, sell) => handleSave(e.ticker, notes, buy, sell)}
-                  onCancel={() => setExpandedTicker(null)}
-                />
-              )}
-
-              {!editing && chartTickers.has(e.ticker) && (
-                <tr className="border-b border-[#2a2d3a] last:border-b-0">
-                  <td colSpan={8} className="px-4 py-3 bg-[#0c0f18]">
-                    <Chart ticker={e.ticker} assetType={e.asset_type} />
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          );
-        })}
-
-        {editing && (
-          <AddEntryRow
-            colSpan={COLS}
-            draft={addDraft}
-            onDraftChange={onAddDraftChange}
-            onAdd={onAddEntry}
-            saving={addSaving}
-          />
-        )}
-      </tbody>
-    </table>
+            )}
+            {!editing && chartTickers.has(e.ticker) && (
+              <tr className="border-b border-[#2a2d3a] last:border-b-0">
+                <td colSpan={columns.length} className="px-4 py-3 bg-[#0c0f18]">
+                  <Chart ticker={e.ticker} assetType={e.asset_type} />
+                </td>
+              </tr>
+            )}
+          </>
+        );
+      }}
+      footer={editing ? (
+        <AddEntryRow
+          colSpan={columns.length}
+          draft={addDraft}
+          onDraftChange={onAddDraftChange}
+          onAdd={onAddEntry}
+          saving={addSaving}
+        />
+      ) : undefined}
+    />
   );
 }
 

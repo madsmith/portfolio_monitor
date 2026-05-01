@@ -21,11 +21,13 @@ export function DataTable<T>({
   rows,
   getKey,
   renderRow,
+  footer,
 }: {
   columns: ColDef<T>[];
   rows: T[];
   getKey: (row: T) => string;
   renderRow: (row: T) => React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   const [sortColKey, setSortColKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -100,6 +102,7 @@ export function DataTable<T>({
             {renderRow(row)}
           </React.Fragment>
         ))}
+        {footer}
       </tbody>
     </table>
   );
