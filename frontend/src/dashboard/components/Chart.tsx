@@ -184,6 +184,8 @@ export function Chart({
   showXIntercept = true,
   showYIntercept = true,
   compact = true,
+  defaultPeriodLabel,
+  onPeriodChange,
 }: {
   ticker: string;
   assetType: string;
@@ -207,8 +209,14 @@ export function Chart({
    * thin visual divider. Default: false.
    */
   compact?: boolean;
+  /** Initial period label to use when the chart first mounts. */
+  defaultPeriodLabel?: string;
+  /** Called when the user selects a new period. */
+  onPeriodChange?: (label: string) => void;
 }) {
-  const [period, setPeriod] = useState<Period>(PERIODS[1]);
+  const [period, setPeriod] = useState<Period>(
+    () => PERIODS.find((p) => p.label === defaultPeriodLabel) ?? PERIODS[1]
+  );
   const [data, setData] = useState<PriceAggregate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -360,7 +368,7 @@ export function Chart({
           {PERIODS.map((p) => (
             <button
               key={p.label}
-              onClick={() => setPeriod(p)}
+              onClick={() => { setPeriod(p); onPeriodChange?.(p.label); }}
               className={[
                 "px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer",
                 period.label === p.label

@@ -59,7 +59,12 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
   );
 }
 
-function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<string, number> }) {
+function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange }: {
+  assets: Asset[];
+  prevClose: Record<string, number>;
+  defaultPeriodLabel: string;
+  onPeriodChange: (label: string) => void;
+}) {
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
   const [chartTickers, setChartTickers] = useState<Set<string>>(new Set());
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
@@ -167,7 +172,7 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
             {hasChart && (
               <tr className="border-b border-[#2a2d3a] last:border-b-0">
                 <td colSpan={columns.length} className="px-4 py-3 bg-[#0c0f18]">
-                  <Chart ticker={a.ticker} assetType={a.asset_type} />
+                  <Chart ticker={a.ticker} assetType={a.asset_type} defaultPeriodLabel={defaultPeriodLabel} onPeriodChange={onPeriodChange} />
                 </td>
               </tr>
             )}
@@ -178,7 +183,13 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
   );
 }
 
-function AssetSection({ title, assets, prevClose }: { title: string; assets: Asset[]; prevClose: Record<string, number> }) {
+function AssetSection({ title, assets, prevClose, defaultPeriodLabel, onPeriodChange }: {
+  title: string;
+  assets: Asset[];
+  prevClose: Record<string, number>;
+  defaultPeriodLabel: string;
+  onPeriodChange: (label: string) => void;
+}) {
   if (assets.length === 0) return null;
   return (
     <div className="mb-5 last:mb-0">
@@ -186,7 +197,7 @@ function AssetSection({ title, assets, prevClose }: { title: string; assets: Ass
         {title}
       </h3>
       <div className="border border-[#404868] rounded-md overflow-hidden">
-        <AssetTable assets={assets} prevClose={prevClose} />
+        <AssetTable assets={assets} prevClose={prevClose} defaultPeriodLabel={defaultPeriodLabel} onPeriodChange={onPeriodChange} />
       </div>
     </div>
   );
@@ -204,6 +215,7 @@ export function PortfolioDetailPane({
   prevClose: Record<string, number>;
 }) {
   const navigate = useNavigate();
+  const [defaultPeriodLabel, setDefaultPeriodLabel] = useState("4H");
 
   if (loading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;
   if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;
@@ -251,9 +263,9 @@ export function PortfolioDetailPane({
           Performance →
         </button>
       </div>
-      <AssetSection title="Stocks" assets={detail.stocks} prevClose={prevClose} />
-      <AssetSection title="Currencies" assets={detail.currencies} prevClose={prevClose} />
-      <AssetSection title="Crypto" assets={detail.crypto} prevClose={prevClose} />
+      <AssetSection title="Stocks" assets={detail.stocks} prevClose={prevClose} defaultPeriodLabel={defaultPeriodLabel} onPeriodChange={setDefaultPeriodLabel} />
+      <AssetSection title="Currencies" assets={detail.currencies} prevClose={prevClose} defaultPeriodLabel={defaultPeriodLabel} onPeriodChange={setDefaultPeriodLabel} />
+      <AssetSection title="Crypto" assets={detail.crypto} prevClose={prevClose} defaultPeriodLabel={defaultPeriodLabel} onPeriodChange={setDefaultPeriodLabel} />
     </div>
   );
 }
