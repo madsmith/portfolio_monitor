@@ -114,30 +114,34 @@ function AssetTable({ assets, prevClose }: { assets: Asset[]; prevClose: Record<
         return (
           <>
             <tr
-              onClick={() => hasLots && toggleTicker(a.ticker)}
               className={[
                 "border-b border-[#2a2d3a] transition-colors",
                 !isExpanded ? "last:border-b-0" : "",
-                hasLots ? "cursor-pointer hover:bg-[#252a40]" : "",
                 isExpanded ? "bg-[#252a40]" : "",
               ].join(" ")}
             >
-              <td className="px-2 sm:px-3 py-2 font-semibold text-slate-100" onClick={(e) => { e.stopPropagation(); toggleChartTicker(a.ticker); }}>
-                <span className="inline-flex items-center gap-1.5">
+              <td className="px-2 sm:px-3 py-2 font-semibold text-slate-100">
+                <button
+                  onClick={() => toggleChartTicker(a.ticker)}
+                  className="hover:text-sky-400 transition-colors cursor-pointer"
+                >
+                  {a.ticker}
+                </button>
+              </td>
+              <td className="hidden sm:table-cell px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">
+                <span className="inline-flex items-center justify-end gap-1.5">
+                  {a.total_quantity}
                   {hasLots && (
-                    <span className="hidden sm:inline text-slate-500 text-[0.65rem]">
-                      {isExpanded ? "▾" : "▸"}
-                    </span>
+                    <button
+                      onClick={() => toggleTicker(a.ticker)}
+                      title="View lots"
+                      className="text-[#404868] hover:text-slate-400 transition-colors cursor-pointer leading-none"
+                    >
+                      ⓘ
+                    </button>
                   )}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleChartTicker(a.ticker); }}
-                    className="hover:text-sky-400 transition-colors cursor-pointer"
-                  >
-                    {a.ticker}
-                  </button>
                 </span>
               </td>
-              <td className="hidden sm:table-cell px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{a.total_quantity}</td>
               <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
               <td className={`px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
                 {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
