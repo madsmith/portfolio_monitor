@@ -28,14 +28,15 @@ def _load_portfolios_by_owner(portfolio_path: Path) -> dict[str, list[Portfolio]
         list(portfolio_path.glob("*/*.yaml")) + list(portfolio_path.glob("*/*.yml"))
     )
     for yaml_file in yaml_files:
-        owner = yaml_file.parent.name
+        folder_owner = yaml_file.parent.name
         try:
             with open(yaml_file) as f:
                 data = OmegaConf.load(f)
             if "name" not in data:
                 logger.warning("YAML file does not contain a portfolio: %s", yaml_file)
                 continue
-            portfolio = Portfolio.from_dict(dict(data), id_hash_seed=str(yaml_file))
+            owner = data.get("owner", folder_owner) or folder_owner
+            portfolio = Portfolio.from_dict(dict(data), id_hash_seed=str(yaml_file), owner=owner)
             by_owner.setdefault(owner, []).append(portfolio)
             logger.info(
                 "Loaded portfolio '%s' (owner=%s) from %s",
@@ -79,13 +80,13 @@ class PortfolioService:
     def get_portfolios(self, auth: "AuthContext") -> list[Portfolio]:
         """Return portfolios visible to *auth*.
 
-        Admins see all portfolios. Normal users see ``default/`` plus their own.
+        Admins see all portfolios. Normal users see portfolios they can read
+        (implicit: ``default/`` owner is world-readable, ``<name>/`` owner is
+        owner-only; explicit ``permissions:`` blocks override both).
         """
         if auth.is_admin and auth.username == "admin":
             return self.get_all_portfolios()
-        result = list(self._portfolios_by_owner.get("default", []))
-        result.extend(self._portfolios_by_owner.get(auth.username, []))
-        return result
+        return [p for p in self.get_all_portfolios() if p.can("read", auth.username)]
 
     def get_portfolio(self, id: str, auth: "AuthContext") -> Portfolio | None:
         """Return the portfolio with the given id, scoped by *auth*."""

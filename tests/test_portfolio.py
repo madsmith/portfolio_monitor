@@ -8,7 +8,7 @@ from decimal import Decimal
 import pytest
 
 from portfolio_monitor.core.currency import Currency, CurrencyType
-from portfolio_monitor.portfolio.portfolio import Asset, Lot, Portfolio
+from portfolio_monitor.portfolio.models import Asset, Lot, Portfolio
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 

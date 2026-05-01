@@ -2,17 +2,20 @@ from dataclasses import dataclass, field
 import hashlib
 from typing import Any
 
+from portfolio_monitor.core.permissions import PermissionMap, PermissionsHost
+
 from .watchlist_entry import WatchlistEntry
 
 
 @dataclass
-class Watchlist:
+class Watchlist(PermissionsHost):
     """A named collection of watched symbols owned by a user."""
 
     name: str
     id: str = ""
     owner: str = "default"
     entries: list[WatchlistEntry] = field(default_factory=list)
+    permissions: PermissionMap | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -31,14 +34,20 @@ class Watchlist:
         else:
             watchlist_id = data.get("id", "")
 
-        wl = cls(name=data["name"], id=watchlist_id, owner=owner)
+        perm_data = data.get("permissions")
+        permissions = PermissionMap.from_yaml(perm_data) if perm_data is not None else None
+
+        wl = cls(name=data["name"], id=watchlist_id, owner=owner, permissions=permissions)
         for entry_data in data.get("entries", []):
             wl.entries.append(WatchlistEntry.from_dict(entry_data))
         return wl
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "name": self.name,
             "id": self.id,
             "entries": [e.to_dict() for e in self.entries],
         }
+        if self.permissions is not None:
+            d["permissions"] = self.permissions.to_dict()
+        return d

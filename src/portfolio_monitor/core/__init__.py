@@ -15,6 +15,7 @@ from .datetime import (
     parse_period_parts,
 )
 from .events import EventBus
+from .permissions import PermissionMap, PermissionsHost, UserPermission
 
 __all__ = [
     "Currency",
@@ -30,4 +31,7 @@ __all__ = [
     "parse_date",
     "parse_period",
     "parse_period_parts",
+    "PermissionMap",
+    "PermissionsHost",
+    "UserPermission",
 ]

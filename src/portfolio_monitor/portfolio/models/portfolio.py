@@ -4,12 +4,13 @@ import hashlib
 from typing import Any
 
 from portfolio_monitor.core import Currency, CurrencyType
+from portfolio_monitor.core.permissions import PermissionMap, PermissionsHost
 from portfolio_monitor.service.types import AssetSymbol
 
 from .asset import Asset
 
 @dataclass
-class Portfolio:
+class Portfolio(PermissionsHost):
     """
     Represents a portfolio of assets.
     A portfolio can contain stocks and cryptocurrencies.
@@ -17,9 +18,11 @@ class Portfolio:
 
     name: str
     id: str = ""
+    owner: str = "default"
     stocks: list[Asset] = field(default_factory=list)
     currencies: list[Asset] = field(default_factory=list)
     crypto: list[Asset] = field(default_factory=list)
+    permissions: PermissionMap | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -72,13 +75,17 @@ class Portfolio:
         return (self.total_profit_loss._value / self.total_cost_basis._value) * 100
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], id_hash_seed: str | None = None) -> "Portfolio":
+    def from_dict(cls, data: dict[str, Any], id_hash_seed: str | None = None, owner: str = "default") -> "Portfolio":
         """Create a Portfolio from a dictionary."""
         if id_hash_seed:
             portfolio_id = hashlib.sha256(id_hash_seed.encode()).hexdigest()[:16]
         else:
             portfolio_id = data.get("id", "")
-        portfolio = cls(name=data["name"], id=portfolio_id)
+
+        perm_data = data.get("permissions")
+        permissions = PermissionMap.from_yaml(perm_data) if perm_data is not None else None
+
+        portfolio = cls(name=data["name"], id=portfolio_id, owner=owner, permissions=permissions)
 
         # Map asset types to their corresponding attribute names in Portfolio
         asset_type_map = (

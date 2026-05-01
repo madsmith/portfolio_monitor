@@ -33,7 +33,7 @@ def _load_watchlists_by_owner(watchlist_path: Path) -> dict[str, list[Watchlist]
         list(watchlist_path.glob("*/*.yaml")) + list(watchlist_path.glob("*/*.yml"))
     )
     for yaml_file in yaml_files:
-        owner = yaml_file.parent.name
+        folder_owner = yaml_file.parent.name
         try:
             with open(yaml_file) as f:
                 data = OmegaConf.load(f)
@@ -41,7 +41,8 @@ def _load_watchlists_by_owner(watchlist_path: Path) -> dict[str, list[Watchlist]
                 logger.warning("Watchlist file missing 'name': %s", yaml_file)
                 continue
             raw = OmegaConf.to_container(data, resolve=True)
-            wl = Watchlist.from_dict(raw, owner=owner)  # type: ignore[arg-type]
+            owner = raw.get("owner", folder_owner) or folder_owner
+            wl = Watchlist.from_dict(raw, owner=owner)
             by_owner.setdefault(owner, []).append(wl)
             logger.info("Loaded watchlist '%s' (owner=%s) from %s", wl.name, owner, yaml_file)
         except Exception:
@@ -91,7 +92,7 @@ class WatchlistService:
         return None
 
     def _can_write(self, wl: Watchlist, auth: "AuthContext") -> bool:
-        return (auth.is_admin and auth.username == "admin") or wl.owner == auth.username
+        return (auth.is_admin and auth.username == "admin") or wl.can("write", auth.username)
 
     # ------------------------------------------------------------------
     # Reads
@@ -103,9 +104,7 @@ class WatchlistService:
     def get_watchlists(self, auth: "AuthContext") -> list[Watchlist]:
         if auth.is_admin and auth.username == "admin":
             return self.get_all_watchlists()
-        result = list(self._by_owner.get("default", []))
-        result.extend(self._by_owner.get(auth.username, []))
-        return result
+        return [wl for wl in self.get_all_watchlists() if wl.can("read", auth.username)]
 
     def get_watchlist(self, id: str, auth: "AuthContext") -> Watchlist | None:
         for wl in self.get_watchlists(auth):
