@@ -121,6 +121,18 @@ class TestExplicitPermissions:
         assert shared_watchlist.can("read", "bob") is False
         assert shared_watchlist.can("write", "bob") is False
 
+    def test_owner_always_has_full_access_even_with_explicit_block(self, shared_watchlist: Watchlist):
+        # martin is the owner — full access regardless of what the permissions block says
+        assert shared_watchlist.can("read", "martin") is True
+        assert shared_watchlist.can("write", "martin") is True
+
+    def test_owner_has_access_even_when_not_listed_in_permissions(self):
+        # Owner is not mentioned in the permissions block at all
+        pm = PermissionMap.from_yaml({"alice": {"read": True, "write": False}})
+        wl = Watchlist(name="NotListed", owner="martin", permissions=pm)
+        assert wl.can("read", "martin") is True
+        assert wl.can("write", "martin") is True
+
     def test_explicit_overrides_default_owner_rule(self):
         # "default" owner would normally be world-readable, but an explicit
         # permissions block takes full control.
@@ -153,7 +165,8 @@ class TestWatchlistPermissionParsing:
         assert wl.permissions is not None
         assert wl.can("read", "alice") is True
         assert wl.can("write", "alice") is False
-        assert wl.can("read", "martin") is False  # not listed in explicit block
+        assert wl.can("read", "martin") is True   # owner always has access
+        assert wl.can("write", "martin") is True  # even if not listed in explicit block
 
     def test_from_dict_with_permissions_list(self):
         data = {

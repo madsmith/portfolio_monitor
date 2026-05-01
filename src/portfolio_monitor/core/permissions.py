@@ -83,11 +83,14 @@ class PermissionsHost:
 
     **Resolution order**:
 
-    1. If an explicit ``permissions`` block is present, only that is consulted —
-       unlisted users are denied.
-    2. Otherwise implicit rules apply:
+    1. The named owner always has full access (``"default"`` is a virtual owner,
+       not a real user, so this check is skipped for it).
+    2. If an explicit ``permissions`` block is present, it is consulted for all
+       other users — unlisted users are denied.
+    3. Implicit fallback (no explicit block):
        - ``owner == "default"``  → everyone can *read*, nobody can *write*.
-       - ``owner == <name>``     → only the owner can read **and** write.
+       - ``owner == <name>``     → only the owner can read **and** write
+         (already handled by rule 1).
 
     Admin bypass (e.g. ``auth.is_admin``) is intentionally kept in the service
     layer so this class stays free of auth concerns.
@@ -99,13 +102,17 @@ class PermissionsHost:
 
     def can(self, permission: str, username: str) -> bool:
         """Return ``True`` if *username* holds *permission* (``"read"`` or ``"write"``)."""
+        # The owner always has full access; "default" is a virtual folder owner, not a user.
+        if self.owner != "default" and self.owner == username:
+            return True
+
         if self.permissions is not None:
             entry = self.permissions.get(username)
             if entry is None:
                 return False
             return bool(getattr(entry, permission, False))
 
-        # Implicit rules
+        # Implicit fallback (no explicit permissions block)
         if self.owner == "default":
             return permission == "read"
-        return self.owner == username
+        return False
