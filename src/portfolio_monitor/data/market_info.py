@@ -197,6 +197,10 @@ class MarketInfo:
         dt = date.astimezone(_EASTERN)
         # Before pre-market open, we're still in the previous calendar day's session
         session_date = dt.date() if dt.time() >= _MARKET_PRE_OPEN_TIME else dt.date() - timedelta(days=1)
+        # Weekends have no session — carry back to the most recent trading day so
+        # Saturday/Sunday always resolve to the same session as Friday after-hours.
+        while session_date.weekday() >= 5:
+            session_date -= timedelta(days=1)
         candidate = session_date - timedelta(days=1)
         while candidate.weekday() >= 5:
             candidate -= timedelta(days=1)

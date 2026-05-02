@@ -368,10 +368,10 @@ class TestGetPreviousMarketCloseStock:
         prev = MarketInfo.get_previous_market_close(AAPL, et(2025, 6, 9, 10))
         assert prev == et(2025, 6, 6, 16)
 
-    def test_monday_early_morning_still_returns_friday(self) -> None:
-        # Before 04:00 on Monday: session_date=Sunday, candidate=Saturday→Friday
+    def test_monday_early_morning_returns_thursday(self) -> None:
+        # Before 04:00 on Monday: session_date=Sunday→rolls back to Friday, candidate=Thursday
         prev = MarketInfo.get_previous_market_close(AAPL, et(2025, 6, 9, 3))
-        assert prev == et(2025, 6, 6, 16)
+        assert prev == et(2025, 6, 5, 16)
 
     def test_tuesday_at_pre_market_boundary_returns_monday(self) -> None:
         # Exactly 04:00 ET on Tuesday: session_date=Tuesday, candidate=Monday
@@ -398,6 +398,28 @@ class TestGetPreviousMarketCloseStock:
         prev_et = prev.astimezone(_ET)
         assert prev_et.hour == 16
         assert prev_et.minute == 0
+
+    def test_saturday_after_hours_returns_thursday_close(self) -> None:
+        # Saturday 10:00 ET: weekend has no session, should carry back to Friday's
+        # session and return Thursday's close (not Friday's).
+        prev = MarketInfo.get_previous_market_close(AAPL, et(2025, 6, 7, 10))  # Saturday
+        assert prev == et(2025, 6, 5, 16)  # Thursday
+
+    def test_saturday_before_4am_returns_thursday_close(self) -> None:
+        # Saturday 03:00 ET: session_date rolls back to Friday, candidate=Thursday.
+        prev = MarketInfo.get_previous_market_close(AAPL, et(2025, 6, 7, 3))  # Saturday
+        assert prev == et(2025, 6, 5, 16)  # Thursday
+
+    def test_sunday_returns_thursday_close(self) -> None:
+        # Sunday is a weekend day — same result as Saturday.
+        prev = MarketInfo.get_previous_market_close(AAPL, et(2025, 6, 8, 10))  # Sunday
+        assert prev == et(2025, 6, 5, 16)  # Thursday
+
+    def test_friday_after_close_returns_thursday_close(self) -> None:
+        # Friday after market close (18:00 ET): still within Friday's session window,
+        # previous close is Thursday.
+        prev = MarketInfo.get_previous_market_close(AAPL, et(2025, 6, 6, 18))  # Friday
+        assert prev == et(2025, 6, 5, 16)  # Thursday
 
 
 # ---------------------------------------------------------------------------

@@ -12,8 +12,8 @@ from portfolio_monitor.watchlist.models import Watchlist, WatchlistEntry
 from portfolio_monitor.watchlist.service import WatchlistService
 
 
-def _entry_dict(entry: WatchlistEntry, fallback_price: float | None = None) -> dict:
-    price = float(entry.current_price._value) if entry.current_price is not None else fallback_price
+def _entry_dict(entry: WatchlistEntry, current_price: float | None = None) -> dict:
+    price = current_price
     return {
         "ticker": entry.symbol.ticker,
         "asset_type": entry.symbol.asset_type.value,
@@ -70,17 +70,21 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
         logfire_set_attribute("watchlist_id", request.path_params["id"])
         if wl is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        # For entries with no live price (e.g. market closed, new entry), fall back
-        # to get_aggregate which returns previous close when the market is closed.
-        fallbacks: dict[str, float] = {}
-        with logfire.span("watchlist.get.price_fallback", entry_count=len(wl.entries)):
+        # Always fetch the freshest available price via get_aggregate.
+        # entry.current_price is a runtime field driven by the server-side Polygon WS
+        # feed; it only updates while a client has that ticker subscribed, so it can
+        # be arbitrarily stale.  get_aggregate returns the most recent bar from the
+        # REST-backed aggregate cache (or falls back to entry.current_price if None).
+        prices: dict[str, float] = {}
+        with logfire.span("watchlist.get.prices", entry_count=len(wl.entries)):
             for entry in wl.entries:
-                if entry.current_price is None:
-                    agg = await data_provider.get_aggregate(entry.symbol)
-                    if agg is not None:
-                        fallbacks[entry.symbol.ticker] = agg.close
-            logfire_set_attribute("fallback_count", len(fallbacks))
-        entries = [_entry_dict(e, fallbacks.get(e.symbol.ticker)) for e in wl.entries]
+                agg = await data_provider.get_aggregate(entry.symbol)
+                if agg is not None:
+                    prices[entry.symbol.ticker] = agg.close
+                elif entry.current_price is not None:
+                    prices[entry.symbol.ticker] = float(entry.current_price._value)
+            logfire_set_attribute("fetched_count", len(prices))
+        entries = [_entry_dict(e, prices.get(e.symbol.ticker)) for e in wl.entries]
         return JSONResponse({"id": wl.id, "name": wl.name, "owner": wl.owner, "entries": entries})
 
     @logfire.instrument("api.watchlists.delete")
