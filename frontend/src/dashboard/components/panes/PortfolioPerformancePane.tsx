@@ -80,10 +80,30 @@ function PerfCell({ pct }: { pct: number | null }) {
 
 
 function SparklineView({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
+  const [hoverFraction, setHoverFraction] = useState<number | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  function handleHover(id: string, fraction: number | null) {
+    setHoverFraction(fraction);
+    setHoveredId(fraction !== null ? id : null);
+  }
+
   return (
     <div className="border border-[#404868] rounded-md overflow-hidden">
       {assetPerfs.map(({ asset, days, prices, error }) => {
+        const id = `${asset.ticker}-${asset.asset_type}`;
         const yr = prices ? pctChange(asset.current_price, prices["1y"]) : null;
+
+        // When hovering, show % gain at the hovered position instead of the static 1Y value
+        const hoverPct = (hoverFraction !== null && days !== null && days.length >= 2)
+          ? (() => {
+              const idx = Math.round(hoverFraction * (days.length - 1));
+              return ((days[idx].close - days[0].close) / days[0].close) * 100;
+            })()
+          : null;
+
+        const displayPct = hoverPct !== null ? hoverPct : yr;
+
         return (
           <div
             key={`${asset.ticker}:${asset.asset_type}`}
@@ -104,12 +124,20 @@ function SparklineView({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
               ) : prices === null ? (
                 <span className="text-slate-600 text-xs">loading…</span>
               ) : (
-                <PctBadge pct={yr} />
+                <PctBadge pct={displayPct} />
               )}
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 pt-3">
               {!error && days !== null && (
-                <Sparkline id={`${asset.ticker}-${asset.asset_type}`} values={days.map((d) => d.close)} height={40} />
+                <Sparkline
+                  id={id}
+                  values={days.map((d) => d.close)}
+                  labels={days.map((d) => d.date)}
+                  height={40}
+                  hoverFraction={hoverFraction}
+                  onHoverFraction={(f) => handleHover(id, f)}
+                  showTooltip={hoveredId === id}
+                />
               )}
             </div>
           </div>

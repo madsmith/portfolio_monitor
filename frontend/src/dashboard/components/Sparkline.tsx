@@ -36,6 +36,12 @@ function splitAtZero(
   return segments;
 }
 
+// Format a "YYYY-MM-DD" date string to a short "Jan 5" label for hover display.
+function fmtShortDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00Z");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 /**
  * Normalized percent-change sparkline.
  *
@@ -43,24 +49,54 @@ function splitAtZero(
  * The zero baseline (starting price) divides the chart into green (above) and
  * red (below) segments. Segments crossing zero are split at the exact intercept.
  *
+ * Basic usage (no hover):
+ *   <Sparkline id="AAPL" values={closes} height={40} />
+ *
+ * Group hover usage (synchronized across multiple sparklines):
+ *   <Sparkline
+ *     id="AAPL"
+ *     values={closes}
+ *     labels={dates}                  // ISO date strings per point, for tooltip
+ *     height={40}
+ *     hoverFraction={sharedFraction}  // 0–1 x position driven by the group
+ *     onHoverFraction={setFraction}   // reports this sparkline's cursor position
+ *     showTooltip={isActiveSparkline} // only the sparkline under cursor shows text
+ *   />
+ *
  * Props:
- *   id      — unique string used to scope SVG gradient IDs; must be stable across renders
- *   values  — raw price (or any numeric) series, left-to-right chronological order
- *   height  — rendered height in px; width expands to fill the container
- *   positiveColor / negativeColor — override the default green/red colors
+ *   id               — unique string used to scope SVG gradient IDs; must be stable across renders
+ *   values           — raw price (or any numeric) series, left-to-right chronological order
+ *   labels           — optional parallel array of strings (e.g. ISO dates) shown in hover tooltip
+ *   height           — rendered height in px; width expands to fill the container
+ *   positiveColor    — override the default green line/fill color
+ *   negativeColor    — override the default red line/fill color
+ *   hoverFraction    — incoming shared x position (0–1); renders intercept line + dot on all group members
+ *   onHoverFraction  — reports this sparkline's cursor x fraction to the parent group coordinator
+ *   showTooltip      — when true, renders the % value + date label at the intercept (only the active sparkline)
  */
 export function Sparkline({
   id,
   values,
+  labels,
   height,
   positiveColor = SPARK_GREEN,
   negativeColor = SPARK_RED,
+  hoverFraction = null,
+  onHoverFraction,
+  showTooltip = false,
 }: {
   id: string;
   values: number[];
+  labels?: string[];
   height: number;
   positiveColor?: string;
   negativeColor?: string;
+  /** Incoming shared x position (0–1); renders an intercept line on this sparkline. */
+  hoverFraction?: number | null;
+  /** Called with the cursor's x fraction (0–1) as the mouse moves, or null on leave. */
+  onHoverFraction?: (fraction: number | null) => void;
+  /** When true, renders the % value + date label next to the intercept. */
+  showTooltip?: boolean;
 }) {
   const W = 400; // internal viewBox width; CSS scales to container
 
@@ -115,9 +151,43 @@ export function Sparkline({
   const posId = `spark-pos-${id}`;
   const negId = `spark-neg-${id}`;
 
+  // Compute the hovered intercept point from the incoming fraction.
+  // ix is the SVG x coordinate; nearestIdx snaps to the closest data point.
+  const intercept = hoverFraction !== null ? (() => {
+    const ix = PAD.left + hoverFraction * plotW;
+    const nearestIdx = Math.round(hoverFraction * (pcts.length - 1));
+    const pct = pcts[nearestIdx];
+    const iy = yScale(pct);
+    const color = pct >= 0 ? positiveColor : negativeColor;
+    const label = labels?.[nearestIdx];
+    // Keep the tooltip text anchor within the horizontal chart bounds
+    const tipX = Math.max(PAD.left + 22, Math.min(ix, PAD.left + plotW - 22));
+    const tipSign = pct >= 0 ? "+" : "";
+    const tipText = label
+      ? `${tipSign}${pct.toFixed(1)}% · ${fmtShortDate(label)}`
+      : `${tipSign}${pct.toFixed(1)}%`;
+    return { ix, iy, color, tipX, tipText };
+  })() : null;
+
+  // Report the cursor's x fraction whenever the mouse moves over this SVG.
+  // Fraction is computed in CSS space (clientX / rendered width) so it's
+  // independent of the SVG viewBox scale and always in [0, 1].
+  function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    if (!onHoverFraction) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    onHoverFraction(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+  }
+
   return (
-    <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} preserveAspectRatio="none"
-      className="overflow-visible">
+    <svg
+      viewBox={`0 0 ${W} ${height}`}
+      width="100%"
+      height={height}
+      preserveAspectRatio="none"
+      className="overflow-visible"
+      onMouseMove={onHoverFraction ? handleMouseMove : undefined}
+      onMouseLeave={onHoverFraction ? () => onHoverFraction(null) : undefined}
+    >
       <defs>
         {/* Positive gradient: opaque at the top (where the line is), fades down to the baseline */}
         <linearGradient id={posId} x1="0" y1="0" x2="0" y2="1">
@@ -147,6 +217,37 @@ export function Sparkline({
           stroke={seg.positive ? positiveColor : negativeColor} strokeWidth={1.5}
           strokeLinejoin="round" strokeLinecap="round" />
       ))}
+
+      {/* Hover intercept — rendered on all group members whenever hoverFraction is set */}
+      {intercept !== null && (
+        <g>
+          {/* Vertical crosshair line spanning the full plot height */}
+          <line
+            x1={intercept.ix} y1={PAD.top}
+            x2={intercept.ix} y2={PAD.top + plotH}
+            stroke="#94a3b8" strokeWidth={0.75} strokeDasharray="2 2" opacity={0.7}
+          />
+          {/* Dot snapped to the nearest price point on the line */}
+          <circle
+            cx={intercept.ix} cy={intercept.iy} r={2.5}
+            fill={intercept.color} stroke="#0f1117" strokeWidth={1}
+          />
+          {/* Tooltip text — only on the sparkline actually under the cursor.
+              Rendered above the viewBox (negative y) and made visible by overflow-visible;
+              the row's padding provides the vertical clearance. */}
+          {showTooltip && (
+            <text
+              x={intercept.tipX} y={-3}
+              textAnchor="middle"
+              fontSize="7.5"
+              fontWeight="400"
+              fill={intercept.color}
+            >
+              {intercept.tipText}
+            </text>
+          )}
+        </g>
+      )}
     </svg>
   );
 }
