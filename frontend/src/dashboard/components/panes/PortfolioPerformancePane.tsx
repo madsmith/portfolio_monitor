@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Asset, type DailyClose, type PortfolioDetail } from "../../api/client";
 import { fmtMoney, fmtPct } from "../../lib/formatters";
+import { type ChartSettings, type MomentumWindow, loadChartSettings, saveChartSettings, chartLabel } from "../../lib/chartSettings";
 import { Sparkline } from "../Sparkline";
+import { ChartControlsButton } from "../ChartControls";
 
 type PeriodKey = "1d" | "1w" | "1m" | "3m" | "6m" | "1y";
 
@@ -14,10 +16,6 @@ const PERIODS: { key: PeriodKey; label: string; days: number; window: number }[]
   { key: "6m", label: "6M",  days: 180, window: 14 },
   { key: "1y", label: "1Y",  days: 365, window: 30 },
 ];
-
-type MomentumWindow = 3 | 5 | 7;
-type MomentumMode = { kind: "momentum"; window: MomentumWindow };
-type ViewMode = "table" | "return" | MomentumMode;
 
 function daysAgoDate(days: number): string {
   const d = new Date();
@@ -48,8 +46,11 @@ function pctChange(current: number | null, historic: number | null): number | nu
   return ((current - historic) / historic) * 100;
 }
 
-// Rolling average of daily returns over `windowSize` days.
-// Returns values already in % units (no further normalization needed).
+function sliceDays(days: DailyClose[], limitDays: number): DailyClose[] {
+  const cutoff = daysAgoDate(limitDays);
+  return days.filter((d) => d.date >= cutoff);
+}
+
 function momentumSeries(days: DailyClose[], windowSize: number): { values: number[]; labels: string[] } {
   const values: number[] = [];
   const labels: string[] = [];
@@ -94,7 +95,7 @@ function PerfCell({ pct }: { pct: number | null }) {
   );
 }
 
-function SparklineView({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
+function SparklineView({ assetPerfs, chartDays }: { assetPerfs: AssetPerf[]; chartDays: number }) {
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -105,53 +106,54 @@ function SparklineView({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
 
   return (
     <div className="border border-[#404868] rounded-md overflow-hidden">
-      {assetPerfs.map(({ asset, days, prices, error }) => {
+      {assetPerfs.map(({ asset, days, error }) => {
         const id = `${asset.ticker}-${asset.asset_type}`;
-        const yr = prices ? pctChange(asset.current_price, prices["1y"]) : null;
+        const visible = days !== null ? sliceDays(days, chartDays) : null;
+        const rangeReturn = visible && visible.length > 0
+          ? pctChange(asset.current_price, visible[0].close)
+          : null;
 
-        const hoverPct = (hoverFraction !== null && days !== null && days.length >= 2)
+        const hoverPct = (hoverFraction !== null && visible !== null && visible.length >= 2)
           ? (() => {
-              const idx = Math.round(hoverFraction * (days.length - 1));
-              return ((days[idx].close - days[0].close) / days[0].close) * 100;
+              const idx = Math.round(hoverFraction * (visible.length - 1));
+              return ((visible[idx].close - visible[0].close) / visible[0].close) * 100;
             })()
           : null;
 
-        const displayPct = hoverPct !== null ? hoverPct : yr;
+        const displayPct = hoverPct !== null ? hoverPct : rangeReturn;
 
         return (
           <div
             key={`${asset.ticker}:${asset.asset_type}`}
             className="flex items-center gap-3 px-3 py-2.5 border-b border-[#2a2d3a] last:border-b-0"
           >
-            <div className="w-24 shrink-0">
-              <span className="font-semibold text-sm text-slate-100">{asset.ticker}</span>
-              <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">
-                {asset.asset_type}
-              </span>
-            </div>
-            <div className="hidden sm:block w-20 shrink-0 text-right tabular-nums text-slate-300 text-sm">
-              {fmtMoney(asset.current_value)}
-            </div>
-            <div className="w-16 shrink-0 text-right">
-              {error ? (
-                <span className="text-slate-600 text-xs">unavailable</span>
-              ) : prices === null ? (
-                <span className="text-slate-600 text-xs">loading…</span>
-              ) : (
-                <PctBadge pct={displayPct} />
-              )}
+            <div className="w-28 shrink-0">
+              <div>
+                <span className="font-semibold text-sm text-slate-100">{asset.ticker}</span>
+                <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">{asset.asset_type}</span>
+              </div>
+              <div className="text-xs text-slate-500 tabular-nums">{fmtMoney(asset.current_value)}</div>
             </div>
             <div className="flex-1 min-w-0 pt-3">
-              {!error && days !== null && (
+              {!error && visible !== null && (
                 <Sparkline
                   id={id}
-                  values={days.map((d) => d.close)}
-                  labels={days.map((d) => d.date)}
+                  values={visible.map((d) => d.close)}
+                  labels={visible.map((d) => d.date)}
                   height={40}
                   hoverFraction={hoverFraction}
                   onHoverFraction={(f) => handleHover(id, f)}
                   showTooltip={hoveredId === id}
                 />
+              )}
+            </div>
+            <div className="w-16 shrink-0 text-right">
+              {error ? (
+                <span className="text-slate-600 text-xs">unavailable</span>
+              ) : days === null ? (
+                <span className="text-slate-600 text-xs">loading…</span>
+              ) : (
+                <PctBadge pct={displayPct} />
               )}
             </div>
           </div>
@@ -161,7 +163,11 @@ function SparklineView({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
   );
 }
 
-function MomentumView({ assetPerfs, windowSize }: { assetPerfs: AssetPerf[]; windowSize: MomentumWindow }) {
+function MomentumView({ assetPerfs, windowSize, chartDays }: {
+  assetPerfs: AssetPerf[];
+  windowSize: MomentumWindow;
+  chartDays: number;
+}) {
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -174,7 +180,7 @@ function MomentumView({ assetPerfs, windowSize }: { assetPerfs: AssetPerf[]; win
     <div className="border border-[#404868] rounded-md overflow-hidden">
       {assetPerfs.map(({ asset, days, error }) => {
         const id = `${asset.ticker}-${asset.asset_type}-mom`;
-        const series = days !== null ? momentumSeries(days, windowSize) : null;
+        const series = days !== null ? momentumSeries(sliceDays(days, chartDays), windowSize) : null;
         const currentMom = series && series.values.length > 0
           ? series.values[series.values.length - 1]
           : null;
@@ -190,23 +196,12 @@ function MomentumView({ assetPerfs, windowSize }: { assetPerfs: AssetPerf[]; win
             key={`${asset.ticker}:${asset.asset_type}`}
             className="flex items-center gap-3 px-3 py-2.5 border-b border-[#2a2d3a] last:border-b-0"
           >
-            <div className="w-24 shrink-0">
-              <span className="font-semibold text-sm text-slate-100">{asset.ticker}</span>
-              <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">
-                {asset.asset_type}
-              </span>
-            </div>
-            <div className="hidden sm:block w-20 shrink-0 text-right tabular-nums text-slate-300 text-sm">
-              {fmtMoney(asset.current_value)}
-            </div>
-            <div className="w-16 shrink-0 text-right">
-              {error ? (
-                <span className="text-slate-600 text-xs">unavailable</span>
-              ) : days === null ? (
-                <span className="text-slate-600 text-xs">loading…</span>
-              ) : (
-                <PctBadge pct={displayPct} />
-              )}
+            <div className="w-28 shrink-0">
+              <div>
+                <span className="font-semibold text-sm text-slate-100">{asset.ticker}</span>
+                <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">{asset.asset_type}</span>
+              </div>
+              <div className="text-xs text-slate-500 tabular-nums">{fmtMoney(asset.current_value)}</div>
             </div>
             <div className="flex-1 min-w-0 pt-3">
               {!error && series !== null && series.values.length > 1 && (
@@ -222,80 +217,18 @@ function MomentumView({ assetPerfs, windowSize }: { assetPerfs: AssetPerf[]; win
                 />
               )}
             </div>
+            <div className="w-16 shrink-0 text-right">
+              {error ? (
+                <span className="text-slate-600 text-xs">unavailable</span>
+              ) : days === null ? (
+                <span className="text-slate-600 text-xs">loading…</span>
+              ) : (
+                <PctBadge pct={displayPct} />
+              )}
+            </div>
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function ChartsDropdown({ viewMode, setViewMode }: {
-  viewMode: ViewMode;
-  setViewMode: (v: ViewMode) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  const isChart = viewMode !== "table";
-  const label = !isChart ? "Charts"
-    : viewMode === "return" ? "Return"
-    : `Momentum ${(viewMode as MomentumMode).window}D`;
-
-  const options: { label: string; mode: ViewMode }[] = [
-    { label: "Return",         mode: "return" },
-    { label: "Momentum · 3D",  mode: { kind: "momentum", window: 3 } },
-    { label: "Momentum · 5D",  mode: { kind: "momentum", window: 5 } },
-    { label: "Momentum · 7D",  mode: { kind: "momentum", window: 7 } },
-  ];
-
-  function modeKey(m: ViewMode): string {
-    if (m === "table" || m === "return") return m;
-    return `momentum-${(m as MomentumMode).window}`;
-  }
-
-  function isActive(m: ViewMode): boolean {
-    if (typeof m === "string") return viewMode === m;
-    if (typeof viewMode === "object") return (viewMode as MomentumMode).window === (m as MomentumMode).window;
-    return false;
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={`px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer flex items-center gap-0.5 ${
-          isChart ? "bg-[#404868] text-slate-100" : "text-slate-500 hover:text-slate-300"
-        }`}
-      >
-        {label}
-        <span className="opacity-50 text-[0.55rem] ml-0.5">▾</span>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 bg-[#1e2130] border border-[#404868] rounded-md shadow-lg z-10 min-w-[148px] py-1">
-          {options.map((opt) => (
-            <button
-              key={modeKey(opt.mode)}
-              onClick={() => { setViewMode(opt.mode); setOpen(false); }}
-              className={`block w-full text-left px-3 py-1.5 text-xs transition-colors cursor-pointer ${
-                isActive(opt.mode)
-                  ? "text-slate-100 bg-[#2a2d3a]"
-                  : "text-slate-400 hover:text-slate-100 hover:bg-[#2a2d3a]"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -343,24 +276,14 @@ function PerformanceTable({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-[#404868]">
-            <th
-              onClick={() => handleSort("ticker", "asc")}
-              className={`text-left text-slate-500 ${thBase}`}
-            >
+            <th onClick={() => handleSort("ticker", "asc")} className={`text-left text-slate-500 ${thBase}`}>
               <span className="inline-flex items-center">Asset {sortIndicator("ticker")}</span>
             </th>
-            <th
-              onClick={() => handleSort("value")}
-              className={`text-right text-slate-500 ${thBase} hidden sm:table-cell`}
-            >
+            <th onClick={() => handleSort("value")} className={`text-right text-slate-500 ${thBase} hidden sm:table-cell`}>
               <span className="inline-flex items-center justify-end">Value {sortIndicator("value")}</span>
             </th>
             {PERIODS.map((p) => (
-              <th
-                key={p.key}
-                onClick={() => handleSort(p.key)}
-                className={`text-right text-slate-500 ${thBase} px-1.5`}
-              >
+              <th key={p.key} onClick={() => handleSort(p.key)} className={`text-right text-slate-500 ${thBase} px-1.5`}>
                 <span className="inline-flex items-center justify-end">{p.label} {sortIndicator(p.key)}</span>
               </th>
             ))}
@@ -368,27 +291,18 @@ function PerformanceTable({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
         </thead>
         <tbody>
           {sorted.map(({ asset, prices, error }) => (
-            <tr
-              key={`${asset.ticker}:${asset.asset_type}`}
-              className="border-b border-[#2a2d3a] last:border-b-0"
-            >
+            <tr key={`${asset.ticker}:${asset.asset_type}`} className="border-b border-[#2a2d3a] last:border-b-0">
               <td className="px-3 py-2 font-semibold text-slate-100">
                 {asset.ticker}
-                <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">
-                  {asset.asset_type}
-                </span>
+                <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">{asset.asset_type}</span>
               </td>
               <td className="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-slate-300">
                 {fmtMoney(asset.current_value)}
               </td>
               {error ? (
-                <td colSpan={PERIODS.length} className="px-3 py-2 text-right text-xs text-slate-600">
-                  unavailable
-                </td>
+                <td colSpan={PERIODS.length} className="px-3 py-2 text-right text-xs text-slate-600">unavailable</td>
               ) : prices === null ? (
-                <td colSpan={PERIODS.length} className="px-3 py-2 text-right text-xs text-slate-600">
-                  loading…
-                </td>
+                <td colSpan={PERIODS.length} className="px-3 py-2 text-right text-xs text-slate-600">loading…</td>
               ) : (
                 PERIODS.map((p) => (
                   <PerfCell key={p.key} pct={pctChange(asset.current_price, prices[p.key])} />
@@ -413,7 +327,13 @@ export function PortfolioPerformancePane({
 }) {
   const navigate = useNavigate();
   const [assetPerfs, setAssetPerfs] = useState<AssetPerf[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [isChart, setIsChart] = useState(false);
+  const [settings, setSettings] = useState<ChartSettings>(loadChartSettings);
+
+  function handleSettings(s: ChartSettings) {
+    setSettings(s);
+    saveChartSettings(s);
+  }
 
   useEffect(() => {
     if (!detail) return;
@@ -462,13 +382,18 @@ export function PortfolioPerformancePane({
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-base font-semibold text-slate-100">{detail.name} — Performance</h2>
+        <h2 className="text-base font-semibold text-slate-100">{detail.name} — {isChart ? chartLabel(settings) : "Performance"}</h2>
         <div className="flex items-center gap-3">
           <div className="flex gap-1">
-            <button onClick={() => setViewMode("table")} className={btnClass(viewMode === "table")}>
+            <button onClick={() => setIsChart(false)} className={btnClass(!isChart)}>
               Table
             </button>
-            <ChartsDropdown viewMode={viewMode} setViewMode={setViewMode} />
+            <ChartControlsButton
+              isChart={isChart}
+              onToggle={() => setIsChart((v) => !v)}
+              settings={settings}
+              onSettings={handleSettings}
+            />
           </div>
           <button
             onClick={() => navigate(`/portfolio/${detail.id}`)}
@@ -480,12 +405,16 @@ export function PortfolioPerformancePane({
       </div>
       {assetPerfs.length === 0 ? (
         <p className="text-slate-500 text-sm">No assets.</p>
-      ) : viewMode === "table" ? (
+      ) : !isChart ? (
         <PerformanceTable assetPerfs={assetPerfs} />
-      ) : viewMode === "return" ? (
-        <SparklineView assetPerfs={assetPerfs} />
+      ) : settings.chartType === "return" ? (
+        <SparklineView assetPerfs={assetPerfs} chartDays={settings.chartRange} />
       ) : (
-        <MomentumView assetPerfs={assetPerfs} windowSize={(viewMode as MomentumMode).window} />
+        <MomentumView
+          assetPerfs={assetPerfs}
+          windowSize={settings.momentumWindow}
+          chartDays={settings.chartRange}
+        />
       )}
     </div>
   );
