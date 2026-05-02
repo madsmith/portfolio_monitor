@@ -95,6 +95,10 @@ export function ChartControlsButton({
               onClick={() => onSettings({ ...settings, chartType: "momentum" })}>
               Momentum
             </button>
+            <button className={pill(settings.chartType === "volume")}
+              onClick={() => onSettings({ ...settings, chartType: "volume" })}>
+              Volume
+            </button>
           </div>
           {settings.chartType === "momentum" && (
             <div className="flex gap-1 mb-3 pl-1">
@@ -106,7 +110,7 @@ export function ChartControlsButton({
               ))}
             </div>
           )}
-          {settings.chartType === "return" && <div className="mb-3" />}
+          {settings.chartType !== "momentum" && <div className="mb-3" />}
 
           <p className="text-[0.6rem] uppercase tracking-wide text-slate-500 mb-1.5">Range</p>
           <div className="flex gap-1">

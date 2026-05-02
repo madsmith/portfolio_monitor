@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type DailyClose, type WatchlistDetail } from "../../api/client";
-import { fmtMoney, fmtPct } from "../../lib/formatters";
+import { fmtMoney, fmtPct, fmtVol } from "../../lib/formatters";
 import { type ChartSettings, type MomentumWindow, loadChartSettings, saveChartSettings, chartLabel } from "../../lib/chartSettings";
 import { Sparkline } from "../Sparkline";
+import { VolumeBars } from "../VolumeBars";
 import { ChartControlsButton } from "../ChartControls";
 
 type PeriodKey = "1d" | "1w" | "1m" | "3m" | "6m" | "1y";
@@ -311,6 +312,73 @@ function MomentumView({ entryPerfs, windowSize, chartDays }: {
   );
 }
 
+function VolumeView({ entryPerfs, chartDays }: { entryPerfs: EntryPerf[]; chartDays: number }) {
+  const [hoverFraction, setHoverFraction] = useState<number | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  function handleHover(id: string, fraction: number | null) {
+    setHoverFraction(fraction);
+    setHoveredId(fraction !== null ? id : null);
+  }
+
+  return (
+    <div className="border border-[#404868] rounded-md overflow-hidden">
+      {entryPerfs.map(({ ticker, asset_type, current_price, days, error }) => {
+        const id = `${ticker}-${asset_type}-vol`;
+        const visible = days !== null ? sliceDays(days, chartDays) : null;
+
+        const nearestIdx = (hoverFraction !== null && visible !== null && visible.length >= 2)
+          ? Math.round(hoverFraction * (visible.length - 1))
+          : null;
+        const displayDay = nearestIdx !== null
+          ? visible![nearestIdx]
+          : visible && visible.length > 0 ? visible[visible.length - 1] : null;
+        const up = displayDay ? displayDay.close >= displayDay.open : null;
+        const volBg  = up === null ? "bg-[#1e2130]" : up ? "bg-[#152618]" : "bg-[#2c1414]";
+        const volTxt = up === null ? "text-slate-400"  : up ? "text-[#3fb950]" : "text-[#f85149]";
+
+        return (
+          <div
+            key={`${ticker}:${asset_type}`}
+            className="flex items-center gap-3 px-3 py-2.5 border-b border-[#2a2d3a] last:border-b-0"
+          >
+            <div className="w-28 shrink-0">
+              <div>
+                <span className="font-semibold text-sm text-slate-100">{ticker}</span>
+                <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">{asset_type}</span>
+              </div>
+              <div className="text-xs text-slate-500 tabular-nums">{fmtMoney(current_price)}</div>
+            </div>
+            <div className="flex-1 min-w-0 pt-3">
+              {!error && visible !== null && visible.length >= 2 && (
+                <VolumeBars
+                  id={id}
+                  days={visible}
+                  height={40}
+                  hoverFraction={hoverFraction}
+                  onHoverFraction={(f) => handleHover(id, f)}
+                  showTooltip={hoveredId === id}
+                />
+              )}
+            </div>
+            <div className="w-16 shrink-0 text-right">
+              {error ? (
+                <span className="text-slate-600 text-xs">unavailable</span>
+              ) : days === null ? (
+                <span className="text-slate-600 text-xs">loading…</span>
+              ) : (
+                <span className={`inline-block ${volBg} ${volTxt} rounded px-1.5 py-0.5 text-xs tabular-nums font-medium`}>
+                  {fmtVol(displayDay?.volume ?? null)}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function WatchlistPerformancePane({ id }: { id: string }) {
   const navigate = useNavigate();
   const [detail, setDetail] = useState<WatchlistDetail | null>(null);
@@ -413,6 +481,8 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
         <PerformanceTable entryPerfs={entryPerfs} />
       ) : settings.chartType === "return" ? (
         <SparklineView entryPerfs={entryPerfs} chartDays={settings.chartRange} />
+      ) : settings.chartType === "volume" ? (
+        <VolumeView entryPerfs={entryPerfs} chartDays={settings.chartRange} />
       ) : (
         <MomentumView
           entryPerfs={entryPerfs}

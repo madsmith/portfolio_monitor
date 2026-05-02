@@ -1,7 +1,7 @@
 export type MomentumWindow = 3 | 5 | 7;
 
 export type ChartSettings = {
-  chartType: "return" | "momentum";
+  chartType: "return" | "momentum" | "volume";
   momentumWindow: MomentumWindow;
   chartRange: number;
 };
@@ -36,5 +36,6 @@ const RANGE_LABELS: Record<number, string> = {
 export function chartLabel(settings: ChartSettings): string {
   const range = RANGE_LABELS[settings.chartRange] ?? `${settings.chartRange}D`;
   if (settings.chartType === "return") return `${range} Return`;
+  if (settings.chartType === "volume") return `${range} Volume`;
   return `${range} Momentum (${settings.momentumWindow}D)`;
 }
