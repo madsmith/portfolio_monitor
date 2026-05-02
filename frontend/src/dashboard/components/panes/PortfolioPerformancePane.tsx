@@ -2,16 +2,17 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Asset, type DailyClose, type PortfolioDetail } from "../../api/client";
 import { fmtMoney, fmtPct } from "../../lib/formatters";
+import { Sparkline } from "../Sparkline";
 
 type PeriodKey = "1d" | "1w" | "1m" | "3m" | "6m" | "1y";
 
-const PERIODS: { key: PeriodKey; label: string; days: number }[] = [
-  { key: "1d", label: "1D",  days:   1 },
-  { key: "1w", label: "1W",  days:   7 },
-  { key: "1m", label: "1M",  days:  30 },
-  { key: "3m", label: "3M",  days:  90 },
-  { key: "6m", label: "6M",  days: 180 },
-  { key: "1y", label: "1Y",  days: 365 },
+const PERIODS: { key: PeriodKey; label: string; days: number; window: number }[] = [
+  { key: "1d", label: "1D",  days:   1, window:  1 },
+  { key: "1w", label: "1W",  days:   7, window:  3 },
+  { key: "1m", label: "1M",  days:  30, window:  7 },
+  { key: "3m", label: "3M",  days:  90, window:  7 },
+  { key: "6m", label: "6M",  days: 180, window: 14 },
+  { key: "1y", label: "1Y",  days: 365, window: 30 },
 ];
 
 function daysAgoDate(days: number): string {
@@ -20,14 +21,26 @@ function daysAgoDate(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Return the close of the last trading day on or before targetDate, or null. */
-function closestClose(days: DailyClose[], targetDate: string): number | null {
-  let result: number | null = null;
+/**
+ * Mean close over the `windowDays` trailing calendar days ending at (and including) anchorDate.
+ * Falls back to the single closest close if no days fall within the window.
+ */
+function smoothedClose(days: DailyClose[], anchorDate: string, windowDays: number): number | null {
+  const anchor = new Date(anchorDate);
+  const windowStart = new Date(anchor);
+  windowStart.setUTCDate(windowStart.getUTCDate() - (windowDays - 1));
+  const windowStartStr = windowStart.toISOString().slice(0, 10);
+
+  const windowCloses: number[] = [];
+  let fallback: number | null = null;
   for (const day of days) {
-    if (day.date <= targetDate) result = day.close;
-    else break;
+    if (day.date > anchorDate) break;
+    if (day.date <= anchorDate) fallback = day.close;
+    if (day.date >= windowStartStr) windowCloses.push(day.close);
   }
-  return result;
+
+  if (windowCloses.length === 0) return fallback;
+  return windowCloses.reduce((sum, c) => sum + c, 0) / windowCloses.length;
 }
 
 function pctChange(current: number | null, historic: number | null): number | null {
@@ -39,28 +52,70 @@ type PeriodPrices = Record<PeriodKey, number | null>;
 
 type AssetPerf = {
   asset: Asset;
-  prices: PeriodPrices | null;  // null = still loading
+  prices: PeriodPrices | null;
+  days: DailyClose[] | null;
   error: boolean;
 };
 
-function PerfCell({ pct }: { pct: number | null }) {
-  if (pct === null) {
-    return (
-      <td className="px-1.5 py-2 text-right">
-        <span className="text-slate-600 text-xs">—</span>
-      </td>
-    );
-  }
+function PctBadge({ pct }: { pct: number | null }) {
+  if (pct === null) return <span className="text-slate-600 text-xs">—</span>;
   const positive = pct > 0;
   const zero = pct === 0;
   const bg = zero ? "bg-[#1e2130]" : positive ? "bg-[#152618]" : "bg-[#2c1414]";
   const text = zero ? "text-slate-400" : positive ? "text-[#3fb950]" : "text-[#f85149]";
   return (
-    <td className="px-1.5 py-1.5 text-right">
-      <span className={`inline-block ${bg} ${text} rounded px-1.5 py-0.5 text-xs tabular-nums font-medium`}>
-        {fmtPct(pct)}
-      </span>
+    <span className={`inline-block ${bg} ${text} rounded px-1.5 py-0.5 text-xs tabular-nums font-medium`}>
+      {fmtPct(pct)}
+    </span>
+  );
+}
+
+function PerfCell({ pct }: { pct: number | null }) {
+  return (
+    <td className={pct === null ? "px-1.5 py-2 text-right" : "px-1.5 py-1.5 text-right"}>
+      <PctBadge pct={pct} />
     </td>
+  );
+}
+
+
+function SparklineView({ assetPerfs }: { assetPerfs: AssetPerf[] }) {
+  return (
+    <div className="border border-[#404868] rounded-md overflow-hidden">
+      {assetPerfs.map(({ asset, days, prices, error }) => {
+        const yr = prices ? pctChange(asset.current_price, prices["1y"]) : null;
+        return (
+          <div
+            key={`${asset.ticker}:${asset.asset_type}`}
+            className="flex items-center gap-3 px-3 py-2.5 border-b border-[#2a2d3a] last:border-b-0"
+          >
+            <div className="w-24 shrink-0">
+              <span className="font-semibold text-sm text-slate-100">{asset.ticker}</span>
+              <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">
+                {asset.asset_type}
+              </span>
+            </div>
+            <div className="hidden sm:block w-20 shrink-0 text-right tabular-nums text-slate-300 text-sm">
+              {fmtMoney(asset.current_value)}
+            </div>
+            <div className="w-16 shrink-0 text-right">
+              {error ? (
+                <span className="text-slate-600 text-xs">unavailable</span>
+              ) : prices === null ? (
+                <span className="text-slate-600 text-xs">loading…</span>
+              ) : (
+                <PctBadge pct={yr} />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              {!error && days !== null && (
+                <Sparkline id={`${asset.ticker}-${asset.asset_type}`} values={days.map((d) => d.close)} height={40} />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -177,26 +232,27 @@ export function PortfolioPerformancePane({
 }) {
   const navigate = useNavigate();
   const [assetPerfs, setAssetPerfs] = useState<AssetPerf[]>([]);
+  const [viewMode, setViewMode] = useState<"table" | "charts">("table");
 
   useEffect(() => {
     if (!detail) return;
     const assets = [...detail.stocks, ...detail.currencies, ...detail.crypto];
-    setAssetPerfs(assets.map((a) => ({ asset: a, prices: null, error: false })));
+    setAssetPerfs(assets.map((a) => ({ asset: a, prices: null, days: null, error: false })));
 
-    const yearAgo = daysAgoDate(365);
+    const maxLookback = Math.max(...PERIODS.map((p) => p.days + p.window));
+    const fromDate = daysAgoDate(maxLookback);
 
     for (const asset of assets) {
       api
-        .getDailyRange(asset.asset_type, asset.ticker, yearAgo)
+        .getDailyRange(asset.asset_type, asset.ticker, fromDate)
         .then(({ days }) => {
-          // days is sorted ascending by date from the API
           const prices = Object.fromEntries(
-            PERIODS.map((p) => [p.key, closestClose(days, daysAgoDate(p.days))])
+            PERIODS.map((p) => [p.key, smoothedClose(days, daysAgoDate(p.days), p.window)])
           ) as PeriodPrices;
           setAssetPerfs((prev) =>
             prev.map((p) =>
               p.asset.ticker === asset.ticker && p.asset.asset_type === asset.asset_type
-                ? { ...p, prices }
+                ? { ...p, prices, days }
                 : p
             )
           );
@@ -217,21 +273,38 @@ export function PortfolioPerformancePane({
   if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;
   if (!detail) return null;
 
+  const btnClass = (active: boolean) =>
+    `px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+      active ? "bg-[#404868] text-slate-100" : "text-slate-500 hover:text-slate-300"
+    }`;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-base font-semibold text-slate-100">{detail.name} — Performance</h2>
-        <button
-          onClick={() => navigate(`/portfolio/${detail.id}`)}
-          className="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-        >
-          ← Back to portfolio
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1">
+            <button onClick={() => setViewMode("table")} className={btnClass(viewMode === "table")}>
+              Table
+            </button>
+            <button onClick={() => setViewMode("charts")} className={btnClass(viewMode === "charts")}>
+              Charts
+            </button>
+          </div>
+          <button
+            onClick={() => navigate(`/portfolio/${detail.id}`)}
+            className="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+          >
+            ← Back to portfolio
+          </button>
+        </div>
       </div>
       {assetPerfs.length === 0 ? (
         <p className="text-slate-500 text-sm">No assets.</p>
-      ) : (
+      ) : viewMode === "table" ? (
         <PerformanceTable assetPerfs={assetPerfs} />
+      ) : (
+        <SparklineView assetPerfs={assetPerfs} />
       )}
     </div>
   );
