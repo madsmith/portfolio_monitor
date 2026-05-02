@@ -70,10 +70,20 @@ export function VolumeBars({
     ? Math.max(PAD.left + 30, Math.min(ix, PAD.left + plotW - 30))
     : null;
 
+  function fractionFromClientX(el: SVGSVGElement, clientX: number): number {
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }
+
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     if (!onHoverFraction) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    onHoverFraction(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+    onHoverFraction(fractionFromClientX(e.currentTarget, e.clientX));
+  }
+
+  function handleTouchMove(e: React.TouchEvent<SVGSVGElement>) {
+    if (!onHoverFraction) return;
+    e.preventDefault();
+    onHoverFraction(fractionFromClientX(e.currentTarget, e.touches[0].clientX));
   }
 
   return (
@@ -85,6 +95,8 @@ export function VolumeBars({
       className="overflow-visible"
       onMouseMove={onHoverFraction ? handleMouseMove : undefined}
       onMouseLeave={onHoverFraction ? () => onHoverFraction(null) : undefined}
+      onTouchMove={onHoverFraction ? handleTouchMove : undefined}
+      onTouchEnd={onHoverFraction ? () => onHoverFraction(null) : undefined}
     >
       {days.map((d, i) => {
         const cx = xScale(i);

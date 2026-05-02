@@ -180,10 +180,20 @@ export function Sparkline({
   // Report the cursor's x fraction whenever the mouse moves over this SVG.
   // Fraction is computed in CSS space (clientX / rendered width) so it's
   // independent of the SVG viewBox scale and always in [0, 1].
+  function fractionFromClientX(el: SVGSVGElement, clientX: number): number {
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }
+
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     if (!onHoverFraction) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    onHoverFraction(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+    onHoverFraction(fractionFromClientX(e.currentTarget, e.clientX));
+  }
+
+  function handleTouchMove(e: React.TouchEvent<SVGSVGElement>) {
+    if (!onHoverFraction) return;
+    e.preventDefault();
+    onHoverFraction(fractionFromClientX(e.currentTarget, e.touches[0].clientX));
   }
 
   return (
@@ -195,6 +205,8 @@ export function Sparkline({
       className="overflow-visible"
       onMouseMove={onHoverFraction ? handleMouseMove : undefined}
       onMouseLeave={onHoverFraction ? () => onHoverFraction(null) : undefined}
+      onTouchMove={onHoverFraction ? handleTouchMove : undefined}
+      onTouchEnd={onHoverFraction ? () => onHoverFraction(null) : undefined}
     >
       <defs>
         {/* Positive gradient: opaque at the top (where the line is), fades down to the baseline */}
