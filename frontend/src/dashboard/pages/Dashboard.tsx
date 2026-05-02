@@ -7,6 +7,7 @@ import { OverviewPane } from "../components/panes/OverviewPane";
 import { PortfolioDetailPane } from "../components/panes/PortfolioDetailPane";
 import { PortfolioPerformancePane } from "../components/panes/PortfolioPerformancePane";
 import { WatchlistsPane } from "../components/panes/WatchlistsPane";
+import { WatchlistPerformancePane } from "../components/panes/WatchlistPerformancePane";
 import SettingsPane from "../components/panes/SettingsPane";
 
 function toWsSymbol(a: { ticker: string; asset_type: string }): WsAssetSymbol {
@@ -35,10 +36,11 @@ export default function Dashboard() {
   const perfMatch = useMatch("/portfolio/:id/performance");
   const settingsMatch = useMatch("/settings");
   const watchlistMatch = useMatch("/watchlist");
-  const activeId = (settingsMatch || watchlistMatch) ? null : (match?.params.id ?? perfMatch?.params.id ?? null);
+  const watchlistPerfMatch = useMatch("/watchlist/:id/performance");
+  const activeId = (settingsMatch || watchlistMatch || watchlistPerfMatch) ? null : (match?.params.id ?? perfMatch?.params.id ?? null);
   const isPerfActive = perfMatch !== null;
   const isSettingsActive = settingsMatch !== null;
-  const isWatchlistActive = watchlistMatch !== null;
+  const isWatchlistActive = watchlistMatch !== null || watchlistPerfMatch !== null;
   const currentUsername = getUsername();
 
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
@@ -279,8 +281,10 @@ export default function Dashboard() {
         <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6 min-h-[120px]">
           {isSettingsActive ? (
             <SettingsPane />
+          ) : watchlistPerfMatch ? (
+            <WatchlistPerformancePane id={watchlistPerfMatch.params.id!} />
           ) : isWatchlistActive ? (
-            <WatchlistsPane watchlists={watchlists} />
+            <WatchlistsPane watchlists={watchlists} ws={wsRef} />
           ) : activeId === null ? (
             <OverviewPane
               portfolios={portfolios}

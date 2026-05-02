@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   api,
   type WatchlistDetail,
@@ -8,6 +9,7 @@ import {
 import { fmtChg, fmtMoney, fmtPct, plColor, prevCloseKey } from "../../lib/formatters";
 import { Chart } from "../Chart";
 import { DataTable, type ColDef } from "../DataTable";
+import { type PortfolioWebSocket } from "../../api/ws";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -399,6 +401,7 @@ function WatchlistRow({
 function WatchlistTable({
   entries,
   prevClose,
+  livePrices,
   editing,
   savingTicker,
   deletingTicker,
@@ -411,6 +414,7 @@ function WatchlistTable({
 }: {
   entries: WatchlistEntry[];
   prevClose: Record<string, number>;
+  livePrices: Record<string, number>;
   editing: boolean;
   savingTicker: string | null;
   deletingTicker: string | null;
@@ -484,8 +488,10 @@ function WatchlistTable({
   const enriched: EnrichedEntry[] = entries.map((e) => {
     const pcKey = prevCloseKey(e);
     const pc = prevClose[pcKey] ?? null;
-    const price = e.current_price ?? pc;
-    const dayChgPrice = e.current_price !== null && pc !== null ? e.current_price - pc : null;
+    const livePrice = livePrices[`${e.ticker}:${e.asset_type}`] ?? null;
+    // Never fall back to pc for Price — pc is only a baseline for Day Chg, not a current price
+    const price = livePrice ?? e.current_price ?? null;
+    const dayChgPrice = price !== null && pc !== null ? price - pc : null;
     const dayChgPct = dayChgPrice !== null && pc !== null && pc !== 0 ? (dayChgPrice / pc) * 100 : null;
     const sinceAdded =
       price !== null && e.initial_price !== null && e.initial_price !== 0
@@ -575,13 +581,17 @@ function WatchlistTable({
 // Main WatchlistsPane
 // ---------------------------------------------------------------------------
 
-export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: WatchlistSummary[] }) {
+export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
+  watchlists: WatchlistSummary[];
+  ws: React.RefObject<PortfolioWebSocket | null>;
+}) {
   const [summaries, setSummaries] = useState<WatchlistSummary[]>(initialWatchlists);
   const [selectedId, setSelectedId] = useState<string>(initialWatchlists[0]?.id ?? "");
   const [detail, setDetail] = useState<WatchlistDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prevClose, setPrevClose] = useState<Record<string, number>>({});
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
 
   // Edit mode
   const [editing, setEditing] = useState(false);
@@ -614,6 +624,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
     setEditing(false);
     setDeleteConfirm(false);
     setAddDraft(BLANK_ADD);
+    setLivePrices({});
   }, [selectedId]);
 
   // Auto-focus name input when creating
@@ -634,8 +645,32 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
     return () => { active = false; };
   }, [selectedId]);
 
-  // Fetch previous-close prices; re-runs when the set of entry tickers changes
+  // Subscribe to live price updates for the loaded entries; re-runs when entry set changes
   const entryKey = detail?.entries.map((e) => `${e.asset_type}:${e.ticker}`).sort().join(",") ?? "";
+  useEffect(() => {
+    const wsInstance = ws.current;
+    if (!detail || !wsInstance || detail.entries.length === 0) return;
+    const symbols = detail.entries.map((e) => ({ ticker: e.ticker, type: e.asset_type }));
+    wsInstance.subscribe(symbols);
+    // Request current price immediately — subscribe only delivers the *next* trade tick
+    for (const symbol of symbols) wsInstance.requestPrice(symbol);
+
+    const updateLivePrices = (ticker: string, type: string, price: number) =>
+      setLivePrices((prev) => ({ ...prev, [`${ticker}:${type}`]: price }));
+
+    const unsubPrice = wsInstance.onPrice((msg) =>
+      updateLivePrices(msg.symbol.ticker, msg.symbol.type, msg.price));
+    const unsubUpdate = wsInstance.onPriceUpdate((msgs) => {
+      setLivePrices((prev) => {
+        const next = { ...prev };
+        for (const msg of msgs) next[`${msg.symbol.ticker}:${msg.symbol.type}`] = msg.price;
+        return next;
+      });
+    });
+    return () => { unsubPrice(); unsubUpdate(); wsInstance.unsubscribe(symbols); };
+  }, [entryKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch previous-close prices; re-runs when the set of entry tickers changes
   useEffect(() => {
     if (!detail) { setPrevClose({}); return; }
     let active = true;
@@ -730,6 +765,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
     }
   }
 
+  const navigate = useNavigate();
   const btnBase = "px-3 py-1 text-xs rounded border transition-colors cursor-pointer";
 
   return (
@@ -853,10 +889,20 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
         ) : detail && detail.entries.length === 0 && !editing ? (
           <p className="text-slate-500 text-sm py-2">No entries yet. Click Edit to add some.</p>
         ) : detail ? (
+          <>
+          <div className="flex justify-end mb-3">
+            <button
+              onClick={() => navigate(`/watchlist/${selectedId}/performance`)}
+              className="text-xs text-slate-500 hover:text-sky-400 transition-colors cursor-pointer"
+            >
+              Performance →
+            </button>
+          </div>
           <div className="border border-[#404868] rounded-md overflow-hidden overflow-x-auto">
             <WatchlistTable
               entries={detail.entries}
               prevClose={prevClose}
+              livePrices={livePrices}
               editing={editing}
               savingTicker={savingTicker}
               deletingTicker={deletingTicker}
@@ -868,6 +914,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists }: { watchlists: 
               addSaving={addSaving}
             />
           </div>
+          </>
         ) : null}
     </div>
   );
