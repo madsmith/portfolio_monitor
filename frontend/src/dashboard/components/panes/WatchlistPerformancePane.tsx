@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type DailyClose, type WatchlistDetail } from "../../api/client";
 import { fmtPct } from "../../lib/formatters";
@@ -14,6 +14,10 @@ const PERIODS: { key: PeriodKey; label: string; days: number; window: number }[]
   { key: "6m", label: "6M",  days: 180, window: 14 },
   { key: "1y", label: "1Y",  days: 365, window: 30 },
 ];
+
+type MomentumWindow = 3 | 5 | 7;
+type MomentumMode = { kind: "momentum"; window: MomentumWindow };
+type ViewMode = "table" | "return" | MomentumMode;
 
 function daysAgoDate(days: number): string {
   const d = new Date();
@@ -42,6 +46,22 @@ function smoothedClose(days: DailyClose[], anchorDate: string, windowDays: numbe
 function pctChange(current: number | null, historic: number | null): number | null {
   if (current === null || historic === null || historic === 0) return null;
   return ((current - historic) / historic) * 100;
+}
+
+// Rolling average of daily returns over `windowSize` days.
+// Returns values already in % units (no further normalization needed).
+function momentumSeries(days: DailyClose[], windowSize: number): { values: number[]; labels: string[] } {
+  const values: number[] = [];
+  const labels: string[] = [];
+  for (let i = windowSize; i < days.length; i++) {
+    let sum = 0;
+    for (let j = i - windowSize + 1; j <= i; j++) {
+      sum += (days[j].close / days[j - 1].close) - 1;
+    }
+    values.push((sum / windowSize) * 100);
+    labels.push(days[i].date);
+  }
+  return { values, labels };
 }
 
 type PeriodPrices = Record<PeriodKey, number | null>;
@@ -167,7 +187,6 @@ function SparklineView({ entryPerfs }: { entryPerfs: EntryPerf[] }) {
         const id = `${ticker}-${asset_type}`;
         const yr = prices ? pctChange(current_price, prices["1y"]) : null;
 
-        // When hovering, show % gain at the hovered position instead of the static 1Y value
         const hoverPct = (hoverFraction !== null && days !== null && days.length >= 2)
           ? (() => {
               const idx = Math.round(hoverFraction * (days.length - 1));
@@ -215,13 +234,147 @@ function SparklineView({ entryPerfs }: { entryPerfs: EntryPerf[] }) {
   );
 }
 
+function MomentumView({ entryPerfs, windowSize }: { entryPerfs: EntryPerf[]; windowSize: MomentumWindow }) {
+  const [hoverFraction, setHoverFraction] = useState<number | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  function handleHover(id: string, fraction: number | null) {
+    setHoverFraction(fraction);
+    setHoveredId(fraction !== null ? id : null);
+  }
+
+  return (
+    <div className="border border-[#404868] rounded-md overflow-hidden">
+      {entryPerfs.map(({ ticker, asset_type, days, error }) => {
+        const id = `${ticker}-${asset_type}-mom`;
+        const series = days !== null ? momentumSeries(days, windowSize) : null;
+        const currentMom = series && series.values.length > 0
+          ? series.values[series.values.length - 1]
+          : null;
+
+        const hoverMom = (hoverFraction !== null && series !== null && series.values.length >= 2)
+          ? series.values[Math.round(hoverFraction * (series.values.length - 1))]
+          : null;
+
+        const displayPct = hoverMom !== null ? hoverMom : currentMom;
+
+        return (
+          <div
+            key={`${ticker}:${asset_type}`}
+            className="flex items-center gap-3 px-3 py-2.5 border-b border-[#2a2d3a] last:border-b-0"
+          >
+            <div className="w-24 shrink-0">
+              <span className="font-semibold text-sm text-slate-100">{ticker}</span>
+              <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">{asset_type}</span>
+            </div>
+            <div className="w-16 shrink-0 text-right">
+              {error ? (
+                <span className="text-slate-600 text-xs">unavailable</span>
+              ) : days === null ? (
+                <span className="text-slate-600 text-xs">loading…</span>
+              ) : (
+                <PctBadge pct={displayPct} />
+              )}
+            </div>
+            <div className="flex-1 min-w-0 pt-3">
+              {!error && series !== null && series.values.length > 1 && (
+                <Sparkline
+                  id={id}
+                  values={series.values}
+                  labels={series.labels}
+                  height={40}
+                  normalize={false}
+                  hoverFraction={hoverFraction}
+                  onHoverFraction={(f) => handleHover(id, f)}
+                  showTooltip={hoveredId === id}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChartsDropdown({ viewMode, setViewMode }: {
+  viewMode: ViewMode;
+  setViewMode: (v: ViewMode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const isChart = viewMode !== "table";
+  const label = !isChart ? "Charts"
+    : viewMode === "return" ? "Return"
+    : `Momentum ${(viewMode as MomentumMode).window}D`;
+
+  const options: { label: string; mode: ViewMode }[] = [
+    { label: "Return",         mode: "return" },
+    { label: "Momentum · 3D",  mode: { kind: "momentum", window: 3 } },
+    { label: "Momentum · 5D",  mode: { kind: "momentum", window: 5 } },
+    { label: "Momentum · 7D",  mode: { kind: "momentum", window: 7 } },
+  ];
+
+  function modeKey(m: ViewMode): string {
+    if (m === "table" || m === "return") return m;
+    return `momentum-${(m as MomentumMode).window}`;
+  }
+
+  function isActive(m: ViewMode): boolean {
+    if (typeof m === "string") return viewMode === m;
+    if (typeof viewMode === "object") return (viewMode as MomentumMode).window === (m as MomentumMode).window;
+    return false;
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer flex items-center gap-0.5 ${
+          isChart ? "bg-[#404868] text-slate-100" : "text-slate-500 hover:text-slate-300"
+        }`}
+      >
+        {label}
+        <span className="opacity-50 text-[0.55rem] ml-0.5">▾</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-[#1e2130] border border-[#404868] rounded-md shadow-lg z-10 min-w-[148px] py-1">
+          {options.map((opt) => (
+            <button
+              key={modeKey(opt.mode)}
+              onClick={() => { setViewMode(opt.mode); setOpen(false); }}
+              className={`block w-full text-left px-3 py-1.5 text-xs transition-colors cursor-pointer ${
+                isActive(opt.mode)
+                  ? "text-slate-100 bg-[#2a2d3a]"
+                  : "text-slate-400 hover:text-slate-100 hover:bg-[#2a2d3a]"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WatchlistPerformancePane({ id }: { id: string }) {
   const navigate = useNavigate();
   const [detail, setDetail] = useState<WatchlistDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [entryPerfs, setEntryPerfs] = useState<EntryPerf[]>([]);
-  const [viewMode, setViewMode] = useState<"table" | "charts">("table");
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
 
   useEffect(() => {
     let active = true;
@@ -290,7 +443,7 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
         <div className="flex items-center gap-3">
           <div className="flex gap-1">
             <button onClick={() => setViewMode("table")} className={btnClass(viewMode === "table")}>Table</button>
-            <button onClick={() => setViewMode("charts")} className={btnClass(viewMode === "charts")}>Charts</button>
+            <ChartsDropdown viewMode={viewMode} setViewMode={setViewMode} />
           </div>
           <button
             onClick={() => navigate("/watchlist")}
@@ -304,8 +457,10 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
         <p className="text-slate-500 text-sm">No entries.</p>
       ) : viewMode === "table" ? (
         <PerformanceTable entryPerfs={entryPerfs} />
-      ) : (
+      ) : viewMode === "return" ? (
         <SparklineView entryPerfs={entryPerfs} />
+      ) : (
+        <MomentumView entryPerfs={entryPerfs} windowSize={(viewMode as MomentumMode).window} />
       )}
     </div>
   );

@@ -81,6 +81,7 @@ export function Sparkline({
   height,
   positiveColor = SPARK_GREEN,
   negativeColor = SPARK_RED,
+  normalize = true,
   hoverFraction = null,
   onHoverFraction,
   showTooltip = false,
@@ -91,6 +92,12 @@ export function Sparkline({
   height: number;
   positiveColor?: string;
   negativeColor?: string;
+  /**
+   * When true (default), values are raw prices — normalized to % change from the
+   * first value before rendering. When false, values are already in % units
+   * (e.g. a momentum series) and are plotted as-is against a zero baseline.
+   */
+  normalize?: boolean;
   /** Incoming shared x position (0–1); renders an intercept line on this sparkline. */
   hoverFraction?: number | null;
   /** Called with the cursor's x fraction (0–1) as the mouse moves, or null on leave. */
@@ -112,8 +119,9 @@ export function Sparkline({
 
   // Normalize every value to % change from the first, so the y-axis is
   // "how far above/below the starting price" rather than a raw price scale.
+  // When normalize=false the caller has already done this (e.g. momentum series).
   const first = values[0];
-  const pcts = values.map((v) => ((v - first) / first) * 100);
+  const pcts = normalize ? values.map((v) => ((v - first) / first) * 100) : values;
 
   // Leave a few px of breathing room on each edge so the line isn't clipped
   const PAD = { top: 4, right: 2, bottom: 4, left: 2 };
