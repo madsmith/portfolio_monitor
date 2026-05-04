@@ -15,6 +15,7 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
+    allowedHosts: ["portfolio.bitforged.com"],
     port: 5174,
     proxy: {
       // Control panel API/SSE — strip /ctl prefix, forward to dev control panel server
