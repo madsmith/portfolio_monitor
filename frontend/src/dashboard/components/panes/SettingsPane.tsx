@@ -98,6 +98,37 @@ function PasswordModal({
 }
 
 // ---------------------------------------------------------------------------
+// General section
+// ---------------------------------------------------------------------------
+
+function GeneralSection({ isDefaultAdmin }: { isDefaultAdmin: boolean }) {
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const username = getUsername();
+
+  return (
+    <div>
+      <SectionHeading>General</SectionHeading>
+      <div className="bg-[#161a27] border border-[#404868] rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-slate-300">Password</p>
+            {isDefaultAdmin && (
+              <p className="text-xs text-slate-500 mt-0.5">Managed by application config</p>
+            )}
+          </div>
+          <ActionButton onClick={() => setShowPasswordModal(true)} disabled={isDefaultAdmin}>
+            Change password
+          </ActionButton>
+        </div>
+      </div>
+      {showPasswordModal && username && (
+        <PasswordModal username={username} onClose={() => setShowPasswordModal(false)} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Accounts section
 // ---------------------------------------------------------------------------
 
@@ -612,7 +643,8 @@ function InnerTab({ label, active, onClick }: { label: string; active: boolean; 
 
 export default function SettingsPane() {
   const isAdmin = getRole() === "admin";
-  const [activeTab, setActiveTab] = useState<"users" | "alerts">(isAdmin ? "users" : "alerts");
+  const currentUser = getUsername();
+  const [activeTab, setActiveTab] = useState<"general" | "users" | "alerts">("general");
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
 
@@ -623,17 +655,22 @@ export default function SettingsPane() {
       .catch(() => setAccountsLoaded(true));
   }, [isAdmin]);
 
+  const isDefaultAdmin = isAdmin && accountsLoaded
+    ? accounts.find((a) => a.username === currentUser)?.is_default === true
+    : false;
+
   return (
     <div>
       <div className="flex gap-1 border-b border-[#404868] mb-6">
+        <InnerTab label="General" active={activeTab === "general"} onClick={() => setActiveTab("general")} />
         {isAdmin && (
           <InnerTab label="Users" active={activeTab === "users"} onClick={() => setActiveTab("users")} />
         )}
         <InnerTab label="Alert Configurations" active={activeTab === "alerts"} onClick={() => setActiveTab("alerts")} />
       </div>
 
+      {activeTab === "general" && <GeneralSection isDefaultAdmin={isDefaultAdmin} />}
       {activeTab === "users" && isAdmin && <AccountsSection />}
-
       {activeTab === "alerts" && (
         isAdmin
           ? accountsLoaded && <AlertConfigsSection accounts={accounts} />
