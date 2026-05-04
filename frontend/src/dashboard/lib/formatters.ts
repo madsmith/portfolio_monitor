@@ -1,4 +1,5 @@
 import type { Asset, PortfolioDetail } from "../api/client";
+import { cryptoPriceDecimals } from "./assetFormat";
 
 // ---------------------------------------------------------------------------
 // Display formatters
@@ -7,6 +8,18 @@ import type { Asset, PortfolioDetail } from "../api/client";
 export function fmtMoney(v: number | null): string {
   if (v === null) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);
+}
+
+/** Format a per-unit price with precision appropriate for the asset type and ticker. */
+export function fmtPrice(v: number | null, assetType: string, ticker: string): string {
+  if (v === null) return "—";
+  const decimals = assetType === "crypto" ? cryptoPriceDecimals(ticker, v) : 2;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(v);
 }
 
 export function fmtPct(v: number | null): string {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type DailyClose, type WatchlistDetail } from "../../api/client";
-import { fmtMoney, fmtPct, fmtVol } from "../../lib/formatters";
+import { fmtPrice, fmtPct, fmtVol } from "../../lib/formatters";
 import { type ChartSettings, type MomentumWindow, loadChartSettings, saveChartSettings, chartLabel } from "../../lib/chartSettings";
 import { Sparkline } from "../Sparkline";
 import { VolumeBars } from "../VolumeBars";
@@ -211,7 +211,7 @@ function SparklineView({ entryPerfs, chartDays }: { entryPerfs: EntryPerf[]; cha
                 <span className="font-semibold text-sm text-slate-100">{ticker}</span>
                 <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">{asset_type}</span>
               </div>
-              <div className="text-xs text-slate-500 tabular-nums">{fmtMoney(current_price)}</div>
+              <div className="text-xs text-slate-500 tabular-nums">{fmtPrice(current_price, asset_type, ticker)}</div>
             </div>
             <div className="flex-1 min-w-0 pt-3">
               {!error && visible !== null && (
@@ -280,7 +280,7 @@ function MomentumView({ entryPerfs, windowSize, chartDays }: {
                 <span className="font-semibold text-sm text-slate-100">{ticker}</span>
                 <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">{asset_type}</span>
               </div>
-              <div className="text-xs text-slate-500 tabular-nums">{fmtMoney(current_price)}</div>
+              <div className="text-xs text-slate-500 tabular-nums">{fmtPrice(current_price, asset_type, ticker)}</div>
             </div>
             <div className="flex-1 min-w-0 pt-3">
               {!error && series !== null && series.values.length > 1 && (
@@ -347,7 +347,7 @@ function VolumeView({ entryPerfs, chartDays }: { entryPerfs: EntryPerf[]; chartD
                 <span className="font-semibold text-sm text-slate-100">{ticker}</span>
                 <span className="hidden sm:inline ml-1.5 text-[0.65rem] text-slate-600 uppercase">{asset_type}</span>
               </div>
-              <div className="text-xs text-slate-500 tabular-nums">{fmtMoney(current_price)}</div>
+              <div className="text-xs text-slate-500 tabular-nums">{fmtPrice(current_price, asset_type, ticker)}</div>
             </div>
             <div className="flex-1 min-w-0 pt-3">
               {!error && visible !== null && visible.length >= 2 && (

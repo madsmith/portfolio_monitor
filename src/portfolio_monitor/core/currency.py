@@ -46,6 +46,7 @@ class CurrencyType(Enum):
     SOL = auto()
     DOGE = auto()
     LTC = auto()
+    ATOM = auto()
 
     @property
     def config(self) -> "CurrencyConfig":
@@ -81,6 +82,7 @@ CURRENCY_CONFIGS: dict[CurrencyType, CurrencyConfig] = {
     CurrencyType.SOL: CurrencyConfig("SOL", "Solana", 9),
     CurrencyType.DOGE: CurrencyConfig("DOGE", "Dogecoin", 8),
     CurrencyType.LTC: CurrencyConfig("LTC", "Litecoin", 8),
+    CurrencyType.ATOM: CurrencyConfig("ATOM", "Cosmos", 6),
 }
 
 # Define equivalent currencies for arithmetic operations

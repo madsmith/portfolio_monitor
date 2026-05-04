@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type DailyOpenClose, type PriceAggregate } from "../api/client";
-import { fmtMoney } from "../lib/formatters";
+import { fmtPrice } from "../lib/formatters";
 
 const PERIODS = [
   { label: "1H", last: "1h", span: "1m",  refreshMs:      60_000, trendMaxMs: null,         compactGapMs: 4 * 60 * 60_000 },
@@ -61,9 +61,10 @@ function fmtTooltipTime(ts: string): string {
 
 /** A filled price label box on the right-hand axis. */
 function PriceBox({
-  y, price, fill, stroke, textFill, fillOpacity = 1, strokeOpacity = 1
+  y, price, assetType, ticker, fill, stroke, textFill, fillOpacity = 1, strokeOpacity = 1
 }: {
-  y: number; price: number; fill: string; stroke?: string; textFill: string;
+  y: number; price: number; assetType: string; ticker: string;
+  fill: string; stroke?: string; textFill: string;
   fillOpacity?: number; strokeOpacity?: number;
 }) {
   return (
@@ -73,7 +74,7 @@ function PriceBox({
         fillOpacity={fillOpacity} strokeOpacity={strokeOpacity}/>
       <text x={Y_LABEL_X + Y_BOX_W / 2} y={y} textAnchor="middle"
         dominantBaseline="middle" fontSize="0.9em" fontWeight="600" fill={textFill}>
-        {fmtMoney(price)}
+        {fmtPrice(price, assetType, ticker)}
       </text>
     </g>
   );
@@ -384,7 +385,7 @@ export function Chart({
           {displayAgg ? (
             <>
               <span className="font-semibold" style={{ color: lineColor }}>
-                {fmtMoney(displayAgg.close)}
+                {fmtPrice(displayAgg.close, assetType, ticker)}
               </span>
               <span className="text-slate-500 text-xs ml-2">
                 {fmtTooltipTime(displayAgg.timestamp)}
@@ -441,7 +442,7 @@ export function Chart({
               <>
                 <line x1={PAD.left} y1={oy} x2={PAD.left + PLOT_W} y2={oy}
                   stroke="#64748b" strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
-                <PriceBox y={boxOy} price={openPrice}
+                <PriceBox y={boxOy} price={openPrice} assetType={assetType} ticker={ticker}
                   fill="#1e2130" stroke="#404868" textFill="#94a3b8" />
               </>
             );
@@ -464,13 +465,13 @@ export function Chart({
           {yLabels.map(({ price, y }, i) => (
             <text key={i} x={Y_LABEL_X} y={y} textAnchor="start"
               dominantBaseline="middle" fontSize="1em" fill="#64748b">
-              {fmtMoney(price)}
+              {fmtPrice(price, assetType, ticker)}
             </text>
           ))}
 
           {/* Current price label box */}
           {showCurrent && currentPrice !== null && (
-            <PriceBox y={yScale(currentPrice)} price={currentPrice}
+            <PriceBox y={yScale(currentPrice)} price={currentPrice} assetType={assetType} ticker={ticker}
               fill={lineColor} textFill="#fff" stroke={lineColor}
               fillOpacity={0.35} strokeOpacity={1}/>
           )}
@@ -521,7 +522,7 @@ export function Chart({
                   <>
                     <line x1={PAD.left} y1={my} x2={PAD.left + PLOT_W} y2={my}
                       stroke="#404868" strokeWidth={1} strokeDasharray="3 2" />
-                    <PriceBox y={my} price={hoverPrice}
+                    <PriceBox y={my} price={hoverPrice} assetType={assetType} ticker={ticker}
                       fill="#252a40" stroke="#404868" textFill="#e2e8f0"
                       fillOpacity={0.5} strokeOpacity={1}/>
                   </>
@@ -548,7 +549,7 @@ export function Chart({
                       fill="#1e2130" stroke="#404868" strokeWidth={1}
                       fillOpacity={0.5} strokeOpacity={1} />
                     <text x={tipX + 8} y={tipY + 12} fontSize="1em" fill="#e2e8f0" fontWeight="600">
-                      {fmtMoney(hovered.close)}
+                      {fmtPrice(hovered.close, assetType, ticker)}
                     </text>
                     <text x={tipX + 8} y={tipY + 25} fontSize="0.9em" fill="#64748b">
                       {fmtTooltipTime(hovered.timestamp)}

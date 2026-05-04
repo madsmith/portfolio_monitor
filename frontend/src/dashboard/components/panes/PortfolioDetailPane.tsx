@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Asset, Lot, PortfolioDetail } from "../../api/client";
-import { fmtMoney, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../../lib/formatters";
+import { fmtMoney, fmtPrice, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../../lib/formatters";
 import { DataTable, type ColDef } from "../DataTable";
 import { Chart } from "../Chart";
 
@@ -11,7 +11,12 @@ type EnrichedAsset = Asset & {
   dayChgPct: number | null;
 };
 
-function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | null }) {
+function LotTable({ lots, currentPrice, assetType, ticker }: {
+  lots: Lot[];
+  currentPrice: number | null;
+  assetType: string;
+  ticker: string;
+}) {
   return (
     <table className="w-full text-xs border-collapse">
       <thead>
@@ -47,7 +52,7 @@ function LotTable({ lots, currentPrice }: { lots: Lot[]; currentPrice: number | 
             <tr key={i} className="border-b border-[#222536] last:border-b-0">
               <td className="pl-4 sm:pl-8 pr-2 sm:pr-3 py-1.5 text-slate-500">{fmtDate(lot.date)}</td>
               <td className="hidden sm:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{lot.quantity}</td>
-              <td className={`px-2 sm:px-3 py-1.5 text-right tabular-nums ${lotPlColor(priceGain)}`}>{fmtMoney(lot.price)}</td>
+              <td className={`px-2 sm:px-3 py-1.5 text-right tabular-nums ${lotPlColor(priceGain)}`}>{fmtPrice(lot.price, assetType, ticker)}</td>
               <td className="hidden sm:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.cost_basis)}</td>
               <td className={`hidden md:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums ${lotPlColor(lotPL)}`}>{fmtMoney(lotPL)}</td>
               <td className="hidden md:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.fees)}</td>
@@ -147,7 +152,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange }: {
                   )}
                 </span>
               </td>
-              <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_price)}</td>
+              <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtPrice(a.current_price, a.asset_type, a.ticker)}</td>
               <td className={`px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
                 {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
               </td>
@@ -165,7 +170,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange }: {
             {isExpanded && (
               <tr className="border-b border-[#2a2d3a] last:border-b-0">
                 <td colSpan={columns.length} className="px-0 py-0 bg-[#181c28]">
-                  <LotTable lots={a.lots} currentPrice={a.current_price} />
+                  <LotTable lots={a.lots} currentPrice={a.current_price} assetType={a.asset_type} ticker={a.ticker} />
                 </td>
               </tr>
             )}

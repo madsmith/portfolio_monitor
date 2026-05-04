@@ -6,7 +6,7 @@ import {
   type WatchlistEntry,
   type WatchlistSummary,
 } from "../../api/client";
-import { fmtChg, fmtMoney, fmtPct, plColor, prevCloseKey } from "../../lib/formatters";
+import { fmtChg, fmtPrice, fmtPct, plColor, prevCloseKey } from "../../lib/formatters";
 import { Chart } from "../Chart";
 import { DataTable, type ColDef } from "../DataTable";
 import { type PortfolioWebSocket } from "../../api/ws";
@@ -321,7 +321,7 @@ function WatchlistRow({
         </button>
       </td>
       <td className="hidden sm:table-cell px-2 sm:px-3 py-2 text-slate-500 text-xs">{e.asset_type}</td>
-      <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(e.current_price)}</td>
+      <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtPrice(e.current_price, e.asset_type, e.ticker)}</td>
       <td className={`px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(e.dayChgPrice)}`}>
         {priceChgMode === "dollar" ? fmtChg(e.dayChgPrice) : fmtPct(e.dayChgPct)}
       </td>
@@ -340,7 +340,7 @@ function WatchlistRow({
         onCommit={() => onCommitCell("target_buy", cellValue)}
         onCancel={onCancelCell}
       >
-        {fmtMoney(e.target_buy)}
+        {fmtPrice(e.target_buy, e.asset_type, e.ticker)}
       </EditableCell>
       <EditableCell
         tdClassName="hidden lg:table-cell px-1 py-1"
@@ -354,7 +354,7 @@ function WatchlistRow({
         onCommit={() => onCommitCell("target_sell", cellValue)}
         onCancel={onCancelCell}
       >
-        {fmtMoney(e.target_sell)}
+        {fmtPrice(e.target_sell, e.asset_type, e.ticker)}
       </EditableCell>
       <EditableCell
         tdClassName="hidden xl:table-cell px-1 py-1 max-w-[200px]"
