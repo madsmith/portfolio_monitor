@@ -182,12 +182,14 @@ function AddEntryRow({
   onDraftChange,
   onAdd,
   saving,
+  autoFocus,
 }: {
   colSpan: number;
   draft: AddEntryDraft;
   onDraftChange: (d: AddEntryDraft) => void;
   onAdd: () => void;
   saving: boolean;
+  autoFocus?: boolean;
 }) {
   return (
     <tr className="bg-[#0f1117]">
@@ -203,6 +205,7 @@ function AddEntryRow({
               }}
               className={`${inputCls} w-24 uppercase`}
               placeholder="AAPL"
+              autoFocus={autoFocus}
             />
           </label>
           <label className="flex flex-col gap-1">
@@ -400,6 +403,7 @@ function WatchlistTable({
   onAddDraftChange,
   onAddEntry,
   addSaving,
+  autoFocusEntry,
 }: {
   entries: WatchlistEntry[];
   prevClose: Record<string, number>;
@@ -413,6 +417,7 @@ function WatchlistTable({
   onAddDraftChange: (d: AddEntryDraft) => void;
   onAddEntry: () => void;
   addSaving: boolean;
+  autoFocusEntry?: boolean;
 }) {
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [chartTickers, setChartTickers] = useState<Set<string>>(new Set());
@@ -560,6 +565,7 @@ function WatchlistTable({
           onDraftChange={onAddDraftChange}
           onAdd={onAddEntry}
           saving={addSaving}
+          autoFocus={autoFocusEntry}
         />
       ) : undefined}
     />
@@ -584,6 +590,8 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
 
   // Edit mode
   const [editing, setEditing] = useState(false);
+  const focusEntryOnOpen = useRef(false);
+  const keepEditingOnSelectRef = useRef(false);
   const [savingTicker, setSavingTicker] = useState<string | null>(null);
   const [deletingTicker, setDeletingTicker] = useState<string | null>(null);
   const [addDraft, setAddDraft] = useState<AddEntryDraft>(BLANK_ADD);
@@ -610,6 +618,10 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
 
   // Reset edit state when switching watchlists
   useEffect(() => {
+    if (keepEditingOnSelectRef.current) {
+      keepEditingOnSelectRef.current = false;
+      return;
+    }
     setEditing(false);
     setDeleteConfirm(false);
     setAddDraft(BLANK_ADD);
@@ -686,6 +698,9 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
       setDetail(wl);
       setCreating(false);
       setNewName("");
+      keepEditingOnSelectRef.current = true;
+      focusEntryOnOpen.current = true;
+      setEditing(true);
     } catch {
       setCreateError("Failed to create watchlist");
     } finally {
@@ -875,7 +890,23 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
           <p className="text-slate-500 text-sm py-2">No entries yet. Click Edit to add some.</p>
         ) : detail ? (
           <>
-          <div className="flex justify-end mb-3">
+          <div className="flex items-center justify-between mb-3">
+            {(() => {
+              const dayChanges = detail.entries.flatMap((e) => {
+                const livePrice = livePrices[`${e.ticker}:${e.asset_type}`] ?? null;
+                const pc = prevClose[prevCloseKey(e)] ?? null;
+                if (livePrice === null || pc === null || pc === 0) return [];
+                return [((livePrice - pc) / pc) * 100];
+              });
+              if (dayChanges.length === 0) return <span />;
+              const avg = dayChanges.reduce((a, b) => a + b, 0) / dayChanges.length;
+              const color = avg > 0 ? "text-[#4d9060]" : avg < 0 ? "text-[#9c4040]" : "text-slate-500";
+              return (
+                <span className={`text-xs tabular-nums ${color}`} title="Equal-weight avg day change">
+                  {avg >= 0 ? "+" : ""}{avg.toFixed(2)}% avg today
+                </span>
+              );
+            })()}
             <button
               onClick={() => navigate(`/watchlist/${selectedId}/performance`)}
               className="text-xs text-slate-500 hover:text-sky-400 transition-colors cursor-pointer"
@@ -897,6 +928,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
               onAddDraftChange={setAddDraft}
               onAddEntry={handleAddEntry}
               addSaving={addSaving}
+              autoFocusEntry={(() => { const v = focusEntryOnOpen.current; focusEntryOnOpen.current = false; return v; })()}
             />
           </div>
           </>

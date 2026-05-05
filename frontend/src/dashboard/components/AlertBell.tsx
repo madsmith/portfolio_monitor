@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { AlertEntry, AlertWsMessage } from "../api/ws";
 
+const DISPLAY_LIMIT = 50;
+
 const alertSound = new Audio("/sounds/alert.mp3");
 alertSound.volume = 0.5;
 
@@ -39,7 +41,7 @@ function AlertRow({
 
   const handleMouseEnter = () => {
     if (alert.read) return;
-    timerRef.current = setTimeout(() => onRead(alert.id), 750);
+    timerRef.current = setTimeout(() => onRead(alert.id), 3500);
   };
 
   const handleMouseLeave = () => {
@@ -56,23 +58,22 @@ function AlertRow({
   return (
     <li
       className={[
-        "px-3 py-2 border-b border-[#2a2f45] last:border-0 cursor-default transition-colors",
+        "group px-1.5 py-1 border-b border-[#2a2f45] last:border-0 cursor-default transition-colors hover:bg-[#323759]",
         alert.read ? "opacity-60" : "bg-[#1e2130]",
       ].join(" ")}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-1.5 min-w-0">
-          {!alert.read && (
-            <span className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full bg-[#9c4040]" />
-          )}
-          <span className={["text-sm leading-snug", alert.read ? "text-slate-400 ml-3" : "text-slate-200"].join(" ")}>
-            {formatAlert(alert)}
-          </span>
-        </div>
-        <span className="text-xs text-slate-500 shrink-0 mt-0.5">{formatAt(alert)}</span>
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className={["shrink-0 w-1.5 h-1.5 rounded-full", alert.read ? "invisible" : "bg-[#9c4040]"].join(" ")} />
+        <span
+          className={["text-xs truncate flex-1 group-hover:text-slate-100", alert.read ? "text-slate-400" : "text-slate-200"].join(" ")}
+          title={formatAlert(alert)}
+        >
+          {formatAlert(alert)}
+        </span>
+        <span className="text-[10px] text-slate-500 shrink-0">{formatAt(alert)}</span>
       </div>
     </li>
   );
@@ -90,9 +91,13 @@ function AlertRow({
 export function AlertBell({
   alertWsEvent,
   markAlertRead,
+  markAllAlertsRead,
+  onViewAll,
 }: {
   alertWsEvent: AlertWsMessage | null;
   markAlertRead: (id: string) => void;
+  markAllAlertsRead: () => void;
+  onViewAll: () => void;
 }) {
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);
   const [unread, setUnread] = useState(0);
@@ -190,27 +195,58 @@ export function AlertBell({
       {open && (
         <div className="absolute right-0 top-full mt-1 w-80 bg-[#1a1e2e] border border-[#404868] rounded shadow-xl z-50">
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#404868]">
-            <span className="text-sm font-medium text-slate-200">Recent Alerts</span>
+            <button
+              onClick={() => { onViewAll(); setOpen(false); }}
+              className="flex items-center gap-1.5 text-sm font-medium text-slate-200 hover:text-slate-100 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Recent Alerts
+            </button>
             {alerts.length > 0 && (
-              <button
-                onClick={handleClear}
-                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                Clear all
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={markAllAlertsRead}
+                  title="Mark all read"
+                  className="p-1 rounded text-slate-400 hover:text-[#e2e8f0] hover:bg-[#404868] transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleClear}
+                  title="Clear all"
+                  className="p-1 rounded text-slate-400 hover:text-[#e2e8f0] hover:bg-[#404868] transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
             )}
           </div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="scrollbar-dark min-h-[80px] max-h-[360px] overflow-y-auto">
             {alerts.length === 0 ? (
               <p className="px-3 py-4 text-sm text-slate-500 text-center">No recent alerts</p>
             ) : (
               <ul>
-                {alerts.map((a) => (
+                {alerts.slice(0, DISPLAY_LIMIT).map((a) => (
                   <AlertRow key={a.id} alert={a} onRead={markAlertRead} />
                 ))}
               </ul>
             )}
           </div>
+          {alerts.length >= DISPLAY_LIMIT && (
+            <div className="px-3 py-2 border-t border-[#404868] text-center">
+              <span className="text-xs text-slate-500">
+                Showing {DISPLAY_LIMIT} most recent —{" "}
+                <span className="text-slate-400 cursor-not-allowed" title="Coming soon">view all</span>
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

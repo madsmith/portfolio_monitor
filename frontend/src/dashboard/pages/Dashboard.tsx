@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 import { api, clearToken, getUsername, type PortfolioDetail, type PortfolioSummary, type WatchlistSummary } from "../api/client";
 import { type AlertWsMessage, type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
+import { AlertsPane } from "../components/panes/AlertsPane";
 import { AlertBell } from "../components/AlertBell";
 import { applyPriceUpdate, computeTodayChange, prevCloseKey, type TodayChange } from "../lib/formatters";
 import { OverviewPane } from "../components/panes/OverviewPane";
@@ -38,10 +39,12 @@ export default function Dashboard() {
   const settingsMatch = useMatch("/settings");
   const watchlistMatch = useMatch("/watchlist");
   const watchlistPerfMatch = useMatch("/watchlist/:id/performance");
-  const activeId = (settingsMatch || watchlistMatch || watchlistPerfMatch) ? null : (match?.params.id ?? perfMatch?.params.id ?? null);
+  const alertsMatch = useMatch("/alerts");
+  const activeId = (settingsMatch || watchlistMatch || watchlistPerfMatch || alertsMatch) ? null : (match?.params.id ?? perfMatch?.params.id ?? null);
   const isPerfActive = perfMatch !== null;
   const isSettingsActive = settingsMatch !== null;
   const isWatchlistActive = watchlistMatch !== null || watchlistPerfMatch !== null;
+  const isAlertsActive = alertsMatch !== null;
   const currentUsername = getUsername();
 
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
@@ -205,7 +208,7 @@ export default function Dashboard() {
         <div className="flex items-baseline justify-between mb-4 px-1">
           <span className="text-xl font-semibold text-slate-100 tracking-wide">Portfolio Monitor</span>
           <div className="flex items-center gap-3">
-            <AlertBell alertWsEvent={alertWsEvent} markAlertRead={(id) => wsRef.current?.markAlertRead(id)} />
+            <AlertBell alertWsEvent={alertWsEvent} markAlertRead={(id) => wsRef.current?.markAlertRead(id)} markAllAlertsRead={() => wsRef.current?.markAllAlertsRead()} onViewAll={() => navigate("/alerts")} />
             {currentUsername && (
               <span className="text-xs text-slate-500">{currentUsername}</span>
             )}
@@ -272,7 +275,7 @@ export default function Dashboard() {
 
         {/* Desktop: tab bar */}
         <div className="relative hidden sm:flex items-end gap-1">
-          <Tab label="Overview" active={!isSettingsActive && !isWatchlistActive && activeId === null} onClick={() => navigate("/")} />
+          <Tab label="Overview" active={!isSettingsActive && !isWatchlistActive && !isAlertsActive && activeId === null} onClick={() => navigate("/")} />
           {portfolios.map((p) => (
             <Tab key={p.id} label={p.name} active={p.id === activeId} onClick={() => navigate(`/portfolio/${p.id}`)} />
           ))}
@@ -283,7 +286,9 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6 min-h-[120px]">
-          {isSettingsActive ? (
+          {isAlertsActive ? (
+            <AlertsPane alertWsEvent={alertWsEvent} markAlertRead={(id) => wsRef.current?.markAlertRead(id)} markAllAlertsRead={() => wsRef.current?.markAllAlertsRead()} />
+          ) : isSettingsActive ? (
             <SettingsPane />
           ) : watchlistPerfMatch ? (
             <WatchlistPerformancePane id={watchlistPerfMatch.params.id!} />
