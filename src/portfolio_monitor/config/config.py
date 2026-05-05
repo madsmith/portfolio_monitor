@@ -48,7 +48,8 @@ class PortfolioMonitorConfig(AppConfig):
     dashboard_username = Bind[str]("portfolio_monitor.dashboard.username")
     dashboard_password = Bind[str]("portfolio_monitor.dashboard.password")
 
-    debug = BindDefault[bool]("portfolio_monitor.debug", default=False)
+    debug = BindDefault[bool]("portfolio_monitor.debug", arg_key="debug", default=False)
+    trace = BindDefault[bool]("portfolio_monitor.trace", arg_key="trace", default=False)
     dev_console = BindDefault[bool]("portfolio_monitor.dev_console", arg_key="dev", default=False)
     deep_prime = BindDefault[bool]("portfolio_monitor.deep_prime", arg_key="prime", default=False)
 
@@ -71,7 +72,7 @@ class PortfolioMonitorConfig(AppConfig):
 
     # OpenClaw alert delivery
     openclaw_alert_enable_http = BindDefault[bool](
-        "portfolio_monitor.openclaw.alert_enable_http", default=False
+        "portfolio_monitor.openclaw.http.enabled", default=False
     )
     openclaw_alert_enable_ws = BindDefault[bool](
         "portfolio_monitor.openclaw.websocket.enabled", default=False

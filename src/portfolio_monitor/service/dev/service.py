@@ -26,7 +26,7 @@ from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 from portfolio_monitor.service.vite import ViteProcess, start_vite
 
-from portfolio_monitor.service.main import _wire_watchlist_adapter
+from portfolio_monitor.service.event_hooks import AlertConfigAdapter, WatchlistAdapter
 
 from .config import DevConfig
 from .data_provider import DevDataProvider
@@ -38,9 +38,6 @@ logger = logging.getLogger(__name__)
 
 async def run_dev_service(config: DevConfig) -> None:
     """Run the monitor service in dev mode with synthetic data."""
-
-    if config.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
 
     assert config.portfolio_path, "portfolio_path is required"
 
@@ -246,7 +243,8 @@ async def run_dev_service(config: DevConfig) -> None:
     for wl in watchlist_service.get_all_watchlists():
         for entry in wl.entries:
             monitor_service.register_symbol(entry.symbol)
-    _wire_watchlist_adapter(bus, detection_engine, alert_manager, monitor_service, detection_service, dev_data_provider)
+    WatchlistAdapter(detection_engine, alert_manager, monitor_service, detection_service, dev_data_provider).wire(bus)
+    AlertConfigAdapter(detection_engine, alert_manager, detection_service, portfolio_service, watchlist_service).wire(bus)
     ctx = PortfolioMonitorContext(
         config=config,
         portfolio_service=portfolio_service,

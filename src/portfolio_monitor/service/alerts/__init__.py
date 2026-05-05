@@ -12,6 +12,7 @@ from portfolio_monitor.service.alerts.models import (
     RuleChannelOverride,
     UserAlertConfig,
 )
+from portfolio_monitor.service.alerts.rule_events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
 from portfolio_monitor.service.alerts.user_alert_manager import UserAlertManager
 
 __all__ = [
@@ -26,5 +27,8 @@ __all__ = [
     "OpenClawGatewayWsDelivery",
     "RuleChannelOverride",
     "UserAlertConfig",
+    "AlertRuleAdded",
+    "AlertRuleRemoved",
+    "AlertRuleUpdated",
     "UserAlertManager",
 ]

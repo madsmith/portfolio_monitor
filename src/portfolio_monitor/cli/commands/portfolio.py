@@ -3,6 +3,8 @@ import json
 import sys
 from typing import Annotated
 
+from portfolio_monitor.cli.utils import help_on_error
+
 from pydantic import BaseModel
 
 from portfolio_monitor.cli.request import APIClient, make_client
@@ -89,6 +91,7 @@ _json_parent.add_argument("--json", dest="json_out", action="store_true", help="
 
 def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("portfolio", help="Query portfolio data", parents=[_json_parent])
+    help_on_error(p)
     sub = p.add_subparsers(dest="portfolio_command", metavar="SUBCOMMAND")
     sub.required = True
 
@@ -97,6 +100,7 @@ def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # show
     s = sub.add_parser("show", help="Show details for a specific portfolio", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="PORTFOLIO_ID", help="Portfolio ID")
 
     p.set_defaults(func=run_portfolio)

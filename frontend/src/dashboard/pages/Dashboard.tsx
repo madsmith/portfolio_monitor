@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 import { api, clearToken, getUsername, type PortfolioDetail, type PortfolioSummary, type WatchlistSummary } from "../api/client";
-import { type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
+import { type AlertWsMessage, type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
 import { AlertBell } from "../components/AlertBell";
 import { applyPriceUpdate, computeTodayChange, prevCloseKey, type TodayChange } from "../lib/formatters";
 import { OverviewPane } from "../components/panes/OverviewPane";
@@ -56,7 +56,7 @@ export default function Dashboard() {
   const [portfolioTodayChange, setPortfolioTodayChange] = useState<Record<string, TodayChange>>({});
 
   const wsRef = useRef<PortfolioWebSocket | null>(null);
-  const [latestAlert, setLatestAlert] = useState<Record<string, unknown> | null>(null);
+  const [alertWsEvent, setAlertWsEvent] = useState<AlertWsMessage | null>(null);
 
   // Promise caches — deduplicate requests within the current UTC hour. Keyed by
   // "<id>:<YYYY-MM-DDTHH>" so stale data is discarded at the top of each hour.
@@ -97,7 +97,7 @@ export default function Dashboard() {
     const unsub = ws.onPriceUpdate((msgs) => {
       setDetail((prev) => prev ? msgs.reduce((d, { symbol, price }) => applyPriceUpdate(d, symbol.ticker, price), prev) : null);
     });
-    const unsubAlert = ws.onAlert((msg) => setLatestAlert(msg.alert));
+    const unsubAlert = ws.onAlert((msg) => setAlertWsEvent(msg));
     return () => { unsub(); unsubAlert(); ws.close(); wsRef.current = null; };
   }, []);
 
@@ -205,7 +205,7 @@ export default function Dashboard() {
         <div className="flex items-baseline justify-between mb-4 px-1">
           <span className="text-xl font-semibold text-slate-100 tracking-wide">Portfolio Monitor</span>
           <div className="flex items-center gap-3">
-            <AlertBell latestAlert={latestAlert} />
+            <AlertBell alertWsEvent={alertWsEvent} markAlertRead={(id) => wsRef.current?.markAlertRead(id)} />
             {currentUsername && (
               <span className="text-xs text-slate-500">{currentUsername}</span>
             )}

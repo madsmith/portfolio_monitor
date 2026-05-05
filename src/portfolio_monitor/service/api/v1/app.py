@@ -35,7 +35,7 @@ def _recent_alerts_handler(
         username = request.user.display_name
         buf = alert_buffer_store.get(username)
         if buf is not None:
-            buf._alerts.clear()
+            buf.clear()
         return JSONResponse({"ok": True})
 
     return get_recent_alerts, clear_recent_alerts
@@ -58,8 +58,8 @@ class APIv1ServiceApp(Router):
             config.dashboard_username,
             config.dashboard_password,
         )
-        me, get_my_alerts, update_my_alerts = me_handler(
-            account_store, session_store, config.dashboard_username
+        me, get_my_alerts, update_my_alerts, add_alert_rule, update_alert_rule, delete_alert_rule = me_handler(
+            account_store, session_store, config.dashboard_username, ctx.bus
         )
         (
             list_accounts,
@@ -103,6 +103,9 @@ class APIv1ServiceApp(Router):
                 Route("/me", require_auth(me), methods=["GET"]),
                 Route("/me/alert-config", require_auth(get_my_alerts), methods=["GET"]),
                 Route("/me/alert-config", require_auth(update_my_alerts), methods=["PUT"]),
+                Route("/me/alert-config/rules", require_auth(add_alert_rule), methods=["POST"]),
+                Route("/me/alert-config/rules/{rule_id}", require_auth(update_alert_rule), methods=["PUT"]),
+                Route("/me/alert-config/rules/{rule_id}", require_auth(delete_alert_rule), methods=["DELETE"]),
                 Route("/me/alerts/recent", require_auth(get_recent_alerts), methods=["GET"]),
                 Route("/me/alerts/recent", require_auth(clear_recent_alerts), methods=["DELETE"]),
                 Route("/accounts/{username}/password", require_auth(reset_password), methods=["PUT"]),

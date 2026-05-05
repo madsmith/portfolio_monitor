@@ -51,6 +51,15 @@ class GetPreviousCloseMessage(BaseModel):
     symbol: AssetSymbolParam
 
 
+class MarkAlertReadMessage(BaseModel):
+    type: Literal["mark_alert_read"]
+    alert_id: str
+
+
+class MarkAllAlertsReadMessage(BaseModel):
+    type: Literal["mark_all_alerts_read"]
+
+
 ClientMessage = Annotated[
     Union[
         AuthenticateMessage,
@@ -58,6 +67,8 @@ ClientMessage = Annotated[
         UnsubscribeAssetSymbolMessage,
         GetPriceMessage,
         GetPreviousCloseMessage,
+        MarkAlertReadMessage,
+        MarkAllAlertsReadMessage,
     ],
     Field(discriminator="type"),
 ]
@@ -91,12 +102,50 @@ class PreviousCloseMessage(BaseModel):
     timestamp: datetime
 
 
-class AlertFiredMessage(BaseModel):
-    type: Literal["alert_fired"] = "alert_fired"
-    alert: dict
+class AlertEventMessage(BaseModel):
+    """Fired when an alert is first raised or updated while still active."""
+    type: Literal["alert_event"] = "alert_event"
+    event: Literal["fired", "updated"]
+    alert: dict  # includes "read" field
+    unread_count: int
 
 
-ServerMessage = AuthenticatedMessage | PriceUpdateMessage | PriceMessage | PreviousCloseMessage | AlertFiredMessage
+class AlertReadMessage(BaseModel):
+    """Fired when a single alert is marked read."""
+    type: Literal["alert_read"] = "alert_read"
+    alert_id: str
+    unread_count: int
+
+
+class AllAlertsReadMessage(BaseModel):
+    """Fired when all alerts are marked read."""
+    type: Literal["all_alerts_read"] = "all_alerts_read"
+    unread_count: int = 0
+
+
+class AlertsClearedMessage(BaseModel):
+    """Fired when all alerts are deleted from the buffer."""
+    type: Literal["alerts_cleared"] = "alerts_cleared"
+    unread_count: int = 0
+
+
+class UnreadCountMessage(BaseModel):
+    """Sent once after authentication to sync the current unread count."""
+    type: Literal["unread_count"] = "unread_count"
+    unread_count: int
+
+
+ServerMessage = (
+    AuthenticatedMessage
+    | PriceUpdateMessage
+    | PriceMessage
+    | PreviousCloseMessage
+    | AlertEventMessage
+    | AlertReadMessage
+    | AllAlertsReadMessage
+    | AlertsClearedMessage
+    | UnreadCountMessage
+)
 
 
 def to_socket(msg: ServerMessage) -> str:

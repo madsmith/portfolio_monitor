@@ -112,27 +112,36 @@ class UserAlertManager:
     # ------------------------------------------------------------------
 
     async def _on_alert_fired(self, event: AlertFired) -> None:
-        await self._fan_out(event.alert)
+        print(" >> Fanning out alert", event.alert)  # TODO: remove
+        await self._fan_out(event.alert, update_buffer=True)
 
     async def _on_alert_updated(self, event: AlertUpdated) -> None:
-        await self._fan_out(event.alert)
+        print(" >> Fanning out alert update", event.alert)  # TODO: remove
+        await self._fan_out(event.alert, update_buffer=True)
 
     async def _on_alert_cleared(self, event: AlertCleared) -> None:
-        await self._fan_out(event.alert)
+        await self._fan_out(event.alert, update_buffer=False)
 
-    async def _fan_out(self, alert: Alert) -> None:
+    async def _fan_out(self, alert: Alert, update_buffer: bool = True) -> None:
         if alert.kind in self.suppressed_detectors:
+            print(" >> Suppressed alert", alert)  # TODO: remove
             return
 
         for target in self._global_targets:
             try:
+                print(" >> Sending alert to global target", target)  # TODO: remove
                 await target.send_alert(alert)
             except Exception:
                 logger.exception("Error delivering alert to global target %s", target)
 
         username = self._detector_username.get(alert.detector_id)
         if not username:
+            print("  !!!!  No username found for detector", alert.detector_id)  # TODO: remove
             return
+
+        if update_buffer and self._alert_buffer_store is not None:
+            print("  !!!!  Pushing alert to buffer", alert, "for user", username)  # TODO: remove
+            self._alert_buffer_store.get_or_create(username).push(alert.to_dict())
 
         config = self._get_user_config(username)
         matching_rule = next(
@@ -152,11 +161,7 @@ class UserAlertManager:
     async def _deliver_to_channel(
         self, alert: Alert, username: str, channel: ChannelConfig
     ) -> None:
-        if channel.type == "dashboard" and self._alert_buffer_store is not None:
-            buf = self._alert_buffer_store.get_or_create(username)
-            buf.push(alert.to_dict())
-
-        elif channel.type == "matrix":
+        if channel.type == "matrix":
             delivery = await self._get_matrix_delivery(username, channel)
             if delivery is not None:
                 try:

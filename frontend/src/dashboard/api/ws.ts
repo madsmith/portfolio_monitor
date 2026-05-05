@@ -29,23 +29,59 @@ export type AuthenticatedMessage = {
   type: "authenticated";
 };
 
-export type AlertFiredMessage = {
-  type: "alert_fired";
-  alert: Record<string, unknown>;
+export type AlertEntry = Record<string, unknown> & { id: string; read: boolean };
+
+export type AlertEventMessage = {
+  type: "alert_event";
+  event: "fired" | "updated";
+  alert: AlertEntry;
+  unread_count: number;
 };
+
+export type AlertReadMessage = {
+  type: "alert_read";
+  alert_id: string;
+  unread_count: number;
+};
+
+export type AllAlertsReadMessage = {
+  type: "all_alerts_read";
+  unread_count: number;
+};
+
+export type AlertsClearedMessage = {
+  type: "alerts_cleared";
+  unread_count: number;
+};
+
+export type UnreadCountMessage = {
+  type: "unread_count";
+  unread_count: number;
+};
+
+export type AlertWsMessage =
+  | AlertEventMessage
+  | AlertReadMessage
+  | AllAlertsReadMessage
+  | AlertsClearedMessage
+  | UnreadCountMessage;
 
 type IncomingMessage =
   | AuthenticatedMessage
   | PriceUpdateMessage
   | PriceMessage
   | PreviousCloseMessage
-  | AlertFiredMessage;
+  | AlertEventMessage
+  | AlertReadMessage
+  | AllAlertsReadMessage
+  | AlertsClearedMessage
+  | UnreadCountMessage;
 
 /** Called once per animation frame with all price updates received since the last flush. */
 type PriceUpdateHandler = (msgs: PriceUpdateMessage[]) => void;
 type PriceHandler = (msg: PriceMessage) => void;
 type PreviousCloseHandler = (msg: PreviousCloseMessage) => void;
-type AlertHandler = (msg: AlertFiredMessage) => void;
+type AlertHandler = (msg: AlertWsMessage) => void;
 
 /**
  * Manages a WebSocket connection to /api/v1/ws.
@@ -102,7 +138,13 @@ export class PortfolioWebSocket {
           for (const handler of this.priceHandlers) handler(msg);
         } else if (msg.type === "previous_close") {
           for (const handler of this.previousCloseHandlers) handler(msg);
-        } else if (msg.type === "alert_fired") {
+        } else if (
+          msg.type === "alert_event" ||
+          msg.type === "alert_read" ||
+          msg.type === "all_alerts_read" ||
+          msg.type === "alerts_cleared" ||
+          msg.type === "unread_count"
+        ) {
           for (const handler of this.alertHandlers) handler(msg);
         } else if (msg.type === "price_update") {
           this.pendingUpdates.push(msg);
@@ -152,6 +194,18 @@ export class PortfolioWebSocket {
   requestPreviousClose(symbol: AssetSymbol): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: "get_previous_close", symbol }));
+    }
+  }
+
+  markAlertRead(alertId: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "mark_alert_read", alert_id: alertId }));
+    }
+  }
+
+  markAllAlertsRead(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "mark_all_alerts_read" }));
     }
   }
 

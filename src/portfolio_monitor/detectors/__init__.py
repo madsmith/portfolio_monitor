@@ -8,6 +8,7 @@ from .registry import DetectorRegistry
 from .average_true_range_move import AverageTrueRangeMoveDetector
 from .moving_average_deviation import SMADeviationDetector
 from .percent_change import PercentChangeDetector
+from .price_value import PriceValueDetector
 from .volume_spike import VolumeSpikeDetector
 from .zscore_return import ZScoreReturnDetector
 from .zscore_volume import ZScoreVolumeDetector
@@ -29,6 +30,7 @@ __all__ = [
     "AverageTrueRangeMoveDetector",
     "SMADeviationDetector",
     "PercentChangeDetector",
+    "PriceValueDetector",
     "VolumeSpikeDetector",
     "ZScoreReturnDetector",
     "ZScoreVolumeDetector",

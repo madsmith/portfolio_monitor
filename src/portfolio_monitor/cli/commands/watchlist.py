@@ -23,6 +23,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel
 
 from portfolio_monitor.cli.display import ColumnMeta, fmt_value, render_table
+from portfolio_monitor.cli.utils import help_on_error
 from portfolio_monitor.cli.request import APIClient, make_client
 
 
@@ -60,6 +61,7 @@ _json_parent.add_argument("--json", dest="json_out", action="store_true", help="
 
 def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("watchlist", help="Manage watchlists", parents=[_json_parent])
+    help_on_error(p)
     sub = p.add_subparsers(dest="wl_command", metavar="SUBCOMMAND")
     sub.required = True
 
@@ -68,18 +70,22 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # show
     s = sub.add_parser("show", help="Show watchlist detail", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
 
     # create
     s = sub.add_parser("create", help="Create a new watchlist", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("--name", required=True, metavar="NAME")
 
     # delete
     s = sub.add_parser("delete", help="Delete a watchlist", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
 
     # add entry
     s = sub.add_parser("add", help="Add an entry to a watchlist", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--type", dest="asset_type", default="stock",
@@ -90,17 +96,20 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # remove entry
     s = sub.add_parser("remove", help="Remove an entry from a watchlist", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
 
     # note
     s = sub.add_parser("note", help="Set notes on an entry", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("text", metavar="TEXT")
 
     # target
     s = sub.add_parser("target", help="Set price targets on an entry", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--buy", dest="target_buy", type=float, default=None, metavar="PRICE")
@@ -108,26 +117,31 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # meta
     s = sub.add_parser("meta", help="Set metadata key(s) on an entry (KEY=VALUE ...)", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("pairs", nargs="+", metavar="KEY=VALUE")
 
     # alert sub-group
     al = sub.add_parser("alert", help="Manage alerts on watchlist entries")
+    help_on_error(al)
     al_sub = al.add_subparsers(dest="alert_command", metavar="SUBCOMMAND")
     al_sub.required = True
 
     s = al_sub.add_parser("show", help="Show alert config for an entry", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
 
     s = al_sub.add_parser("set", help="Add/update a detector on an entry (KEY=VALUE ...)", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--kind", required=True, metavar="KIND")
     s.add_argument("args", nargs="*", metavar="KEY=VALUE")
 
     s = al_sub.add_parser("remove", help="Remove a detector from an entry", parents=[_json_parent])
+    help_on_error(s)
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("--kind", required=True, metavar="KIND")

@@ -61,6 +61,7 @@ class CurrencyConfig:
     symbol: str
     name: str
     precision: int
+    display_decimals: int | None = None  # USD price display precision; None → use precision
 
 
 # Define all currency configurations
@@ -72,18 +73,35 @@ CURRENCY_CONFIGS: dict[CurrencyType, CurrencyConfig] = {
     CurrencyType.JPY: CurrencyConfig("¥", "Japanese Yen", 0),
     CurrencyType.CAD: CurrencyConfig("C$", "Canadian Dollar", 2),
     CurrencyType.AUD: CurrencyConfig("A$", "Australian Dollar", 2),
-    # Cryptocurrencies
-    CurrencyType.BTC: CurrencyConfig("₿", "Bitcoin", 8),
-    CurrencyType.ETH: CurrencyConfig("Ξ", "Ethereum", 18),
-    CurrencyType.USDT: CurrencyConfig("USDT", "Tether", 6),
-    CurrencyType.USDC: CurrencyConfig("USDC", "USD Coin", 6),
-    CurrencyType.XRP: CurrencyConfig("XRP", "Ripple", 6),
-    CurrencyType.ADA: CurrencyConfig("ADA", "Cardano", 6),
-    CurrencyType.SOL: CurrencyConfig("SOL", "Solana", 9),
-    CurrencyType.DOGE: CurrencyConfig("DOGE", "Dogecoin", 8),
-    CurrencyType.LTC: CurrencyConfig("LTC", "Litecoin", 8),
-    CurrencyType.ATOM: CurrencyConfig("ATOM", "Cosmos", 6),
+    # Cryptocurrencies — precision is native denomination; display_decimals is for USD price display
+    CurrencyType.BTC:  CurrencyConfig("₿",    "Bitcoin",   8,  display_decimals=2),
+    CurrencyType.ETH:  CurrencyConfig("Ξ",    "Ethereum",  18, display_decimals=2),
+    CurrencyType.USDT: CurrencyConfig("USDT", "Tether",    6,  display_decimals=4),
+    CurrencyType.USDC: CurrencyConfig("USDC", "USD Coin",  6,  display_decimals=4),
+    CurrencyType.XRP:  CurrencyConfig("XRP",  "Ripple",    6,  display_decimals=4),
+    CurrencyType.ADA:  CurrencyConfig("ADA",  "Cardano",   6,  display_decimals=4),
+    CurrencyType.SOL:  CurrencyConfig("SOL",  "Solana",    9,  display_decimals=2),
+    CurrencyType.DOGE: CurrencyConfig("DOGE", "Dogecoin",  8,  display_decimals=4),
+    CurrencyType.LTC:  CurrencyConfig("LTC",  "Litecoin",  8,  display_decimals=2),
+    CurrencyType.ATOM: CurrencyConfig("ATOM", "Cosmos",    6,  display_decimals=6),
 }
+
+_TICKER_TO_CURRENCY_TYPE: dict[str, CurrencyType] = {ct.name: ct for ct in CurrencyType}
+
+
+def _usd_price_decimals(ticker: str, price: float | None = None) -> int:
+    ct = _TICKER_TO_CURRENCY_TYPE.get(ticker.upper())
+    if ct is not None:
+        cfg = CURRENCY_CONFIGS[ct]
+        if cfg.display_decimals is not None:
+            return cfg.display_decimals
+    if price is not None:
+        if price >= 100:
+            return 2
+        if price >= 1:
+            return 4
+        return 6
+    return 4
 
 # Define equivalent currencies for arithmetic operations
 # Each entry is a set of currencies that can be used interchangeably
@@ -122,12 +140,14 @@ class Currency:
 
     _value: Decimal
     currency_type: CurrencyType
+    display_precision: int | None  # overrides CurrencyConfig.display_decimals when set
 
     def __init__(
         self,
         value: "Numeric | str | Currency",
         currency_type: CurrencyType | str | None = None,
         context: Context | None = None,
+        display_precision: int | None = None,
     ):
         """
         Create a new Currency instance.
@@ -172,6 +192,7 @@ class Currency:
                 self.currency_type = self.DEFAULT_CURRENCY_TYPE
             else:
                 self.currency_type = currency_type
+        self.display_precision = display_precision
 
     def _parse_currency_type(self, currency_str: str) -> CurrencyType:
         """Parse a currency type from a string.
@@ -229,9 +250,15 @@ class Currency:
         Returns:
             Formatted string representation
         """
-        # Use default precision for this currency type if not specified
+        # Priority: caller-supplied → instance display_precision → config display_decimals → precision
         if places is None:
-            places = self.precision
+            places = (
+                self.display_precision
+                if self.display_precision is not None
+                else self.currency_type.config.display_decimals
+                if self.currency_type.config.display_decimals is not None
+                else self.precision
+            )
 
         # Format the number with commas and specified decimal places
         formatted = f"{self._value:,.{places}f}"
@@ -454,6 +481,12 @@ class Currency:
     def usd(cls, amount: "Numeric | str") -> "Currency":
         """Convenience method to create a USD Currency."""
         return cls(amount, CurrencyType.USD)
+
+    @classmethod
+    def usd_price(cls, amount: "Numeric | str", ticker: str) -> "Currency":
+        """Create a USD-denominated price with display precision appropriate for the given ticker."""
+        price = float(amount) if not isinstance(amount, float) else amount
+        return cls(amount, CurrencyType.USD, display_precision=_usd_price_decimals(ticker, price))
 
     @classmethod
     def btc(cls, amount: "Numeric | str") -> "Currency":

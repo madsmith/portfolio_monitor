@@ -2,10 +2,12 @@ import argparse
 import sys
 
 from portfolio_monitor.cli.request import APIClient
+from portfolio_monitor.cli.utils import help_on_error
 
 
 def add_login_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("login", help="Authenticate and obtain a bearer token")
+    help_on_error(p)
     p.add_argument("--username", required=True, metavar="USERNAME", help="Dashboard username")
     p.add_argument("--password", required=True, metavar="PASSWORD", help="Dashboard password")
     p.set_defaults(func=run_login)

@@ -9,6 +9,9 @@ from portfolio_monitor.cli.commands.prices import add_price_parser
 from portfolio_monitor.cli.commands.watchlist import add_watchlist_parser
 
 
+from portfolio_monitor.cli.utils import help_on_error
+
+
 def get_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="portfolio-manager",
@@ -41,6 +44,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     parser = get_arg_parser()
+    help_on_error(parser)
 
     args = parser.parse_args()
 

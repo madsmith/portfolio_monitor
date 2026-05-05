@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 
 from portfolio_monitor.cli.request import make_client
+from portfolio_monitor.cli.utils import help_on_error
 from portfolio_monitor.cli.display import ColumnMeta, render_table
 from portfolio_monitor.data import AggregateTimespan, Timespan
 
@@ -82,11 +83,13 @@ def add_price_parser(subparsers: argparse._SubParsersAction) -> None:
         "price",
         help="Look up OHLCV data for a symbol",
         usage=(
+
             "%(prog)s [--previous-close] [--json] [-t TYPE] TICKER\n"
             "       %(prog)s [--open-close] [--time DATE_REF] [--json] [-t TYPE] TICKER\n"
             "       %(prog)s [--last PERIOD] [--span SPAN] [--time DATE_REF] [--json] [-t TYPE] TICKER"
         ),
     )
+    help_on_error(p)
     p.add_argument("ticker", metavar="TICKER", help="Asset ticker symbol (e.g. GOOG, BTC)")
     p.add_argument(
         "--type", "-t",

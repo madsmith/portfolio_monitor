@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import type { AlertEntry, AlertWsMessage } from "../api/ws";
 
-type AlertEntry = Record<string, unknown>;
+const alertSound = new Audio("/sounds/alert.mp3");
+alertSound.volume = 0.5;
+
+function playAlertSound() {
+  alertSound.currentTime = 0;
+  alertSound.play().catch(() => {});
+}
 
 function formatAlert(a: AlertEntry): string {
   const msg = a["message"] as string | undefined;
@@ -12,7 +19,7 @@ function formatAlert(a: AlertEntry): string {
 }
 
 function formatAt(a: AlertEntry): string {
-  const at = a["at"] as string | undefined;
+  const at = (a["updated_at"] ?? a["at"]) as string | undefined;
   if (!at) return "";
   try {
     return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -21,34 +28,124 @@ function formatAt(a: AlertEntry): string {
   }
 }
 
+function AlertRow({
+  alert,
+  onRead,
+}: {
+  alert: AlertEntry;
+  onRead: (id: string) => void;
+}) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMouseEnter = () => {
+    if (alert.read) return;
+    timerRef.current = setTimeout(() => onRead(alert.id), 750);
+  };
+
+  const handleMouseLeave = () => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const handleClick = () => {
+    if (!alert.read) onRead(alert.id);
+  };
+
+  return (
+    <li
+      className={[
+        "px-3 py-2 border-b border-[#2a2f45] last:border-0 cursor-default transition-colors",
+        alert.read ? "opacity-60" : "bg-[#1e2130]",
+      ].join(" ")}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-1.5 min-w-0">
+          {!alert.read && (
+            <span className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full bg-[#9c4040]" />
+          )}
+          <span className={["text-sm leading-snug", alert.read ? "text-slate-400 ml-3" : "text-slate-200"].join(" ")}>
+            {formatAlert(alert)}
+          </span>
+        </div>
+        <span className="text-xs text-slate-500 shrink-0 mt-0.5">{formatAt(alert)}</span>
+      </div>
+    </li>
+  );
+}
+
 /**
- * Notification bell that shows recent alerts from the dashboard channel buffer.
+ * Notification bell with a per-user alert buffer.
  *
- * Pass `latestAlert` (from the WebSocket `alert_fired` frame) whenever a new
- * alert arrives — the component will prepend it to the list and bump the badge.
+ * Receives WS alert events from the parent and handles all event types:
+ *   alert_event (fired/updated) — upsert by id
+ *   alert_read / all_alerts_read — sync read state
+ *   alerts_cleared — empty the list
+ *   unread_count — sync badge count on connect
  */
-export function AlertBell({ latestAlert }: { latestAlert: AlertEntry | null }) {
+export function AlertBell({
+  alertWsEvent,
+  markAlertRead,
+}: {
+  alertWsEvent: AlertWsMessage | null;
+  markAlertRead: (id: string) => void;
+}) {
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);
-  const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const prevAlert = useRef<AlertEntry | null>(null);
+  const prevEvent = useRef<AlertWsMessage | null>(null);
 
   // Load buffered alerts on mount
   useEffect(() => {
     api.getRecentAlerts(50).then((res) => {
-      setAlerts(res.alerts);
+      setAlerts(res.alerts as AlertEntry[]);
+      setUnread((res.alerts as AlertEntry[]).filter((a) => !a.read).length);
     }).catch(() => {});
   }, []);
 
-  // Push incoming WS alerts
+  // Handle incoming WS events
   useEffect(() => {
-    if (latestAlert && latestAlert !== prevAlert.current) {
-      prevAlert.current = latestAlert;
-      setAlerts((prev) => [latestAlert, ...prev].slice(0, 100));
-      if (!open) setUnread((n) => n + 1);
+    if (!alertWsEvent || alertWsEvent === prevEvent.current) return;
+    prevEvent.current = alertWsEvent;
+
+    switch (alertWsEvent.type) {
+      case "alert_event": {
+        const incoming = alertWsEvent.alert;
+        if (alertWsEvent.event === "fired") playAlertSound();
+        setAlerts((prev) => {
+          const idx = prev.findIndex((a) => a.id === incoming.id);
+          if (idx === -1) return [incoming, ...prev].slice(0, 100);
+          const updated = [...prev];
+          updated[idx] = incoming;
+          return updated;
+        });
+        setUnread(alertWsEvent.unread_count);
+        break;
+      }
+      case "alert_read":
+        setAlerts((prev) =>
+          prev.map((a) => (a.id === alertWsEvent.alert_id ? { ...a, read: true } : a))
+        );
+        setUnread(alertWsEvent.unread_count);
+        break;
+      case "all_alerts_read":
+        setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
+        setUnread(0);
+        break;
+      case "alerts_cleared":
+        setAlerts([]);
+        setUnread(0);
+        break;
+      case "unread_count":
+        setUnread(alertWsEvent.unread_count);
+        break;
     }
-  }, [latestAlert, open]);
+  }, [alertWsEvent]);
 
   // Close on outside click
   useEffect(() => {
@@ -62,13 +159,11 @@ export function AlertBell({ latestAlert }: { latestAlert: AlertEntry | null }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const handleOpen = () => {
-    setOpen((o) => !o);
-    if (!open) setUnread(0);
-  };
+  const handleOpen = () => setOpen((o) => !o);
 
   const handleClear = () => {
     api.clearRecentAlerts().catch(() => {});
+    // Optimistic — the WS "alerts_cleared" event will confirm
     setAlerts([]);
     setUnread(0);
     setOpen(false);
@@ -110,13 +205,8 @@ export function AlertBell({ latestAlert }: { latestAlert: AlertEntry | null }) {
               <p className="px-3 py-4 text-sm text-slate-500 text-center">No recent alerts</p>
             ) : (
               <ul>
-                {alerts.map((a, i) => (
-                  <li key={i} className="px-3 py-2 border-b border-[#2a2f45] last:border-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm text-slate-200 leading-snug">{formatAlert(a)}</span>
-                      <span className="text-xs text-slate-500 shrink-0 mt-0.5">{formatAt(a)}</span>
-                    </div>
-                  </li>
+                {alerts.map((a) => (
+                  <AlertRow key={a.id} alert={a} onRead={markAlertRead} />
                 ))}
               </ul>
             )}

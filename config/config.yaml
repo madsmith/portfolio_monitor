@@ -15,7 +15,8 @@ portfolio_monitor:
     session_key: "hook:main:portfolio_alerts"
     gateway_token: "${private.openclaw.gateway_token}"
     gateway_password: "${private.openclaw.gateway_password}"
-    alert_enable_http: false
+    http:
+      enabled: false
     websocket:
       enabled: false
       extra_prompt: |

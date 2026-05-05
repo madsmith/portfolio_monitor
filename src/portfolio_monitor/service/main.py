@@ -33,29 +33,23 @@ from portfolio_monitor.service.alerts import (
     UserAlertConfig,
     UserAlertManager,
 )
+from portfolio_monitor.service.event_hooks import AlertConfigAdapter, WatchlistAdapter
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 from portfolio_monitor.service.vite import ViteProcess, start_vite
+from portfolio_monitor.utils.trace import TRACE
 from portfolio_monitor.watchlist.service import WatchlistService
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+
 
 logger = logging.getLogger(__name__)
 
 
-async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -> None:
+async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, is_dev: bool = False) -> None:
     """Run the monitor service until interrupted"""
-
-    if config.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logging.getLogger("urllib3").setLevel(logging.DEBUG)
-        logging.getLogger("urllib3.connectionpool").setLevel(logging.DEBUG)
 
     if not config.portfolio_path:
         raise ValueError("Portfolio path not configured")
@@ -115,7 +109,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         for detector_id, usernames in detector_accounts.items():
             for username in usernames:
                 alert_manager.register_detector_account(detector_id, username)
-        if is_dev:
+        if not is_live:
             alert_manager.suppressed_detectors = {
                 detector.name()
                 for detectors in detection_engine.asset_detectors.values()
@@ -158,8 +152,8 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             for entry in wl.entries:
                 monitor.register_symbol(entry.symbol)
 
-        # Wire live detection adapter for watchlist entry changes
-        _wire_watchlist_adapter(bus, detection_engine, alert_manager, monitor, detection_service, data_provider)
+        WatchlistAdapter(detection_engine, alert_manager, monitor, detection_service, data_provider).wire(bus)
+        AlertConfigAdapter(detection_engine, alert_manager, detection_service, portfolio_service, watchlist_service).wire(bus)
 
     # Prime services
     with logfire.span("service.startup.prime"):
@@ -399,72 +393,6 @@ def _build_per_account_engine(
     return engine, detector_accounts
 
 
-def _wire_watchlist_adapter(
-    bus: EventBus,
-    engine: DeviationEngine,
-    alert_manager: UserAlertManager,
-    monitor: MonitorService,
-    detection_service: DetectionService,
-    data_provider: PolygonDataProvider,
-) -> None:
-    """Subscribe to watchlist events and apply live engine/router/monitor updates."""
-    from portfolio_monitor.watchlist.events import (
-        WatchlistEntryAdded,
-        WatchlistEntryAlertsUpdated,
-        WatchlistEntryRemoved,
-    )
-
-    # (owner, ticker) → list of detector_ids registered for that entry
-    entry_detectors: dict[tuple[str, str], list[str]] = defaultdict(list)
-
-    def _add_detectors(symbol: AssetSymbol, alert_config: dict, owner: str) -> list[str]:
-        ids: list[str] = []
-        for kind, args in alert_config.items():
-            if not isinstance(args, dict):
-                continue
-            detector = DetectorRegistry.create_detector(kind, args)
-            if detector is None:
-                continue
-            engine.add_detector(symbol, detector)  # type: ignore[arg-type]
-            alert_manager.register_detector_account(detector.detector_id, owner)
-            ids.append(detector.detector_id)
-        return ids
-
-    def _remove_detectors(symbol: AssetSymbol, owner: str) -> None:
-        key = (owner, symbol.ticker)
-        for did in entry_detectors.pop(key, []):
-            engine.remove_detector(symbol, did)
-            alert_manager.unregister_detector_account(did)
-
-    async def _on_entry_added(event: WatchlistEntryAdded) -> None:
-        monitor.register_symbol(event.symbol)
-        # Seed initial price immediately (fallback to prev close when market closed)
-        agg = await data_provider.get_aggregate(event.symbol)
-        if agg:
-            await bus.publish(AggregateUpdated(symbol=event.symbol, aggregate=agg))
-        ids = _add_detectors(event.symbol, event.alert_config, event.owner)
-        key = (event.owner, event.symbol.ticker)
-        entry_detectors[key].extend(ids)
-        if ids:
-            await detection_service.prime([event.symbol], datetime.now(ZoneInfo("UTC")))
-
-    async def _on_entry_removed(event: WatchlistEntryRemoved) -> None:
-        _remove_detectors(event.symbol, event.owner)
-        # Unregister from monitor only if no other consumer still tracks this symbol
-        # (conservatively keep it — polling a dead symbol is harmless)
-
-    async def _on_alerts_updated(event: WatchlistEntryAlertsUpdated) -> None:
-        _remove_detectors(event.symbol, event.owner)
-        ids = _add_detectors(event.symbol, event.new_alert_config, event.owner)
-        key = (event.owner, event.symbol.ticker)
-        entry_detectors[key].extend(ids)
-        if ids:
-            await detection_service.prime([event.symbol], datetime.now(ZoneInfo("UTC")))
-
-    bus.subscribe(WatchlistEntryAdded, _on_entry_added)
-    bus.subscribe(WatchlistEntryRemoved, _on_entry_removed)
-    bus.subscribe(WatchlistEntryAlertsUpdated, _on_alerts_updated)
-
 
 def generate_auth_key(config_path: Path) -> None:
     """Generate a random 256-bit auth key and save to the private config file."""
@@ -497,6 +425,7 @@ def arg_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "-d", "--debug", action="store_true", help="Enable debug logging"
     )
+    run_parser.add_argument("--trace", action="store_true", help="Enable trace logging")
     run_parser.add_argument("--host", type=str, help="Control interface host")
     run_parser.add_argument("--port", type=int, help="Control interface port")
     run_parser.add_argument("--auth-key", type=str, help="Authorization key")
@@ -550,36 +479,28 @@ def main() -> None:
     if args.command is None:
         args = parser.parse_args(["run"])
 
-
     # Dev mode — synthetic data, no Polygon API
     if args.dev:
         from portfolio_monitor.service.dev import run_dev_service
         from portfolio_monitor.service.dev.config import DevConfig
 
-        dev_config = DevConfig.from_config_file(config_path, args)
+        config = DevConfig.from_config_file(config_path, args)
+    
+    else:
         try:
-            asyncio.run(run_dev_service(dev_config))
-        except KeyboardInterrupt:
-            logger.info("Shutting down dev mode [Ctrl+C]")
-        return
+            config = PortfolioMonitorConfig(config_path, args)
+        except PrivateConfigError as e:
+            if e.key == "private.portfolio_monitor.auth_key":
+                return _auth_key_exit()
+            else:
+                raise e
 
-    try:
-        config = PortfolioMonitorConfig(config_path, args)
-    except PrivateConfigError as e:
-        if e.key == "private.portfolio_monitor.auth_key":
-            return _auth_key_exit()
-        else:
-            raise e
-
-    if args.dev_live:
-        config.dev_console = True
-
-    if not config.auth_key:
-        return _auth_key_exit()
 
     # Set log level based on debug flag
-    log_level = logging.DEBUG if config.debug else logging.INFO
-    logging.basicConfig(level=log_level, format=logging.BASIC_FORMAT)
+    log_level = TRACE if config.trace else (logging.DEBUG if (config.debug or args.dev) else logging.INFO)
+    log_format = logging.BASIC_FORMAT if log_level >= logging.INFO else "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    logging.basicConfig(level=log_level, format=log_format)
 
     logfire.configure(
         service_name="Portfolio Monitor",
@@ -587,11 +508,26 @@ def main() -> None:
         console={"min_log_level": "warning"},
         send_to_logfire=args.logfire,
     )
+
     if args.logfire:
         URLLib3Instrumentor().instrument()
 
+    if config.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logging.getLogger("urllib3").setLevel(logging.DEBUG)
+        logging.getLogger("urllib3.connectionpool").setLevel(logging.DEBUG)
+        
+    if args.dev_live:
+        config.dev_console = True
+
     try:
-        asyncio.run(run_service(config, is_dev=config.dev_console))
+        if args.dev:
+            asyncio.run(run_dev_service(config))
+        else:
+            if not config.auth_key:
+                return _auth_key_exit()
+
+            asyncio.run(run_service(config, is_live=True, is_dev=args.dev_live))
     except KeyboardInterrupt:
         logger.info("Shutting down [Ctrl+C]")
 

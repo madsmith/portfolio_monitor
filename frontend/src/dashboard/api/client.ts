@@ -17,9 +17,14 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${getToken() ?? ""}` };
 }
 
+async function httpError(res: Response): Promise<Error> {
+  const body = await res.text().catch(() => "");
+  return new Error(`${res.status}${body ? `: ${body}` : ""}`);
+}
+
 async function authGet<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: authHeaders() });
-  if (!res.ok) throw new Error(String(res.status));
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 
@@ -29,7 +34,7 @@ async function authPut<T>(path: string, body: unknown): Promise<T> {
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(String(res.status));
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 
@@ -39,13 +44,13 @@ async function authPost<T>(path: string, body: unknown): Promise<T> {
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(String(res.status));
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 
 async function authDelete<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: "DELETE", headers: authHeaders() });
-  if (!res.ok) throw new Error(String(res.status));
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 
@@ -270,6 +275,15 @@ export const api = {
 
   updateMyAlerts: (config: AlertConfig): Promise<{ ok: boolean }> =>
     authPut("/api/v1/me/alert-config", config),
+
+  addAlertRule: (rule: { ticker: string; kind: string; args: Record<string, unknown> }): Promise<AlertRule> =>
+    authPost("/api/v1/me/alert-config/rules", rule),
+
+  updateAlertRule: (id: string, patch: { ticker?: string; kind?: string; args?: Record<string, unknown> }): Promise<AlertRule> =>
+    authPut(`/api/v1/me/alert-config/rules/${encodeURIComponent(id)}`, patch),
+
+  deleteAlertRule: (id: string): Promise<{ ok: boolean }> =>
+    authDelete(`/api/v1/me/alert-config/rules/${encodeURIComponent(id)}`),
 
   getAccountAlerts: (username: string): Promise<AlertConfig> =>
     authGet(`/api/v1/accounts/${encodeURIComponent(username)}/alert-config`),

@@ -15,6 +15,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from portfolio_monitor.cli.display import ColumnMeta, render_table
+from portfolio_monitor.cli.utils import help_on_error
 from portfolio_monitor.cli.request import make_client
 
 
@@ -81,6 +82,7 @@ def _detector_rows(detectors: list[dict]) -> list[DetectorArgRow]:
 
 def add_alerts_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("alert", help="Manage alert configuration for the current user")
+    help_on_error(p)
     sub = p.add_subparsers(dest="alert_subcommand", metavar="SUBCOMMAND")
     sub.required = True
 
@@ -101,6 +103,7 @@ def add_alerts_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    help_on_error(add_p)
     add_p.add_argument("--kind", required=True, metavar="KIND", help="Detector kind (e.g. percent_change)")
     add_p.add_argument("--symbol", metavar="SYMBOL", help="Ticker to watch (omit to apply to all symbols)")
     add_p.add_argument("args", nargs="*", metavar="KEY=VALUE", help="Detector arguments as key=value pairs")
@@ -108,6 +111,7 @@ def add_alerts_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # remove
     rm_p = sub.add_parser("remove", help="Remove an alert rule by ID")
+    help_on_error(rm_p)
     rm_p.add_argument("id", metavar="ID", help="Rule ID or unique prefix to remove")
     rm_p.set_defaults(func=_run_remove)
 
