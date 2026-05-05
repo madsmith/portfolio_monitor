@@ -101,6 +101,9 @@ class Asset:
             asset_type=asset_type,
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        return {"ticker": self.symbol.ticker, "lots": [lot.to_dict() for lot in self.lots]}
+
     def __str__(self) -> str:
         """Return a string representation of this asset."""
         lots_info = (

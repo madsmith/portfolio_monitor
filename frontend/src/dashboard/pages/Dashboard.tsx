@@ -314,6 +314,16 @@ export default function Dashboard() {
               loading={detailLoading}
               error={detailError}
               prevClose={prevClose}
+              onMutated={(updated) => {
+                const key = hourKey(updated.id);
+                detailCacheRef.current[key] = Promise.resolve(updated);
+                delete prevCloseCacheRef.current[key];
+                setDetail(updated);
+                cachedPrevClose(updated).then(setPrevClose).catch(() => {});
+                const symbols = [...updated.stocks, ...updated.currencies, ...updated.crypto]
+                  .map(toWsSymbol);
+                wsRef.current?.subscribe(symbols);
+              }}
             />
           )}
         </div>

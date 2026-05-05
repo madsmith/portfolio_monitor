@@ -13,8 +13,8 @@ def _currency_val(c: Currency | None) -> float | None:
     return float(c._value) if c is not None else None
 
 
-def _lot_dict(lot: Lot) -> dict:
-    return {
+def _lot_dict(lot: Lot, lot_idx: int | None = None) -> dict:
+    d: dict = {
         "date": lot.date.isoformat() if lot.date is not None else None,
         "quantity": str(lot.quantity),
         "price": _currency_val(lot.price),
@@ -22,15 +22,15 @@ def _lot_dict(lot: Lot) -> dict:
         "fees": _currency_val(lot.fees),
         "rebates": _currency_val(lot.rebates),
     }
+    if lot_idx is not None:
+        d["lot_idx"] = lot_idx
+    return d
 
 
 def _asset_dict(asset: Asset) -> dict:
     pl_pct = asset.profit_loss_percentage
-    sorted_lots = sorted(
-        asset.lots,
-        key=lambda lot: (lot.date is None, lot.date),
-        reverse=True,
-    )
+    indexed = list(enumerate(asset.lots))
+    sorted_indexed = sorted(indexed, key=lambda x: (x[1].date is None, x[1].date), reverse=True)
     return {
         "ticker": asset.symbol.ticker,
         "asset_type": asset.asset_type,
@@ -40,7 +40,7 @@ def _asset_dict(asset: Asset) -> dict:
         "current_value": _currency_val(asset.current_value),
         "profit_loss": _currency_val(asset.profit_loss),
         "profit_loss_percentage": float(pl_pct) if pl_pct is not None else None,
-        "lots": [_lot_dict(lot) for lot in sorted_lots],
+        "lots": [_lot_dict(lot, idx) for idx, lot in sorted_indexed],
     }
 
 
@@ -90,3 +90,59 @@ def portfolio_handler(portfolio_service: PortfolioService):
         return JSONResponse(_portfolio_detail(portfolio))
 
     return get_portfolio
+
+
+def portfolio_edit_handlers(portfolio_service: PortfolioService):
+    async def add_lot(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        portfolio_id = request.path_params["id"]
+        asset_type = request.path_params["asset_type"]
+        ticker = request.path_params["ticker"].upper()
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid body"}, status_code=400)
+        result = portfolio_service.add_lot(portfolio_id, asset_type, ticker, body, auth)
+        if result is None:
+            return JSONResponse({"error": "not found or forbidden"}, status_code=404)
+        portfolio, _ = result
+        return JSONResponse(_portfolio_detail(portfolio))
+
+    async def update_lot(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        portfolio_id = request.path_params["id"]
+        asset_type = request.path_params["asset_type"]
+        ticker = request.path_params["ticker"].upper()
+        lot_idx = int(request.path_params["lot_idx"])
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid body"}, status_code=400)
+        result = portfolio_service.update_lot(portfolio_id, asset_type, ticker, lot_idx, body, auth)
+        if result is None:
+            return JSONResponse({"error": "not found or forbidden"}, status_code=404)
+        portfolio, _ = result
+        return JSONResponse(_portfolio_detail(portfolio))
+
+    async def delete_lot(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        portfolio_id = request.path_params["id"]
+        asset_type = request.path_params["asset_type"]
+        ticker = request.path_params["ticker"].upper()
+        lot_idx = int(request.path_params["lot_idx"])
+        result = portfolio_service.delete_lot(portfolio_id, asset_type, ticker, lot_idx, auth)
+        if result is None:
+            return JSONResponse({"error": "not found or forbidden"}, status_code=404)
+        return JSONResponse(_portfolio_detail(result))
+
+    async def delete_asset_handler(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        portfolio_id = request.path_params["id"]
+        asset_type = request.path_params["asset_type"]
+        ticker = request.path_params["ticker"].upper()
+        result = portfolio_service.delete_asset(portfolio_id, asset_type, ticker, auth)
+        if result is None:
+            return JSONResponse({"error": "not found or forbidden"}, status_code=404)
+        return JSONResponse(_portfolio_detail(result))
+
+    return add_lot, update_lot, delete_lot, delete_asset_handler

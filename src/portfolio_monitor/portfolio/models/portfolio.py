@@ -109,6 +109,18 @@ class Portfolio(PermissionsHost):
 
         return portfolio
 
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"name": self.name}
+        if self.owner and self.owner != "default":
+            d["owner"] = self.owner
+        for key in ("stocks", "currencies", "crypto"):
+            assets: list[Asset] = getattr(self, key)
+            if assets:
+                d[key] = [a.to_dict() for a in assets]
+        if self.permissions is not None:
+            d["permissions"] = self.permissions.to_dict()
+        return d
+
     def __str__(self) -> str:
         """Return a string representation of this portfolio."""
         assets_count = len(self.stocks) + len(self.currencies) + len(self.crypto)

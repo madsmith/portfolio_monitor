@@ -13,7 +13,7 @@ from .routes.health import health
 from .routes.login import login_handler
 from .routes.me import me_handler
 from .routes.market_info import market_close_handler, market_hours_handler, market_open_handler
-from .routes.portfolios import portfolio_handler, portfolios_handler
+from .routes.portfolios import portfolio_edit_handlers, portfolio_handler, portfolios_handler
 from .routes.prices import current_price_handler, daily_range_handler, open_close_handler, previous_close_handler, price_history_handler
 from .routes.watchlists import watchlists_handler
 from .ws import WebSocketManager
@@ -93,6 +93,7 @@ class APIv1ServiceApp(Router):
         get_recent_alerts, clear_recent_alerts = _recent_alerts_handler(
             ctx.alert_buffer_store, account_store, config.dashboard_username
         )
+        add_lot, update_lot, delete_lot, delete_asset = portfolio_edit_handlers(ctx.portfolio_service)
         super().__init__(
             routes=[
                 # Public routes — no authentication required
@@ -111,6 +112,10 @@ class APIv1ServiceApp(Router):
                 Route("/accounts/{username}/password", require_auth(reset_password), methods=["PUT"]),
                 Route("/portfolios", require_auth(portfolios_handler(ctx.portfolio_service)), methods=["GET"]),
                 Route("/portfolio/{id}", require_auth(portfolio_handler(ctx.portfolio_service)), methods=["GET"]),
+                Route("/portfolio/{id}/asset/{asset_type}/{ticker}/lots", require_auth(add_lot), methods=["POST"]),
+                Route("/portfolio/{id}/asset/{asset_type}/{ticker}/lot/{lot_idx}", require_auth(update_lot), methods=["PUT"]),
+                Route("/portfolio/{id}/asset/{asset_type}/{ticker}/lot/{lot_idx}", require_auth(delete_lot), methods=["DELETE"]),
+                Route("/portfolio/{id}/asset/{asset_type}/{ticker}", require_auth(delete_asset), methods=["DELETE"]),
                 Route("/watchlists", require_auth(list_watchlists), methods=["GET"]),
                 Route("/watchlist", require_auth(create_watchlist), methods=["POST"]),
                 Route("/watchlist/{id}", require_auth(get_watchlist), methods=["GET"]),

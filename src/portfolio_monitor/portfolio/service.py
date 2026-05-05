@@ -1,24 +1,28 @@
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import yaml as pyyaml
 from omegaconf import OmegaConf
 
 from portfolio_monitor.core import Currency
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import AggregateUpdated
-from portfolio_monitor.service.types import AssetSymbol
+from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 if TYPE_CHECKING:
     from portfolio_monitor.service.context import AuthContext
 
 from .events import PortfolioUpdated, PriceUpdated
-from .models import Portfolio
+from .models import Asset, Lot, Portfolio
 
 logger = logging.getLogger(__name__)
 
 
-def _load_portfolios_by_owner(portfolio_path: Path) -> dict[str, list[Portfolio]]:
+_ASSET_TYPE_ATTR: dict[str, str] = {"stock": "stocks", "currency": "currencies", "crypto": "crypto"}
+
+
+def _load_portfolios_by_owner(portfolio_path: Path, path_registry: dict[str, Path] | None = None) -> dict[str, list[Portfolio]]:
     """Load all portfolios from */<owner>/*.yaml, keyed by owner directory name."""
     by_owner: dict[str, list[Portfolio]] = {}
     if not portfolio_path.exists():
@@ -38,6 +42,8 @@ def _load_portfolios_by_owner(portfolio_path: Path) -> dict[str, list[Portfolio]
             owner = data.get("owner", folder_owner) or folder_owner
             portfolio = Portfolio.from_dict(dict(data), id_hash_seed=str(yaml_file), owner=owner)
             by_owner.setdefault(owner, []).append(portfolio)
+            if path_registry is not None:
+                path_registry[portfolio.id] = yaml_file
             logger.info(
                 "Loaded portfolio '%s' (owner=%s) from %s",
                 portfolio.name,
@@ -62,8 +68,9 @@ class PortfolioService:
 
     def __init__(self, bus: EventBus, portfolio_path: Path) -> None:
         self._bus: EventBus = bus
+        self._portfolio_paths: dict[str, Path] = {}
         self._portfolios_by_owner: dict[str, list[Portfolio]] = _load_portfolios_by_owner(
-            portfolio_path
+            portfolio_path, self._portfolio_paths
         )
         self._tracked_symbols: set[AssetSymbol] = set()
 
@@ -98,6 +105,87 @@ class PortfolioService:
     #######################################################
     # Event Bus Callbacks
     #######################################################
+
+    #######################################################
+    # Mutations
+    #######################################################
+
+    def _can_write(self, portfolio: Portfolio, auth: "AuthContext") -> bool:
+        return auth.is_admin or portfolio.can("write", auth.username)
+
+    def _save_portfolio(self, portfolio: Portfolio) -> None:
+        path = self._portfolio_paths.get(portfolio.id)
+        if path is None:
+            raise ValueError(f"No file path tracked for portfolio {portfolio.id}")
+        with open(path, "w") as f:
+            pyyaml.dump(portfolio.to_dict(), f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    def _asset_list(self, portfolio: Portfolio, asset_type: str) -> list[Asset] | None:
+        attr = _ASSET_TYPE_ATTR.get(asset_type)
+        return getattr(portfolio, attr) if attr else None
+
+    def add_lot(self, portfolio_id: str, asset_type: str, ticker: str, lot_data: dict[str, Any], auth: "AuthContext") -> tuple[Portfolio, Asset] | None:
+        portfolio = self.get_portfolio(portfolio_id, auth)
+        if portfolio is None or not self._can_write(portfolio, auth):
+            return None
+        asset_list = self._asset_list(portfolio, asset_type)
+        if asset_list is None:
+            return None
+        asset = next((a for a in asset_list if a.symbol.ticker == ticker), None)
+        if asset is None:
+            symbol = AssetSymbol(ticker, AssetTypes(asset_type))
+            asset = Asset(symbol=symbol, lots=[], asset_type=asset_type)
+            asset_list.append(asset)
+            self._tracked_symbols.add(symbol)
+        asset.lots.append(Lot.from_dict(lot_data))
+        self._save_portfolio(portfolio)
+        return portfolio, asset
+
+    def update_lot(self, portfolio_id: str, asset_type: str, ticker: str, lot_idx: int, lot_data: dict[str, Any], auth: "AuthContext") -> tuple[Portfolio, Asset] | None:
+        portfolio = self.get_portfolio(portfolio_id, auth)
+        if portfolio is None or not self._can_write(portfolio, auth):
+            return None
+        asset_list = self._asset_list(portfolio, asset_type)
+        if asset_list is None:
+            return None
+        asset = next((a for a in asset_list if a.symbol.ticker == ticker), None)
+        if asset is None or lot_idx < 0 or lot_idx >= len(asset.lots):
+            return None
+        asset.lots[lot_idx] = Lot.from_dict(lot_data)
+        self._save_portfolio(portfolio)
+        return portfolio, asset
+
+    def delete_lot(self, portfolio_id: str, asset_type: str, ticker: str, lot_idx: int, auth: "AuthContext") -> Portfolio | None:
+        portfolio = self.get_portfolio(portfolio_id, auth)
+        if portfolio is None or not self._can_write(portfolio, auth):
+            return None
+        asset_list = self._asset_list(portfolio, asset_type)
+        if asset_list is None:
+            return None
+        asset = next((a for a in asset_list if a.symbol.ticker == ticker), None)
+        if asset is None or lot_idx < 0 or lot_idx >= len(asset.lots):
+            return None
+        asset.lots.pop(lot_idx)
+        if not asset.lots:
+            asset_list.remove(asset)
+            self._tracked_symbols.discard(asset.symbol)
+        self._save_portfolio(portfolio)
+        return portfolio
+
+    def delete_asset(self, portfolio_id: str, asset_type: str, ticker: str, auth: "AuthContext") -> Portfolio | None:
+        portfolio = self.get_portfolio(portfolio_id, auth)
+        if portfolio is None or not self._can_write(portfolio, auth):
+            return None
+        asset_list = self._asset_list(portfolio, asset_type)
+        if asset_list is None:
+            return None
+        asset = next((a for a in asset_list if a.symbol.ticker == ticker), None)
+        if asset is None:
+            return None
+        asset_list.remove(asset)
+        self._tracked_symbols.discard(asset.symbol)
+        self._save_portfolio(portfolio)
+        return portfolio
 
     async def _on_aggregate_updated(self, event: AggregateUpdated) -> None:
         if event.symbol not in self._tracked_symbols:

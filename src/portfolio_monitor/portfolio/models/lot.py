@@ -59,6 +59,24 @@ class Lot:
             rebates=rebates,
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        from portfolio_monitor.core.currency import CurrencyType
+
+        def _ser(c: Currency) -> float | str:
+            val = float(c._value)
+            if c.currency_type == CurrencyType.USD:
+                return val
+            return f"{val} {c.currency_type.name}"
+
+        d: dict[str, Any] = {"quantity": str(self.quantity), "price": _ser(self.price)}
+        if self.date is not None:
+            d["date"] = self.date.strftime("%Y/%m/%d")
+        if self.fees is not None:
+            d["fees"] = _ser(self.fees)
+        if self.rebates is not None:
+            d["rebates"] = _ser(self.rebates)
+        return d
+
     def __str__(self) -> str:
         """Return a string representation of this lot."""
         base = f"{format_number(self.quantity)} @ {self.price}"

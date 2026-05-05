@@ -70,6 +70,15 @@ export type Lot = {
   cost_basis: number | null;
   fees: number | null;
   rebates: number | null;
+  lot_idx: number;
+};
+
+export type LotInput = {
+  quantity: string;
+  price: number;
+  date?: string;
+  fees?: number;
+  rebates?: number;
 };
 
 export type Asset = {
@@ -224,6 +233,18 @@ export const api = {
 
   getPortfolio: (id: string): Promise<PortfolioDetail> =>
     authGet(`/api/v1/portfolio/${id}`),
+
+  addPortfolioLot: (id: string, assetType: string, ticker: string, lot: LotInput): Promise<PortfolioDetail> =>
+    authPost(`/api/v1/portfolio/${id}/asset/${assetType}/${ticker}/lots`, lot),
+
+  updatePortfolioLot: (id: string, assetType: string, ticker: string, lotIdx: number, lot: LotInput): Promise<PortfolioDetail> =>
+    authPut(`/api/v1/portfolio/${id}/asset/${assetType}/${ticker}/lot/${lotIdx}`, lot),
+
+  deletePortfolioLot: (id: string, assetType: string, ticker: string, lotIdx: number): Promise<PortfolioDetail> =>
+    authDelete(`/api/v1/portfolio/${id}/asset/${assetType}/${ticker}/lot/${lotIdx}`),
+
+  deletePortfolioAsset: (id: string, assetType: string, ticker: string): Promise<PortfolioDetail> =>
+    authDelete(`/api/v1/portfolio/${id}/asset/${assetType}/${ticker}`),
 
   getPreviousClose: (assetType: string, ticker: string): Promise<{ open: number; high: number; low: number; close: number; volume: number; timestamp: string }> =>
     authGet(`/api/v1/price/${assetType}/${ticker}/previous-close`),
