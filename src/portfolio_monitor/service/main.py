@@ -12,7 +12,7 @@ _FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 
 import logfire
 import uvicorn
-from appconf.omegaconf import OmegaConfig, OmegaConfigLoader
+from appconf.omegaconf import OmegaConfig
 from appconf.omegaconf.errors import PrivateConfigError
 from omegaconf import OmegaConf
 from opentelemetry.instrumentation.urllib3 import URLLib3Instrumentor
@@ -26,10 +26,12 @@ from portfolio_monitor.detectors import DeviationEngine, DetectorRegistry
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio import PortfolioService
 from portfolio_monitor.service.alerts import (
-    AlertRouter,
+    AlertBufferStore,
     LoggingAlertDelivery,
     OpenClawAgentHttpDelivery,
     OpenClawGatewayWsDelivery,
+    UserAlertConfig,
+    UserAlertManager,
 )
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
@@ -81,17 +83,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         account_store = AccountStore(config.settings_path)
         account_store.load()
 
-        # Seed default admin alerts from alerts.yaml on first run
-        if not account_store.get_default_admin_alerts():
-            try:
-                raw = OmegaConfigLoader.load(Path("config/alerts.yaml"))
-                resolved = OmegaConf.to_container(raw.get("alerts", {}), resolve=True)
-                if isinstance(resolved, dict):
-                    account_store.set_default_admin_alerts(resolved)  # type: ignore[arg-type]
-                    account_store.save()
-                    logger.info("Seeded default admin alerts from config/alerts.yaml")
-            except Exception as e:
-                logger.warning("Could not seed alerts from alerts.yaml: %s", e)
+        # (alerts.yaml seeding removed — alert rules now managed via UserAlertConfig API)
 
         session_store = SessionStore(config.session_store_path)
         session_store.load()
@@ -113,22 +105,25 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             detection_engine=detection_engine,
             data_provider=data_provider,
         )
-        alert_router = AlertRouter(bus=bus)
+        alert_buffer_store = AlertBufferStore()
+        alert_manager = UserAlertManager(
+            bus=bus,
+            account_store=account_store,
+            default_admin_username=config.dashboard_username or "default",
+            alert_buffer_store=alert_buffer_store,
+        )
         for detector_id, usernames in detector_accounts.items():
             for username in usernames:
-                alert_router.register_detector_account(detector_id, username)
+                alert_manager.register_detector_account(detector_id, username)
         if is_dev:
-            # Suppress all alert delivery by default in dev mode;
-            # detectors still process data and build history.
-            alert_router.suppressed_detectors = {
+            alert_manager.suppressed_detectors = {
                 detector.name()
                 for detectors in detection_engine.asset_detectors.values()
                 for detector in detectors
             }
-        alert_router.add_target(LoggingAlertDelivery())
-        # TODO: make configurable or state driven.
+        alert_manager.add_target(LoggingAlertDelivery())
         if config.openclaw_alert_enable_http and config.openclaw_auth_key and config.openclaw_agent_id:
-            alert_router.add_target(
+            alert_manager.add_target(
                 OpenClawAgentHttpDelivery(
                     config.openclaw_host,
                     config.openclaw_port,
@@ -139,7 +134,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
                 )
             )
         if config.openclaw_alert_enable_ws and (config.openclaw_gateway_token or config.openclaw_gateway_password) and config.openclaw_agent_id:
-            alert_router.add_target(
+            alert_manager.add_target(
                 OpenClawGatewayWsDelivery(
                     config.openclaw_host,
                     config.openclaw_port,
@@ -164,7 +159,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
                 monitor.register_symbol(entry.symbol)
 
         # Wire live detection adapter for watchlist entry changes
-        _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor, detection_service, data_provider)
+        _wire_watchlist_adapter(bus, detection_engine, alert_manager, monitor, detection_service, data_provider)
 
     # Prime services
     with logfire.span("service.startup.prime"):
@@ -180,6 +175,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
         data_provider=data_provider,
         account_store=account_store,
         session_store=session_store,
+        alert_buffer_store=alert_buffer_store,
     )
     api_app: Starlette = create_api_app(ctx)
     uvicorn_config = uvicorn.Config(
@@ -200,7 +196,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             synthetic_source=None,
             detection_engine=detection_engine,
             detection_service=detection_service,
-            alert_router=alert_router,
+            alert_manager=alert_manager,
             aggregate_cache=aggregate_cache,
             portfolio_service=portfolio_service,
         )
@@ -221,7 +217,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
 
     vite: ViteProcess | None = None
     try:
-        await alert_router.connect_all()
+        await alert_manager.connect_all()
         await monitor.start()
         if cp_server is not None:
             serve_task = asyncio.gather(api_server.serve(), cp_server.serve())
@@ -253,9 +249,9 @@ async def run_service(config: PortfolioMonitorConfig, *, is_dev: bool = False) -
             logger.error("Error stopping monitor: %s", e)
 
         try:
-            await alert_router.disconnect_all()
+            await alert_manager.disconnect_all()
         except Exception as e:
-            logger.error("Error disconnecting alert router: %s", e)
+            logger.error("Error disconnecting alert manager: %s", e)
 
         try:
             await aggregate_cache.close()
@@ -333,54 +329,48 @@ def _build_per_account_engine(
     ticker_to_symbol: dict[str, AssetSymbol] = {s.ticker: s for s in all_symbols}
 
     # Account-level alert configs
-    account_configs: list[tuple[str, dict]] = [
-        (default_admin_username, account_store.get_default_admin_alerts()),
-    ] + [(a.username, a.alerts) for a in account_store.get_all()]
+    account_configs: list[tuple[str, UserAlertConfig]] = [
+        (default_admin_username, account_store.get_default_admin_alert_config()),
+    ] + [(a.username, a.alert_config) for a in account_store.get_all()]
 
     # symbol → list of (detector, username) to register
     symbol_detectors: dict[AssetSymbol, list[tuple[object, str]]] = {}
     detector_accounts: dict[str, list[str]] = {}
 
     for username, alert_config in account_configs:
-        if not isinstance(alert_config, dict) or not alert_config:
+        if not alert_config.rules:
             continue
 
-        default_cfg = alert_config.get("default") or {}
-        # ticker → set of kinds with symbol-specific override for this account
+        # ticker → set of kinds already covered by symbol-specific rules for this account
         symbol_overrides: defaultdict[str, set[str]] = defaultdict(set)
 
-        # Symbol-specific detectors
-        for ticker, sym_cfg in alert_config.items():
-            if ticker in ("default", "templates") or not isinstance(sym_cfg, dict):
+        # Symbol-specific rules (ticker != "")
+        for rule in alert_config.rules:
+            if not rule.ticker:
                 continue
-            symbol = ticker_to_symbol.get(ticker)
+            symbol = ticker_to_symbol.get(rule.ticker)
             if symbol is None:
                 logger.warning(
-                    "Alert config for '%s' references unknown ticker '%s', skipping",
+                    "Alert rule for '%s' references unknown ticker '%s', skipping",
                     username,
-                    ticker,
+                    rule.ticker,
                 )
                 continue
-            for kind, args in sym_cfg.items():
-                if not isinstance(args, dict):
-                    continue
-                detector = DetectorRegistry.create_detector(kind, args)
-                if detector is None:
-                    continue
-                symbol_detectors.setdefault(symbol, []).append((detector, username))
-                detector_accounts.setdefault(detector.detector_id, []).append(username)
-                symbol_overrides[ticker].add(kind)
+            detector = DetectorRegistry.create_detector(rule.kind, rule.args)
+            if detector is None:
+                continue
+            symbol_detectors.setdefault(symbol, []).append((detector, username))
+            detector_accounts.setdefault(detector.detector_id, []).append(username)
+            symbol_overrides[rule.ticker].add(rule.kind)
 
-        # Default detectors — expand to per-symbol, excluding overridden kinds
-        if not isinstance(default_cfg, dict):
-            continue
-        for kind, args in default_cfg.items():
-            if not isinstance(args, dict):
+        # Default rules (ticker == "") — expand to all symbols, skip overridden kinds
+        for rule in alert_config.rules:
+            if rule.ticker:
                 continue
             for symbol in all_symbols:
-                if kind in symbol_overrides[symbol.ticker]:
+                if rule.kind in symbol_overrides[symbol.ticker]:
                     continue
-                detector = DetectorRegistry.create_detector(kind, args)
+                detector = DetectorRegistry.create_detector(rule.kind, rule.args)
                 if detector is None:
                     continue
                 symbol_detectors.setdefault(symbol, []).append((detector, username))
@@ -412,7 +402,7 @@ def _build_per_account_engine(
 def _wire_watchlist_adapter(
     bus: EventBus,
     engine: DeviationEngine,
-    alert_router: AlertRouter,
+    alert_manager: UserAlertManager,
     monitor: MonitorService,
     detection_service: DetectionService,
     data_provider: PolygonDataProvider,
@@ -436,7 +426,7 @@ def _wire_watchlist_adapter(
             if detector is None:
                 continue
             engine.add_detector(symbol, detector)  # type: ignore[arg-type]
-            alert_router.register_detector_account(detector.detector_id, owner)
+            alert_manager.register_detector_account(detector.detector_id, owner)
             ids.append(detector.detector_id)
         return ids
 
@@ -444,7 +434,7 @@ def _wire_watchlist_adapter(
         key = (owner, symbol.ticker)
         for did in entry_detectors.pop(key, []):
             engine.remove_detector(symbol, did)
-            alert_router.unregister_detector_account(did)
+            alert_manager.unregister_detector_account(did)
 
     async def _on_entry_added(event: WatchlistEntryAdded) -> None:
         monitor.register_symbol(event.symbol)

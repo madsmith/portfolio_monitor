@@ -6,6 +6,9 @@ import {
   type WatchlistEntry,
   type WatchlistSummary,
 } from "../../api/client";
+import { AssetMenu } from "../AssetMenu";
+import { CancelButton, ConfirmButton } from "../buttons";
+import { DropdownSelector } from "../inputs";
 import { fmtChg, fmtPrice, fmtPct, plColor, prevCloseKey } from "../../lib/formatters";
 import { Chart } from "../Chart";
 import { DataTable, type ColDef } from "../DataTable";
@@ -155,22 +158,13 @@ function EditRow({
           </label>
           <div className="flex flex-col gap-1">
             <span className="text-[0.65rem] invisible select-none">_</span>
-            <button
-              onClick={() => onSave(notes, buy, sell)}
-              disabled={isSaving}
-              className="px-3 py-1 bg-[#252a40] border border-[#5060a0] text-slate-100 rounded text-xs hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50"
-            >
+            <ConfirmButton onClick={() => onSave(notes, buy, sell)} disabled={isSaving}>
               {isSaving ? "Saving…" : "Save"}
-            </button>
+            </ConfirmButton>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-[0.65rem] invisible select-none">_</span>
-            <button
-              onClick={onCancel}
-              className="px-3 py-1 text-slate-400 hover:text-slate-200 text-xs transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
+            <CancelButton onClick={onCancel} />
           </div>
         </div>
       </td>
@@ -213,16 +207,11 @@ function AddEntryRow({
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Type</span>
-            <div className="relative">
-              <select
-                value={draft.asset_type}
-                onChange={(ev) => onDraftChange({ ...draft, asset_type: ev.target.value })}
-                className={`${inputCls} appearance-none cursor-pointer pr-6 w-full`}
-              >
-                {ASSET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[0.6rem]">▾</span>
-            </div>
+            <DropdownSelector
+              value={draft.asset_type}
+              onChange={(v) => onDraftChange({ ...draft, asset_type: v })}
+              options={ASSET_TYPES.map((t) => ({ value: t, label: t }))}
+            />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[0.65rem] uppercase tracking-wide text-slate-500">Notes</span>
@@ -253,13 +242,9 @@ function AddEntryRow({
           </label>
           <div className="flex flex-col gap-1">
             <span className="text-[0.65rem] invisible select-none">_</span>
-            <button
-              onClick={onAdd}
-              disabled={!draft.ticker.trim() || saving}
-              className="px-3 py-1.5 bg-[#252a40] border border-[#5060a0] text-slate-100 rounded text-xs hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50"
-            >
+            <ConfirmButton onClick={onAdd} disabled={!draft.ticker.trim() || saving}>
               {saving ? "Adding…" : "+ Add entry"}
-            </button>
+            </ConfirmButton>
           </div>
         </div>
       </td>
@@ -311,7 +296,7 @@ function WatchlistRow({
 
   return (
     <tr className={`border-b border-[#2a2d3a] last:border-b-0 transition-colors ${isDeleting ? "opacity-40" : ""}`}>
-      <td className="px-2 sm:px-3 py-2 font-semibold">
+      <td className="px-1 sm:px-1.5 py-2 font-semibold">
         <button
           onClick={() => !editing && onToggleChart()}
           disabled={editing}
@@ -320,12 +305,12 @@ function WatchlistRow({
           {e.ticker}
         </button>
       </td>
-      <td className="hidden sm:table-cell px-2 sm:px-3 py-2 text-slate-500 text-xs">{e.asset_type}</td>
-      <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtPrice(e.current_price, e.asset_type, e.ticker)}</td>
-      <td className={`px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(e.dayChgPrice)}`}>
+      <td className="hidden sm:table-cell px-1 sm:px-1.5 py-2 text-slate-500 text-xs">{e.asset_type}</td>
+      <td className="px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">{fmtPrice(e.current_price, e.asset_type, e.ticker)}</td>
+      <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(e.dayChgPrice)}`}>
         {priceChgMode === "dollar" ? fmtChg(e.dayChgPrice) : fmtPct(e.dayChgPct)}
       </td>
-      <td className={`hidden md:table-cell px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(e.sinceAdded)}`}>
+      <td className={`hidden md:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(e.sinceAdded)}`}>
         {fmtPct(e.sinceAdded)}
       </td>
       <EditableCell
@@ -370,7 +355,7 @@ function WatchlistRow({
       >
         {e.notes || "—"}
       </EditableCell>
-      {editing && (
+      {editing ? (
         <td className="px-2 py-2 text-right whitespace-nowrap">
           <button
             onClick={onToggleExpand}
@@ -388,6 +373,10 @@ function WatchlistRow({
           >
             ✕
           </button>
+        </td>
+      ) : (
+        <td className="pl-0 pr-1 sm:pr-1.5 py-2 text-right">
+          <AssetMenu ticker={e.ticker} assetType={e.asset_type} />
         </td>
       )}
     </tr>
@@ -512,7 +501,7 @@ function WatchlistTable({
     { key: "buy",        label: "Buy",         align: "right", vis: "hidden lg:table-cell" },
     { key: "sell",       label: "Sell",        align: "right", vis: "hidden lg:table-cell" },
     { key: "notes",      label: "Notes",       align: "left",  vis: "hidden xl:table-cell" },
-    ...(editing ? [{ key: "actions", label: "", align: "right" as const }] : []),
+    ...(editing ? [{ key: "actions", label: "", align: "right" as const }] : [{ key: "menu", label: "", align: "right" as const }]),
   ];
 
   return (
@@ -861,19 +850,15 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
             className="bg-[#0f1117] border border-[#404868] rounded px-3 py-1.5 text-sm text-slate-200 w-52 focus:outline-none focus:border-slate-400"
             placeholder="Watchlist name"
           />
-          <button onClick={handleCreateWatchlist} disabled={!newName.trim() || createSaving}
-            className="px-3 py-1.5 bg-[#252a40] border border-[#5060a0] text-slate-100 rounded text-xs hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50">
+          <ConfirmButton onClick={handleCreateWatchlist} disabled={!newName.trim() || createSaving}>
             {createSaving ? "Creating…" : "Create"}
-          </button>
-          <button onClick={() => {
+          </ConfirmButton>
+          <CancelButton onClick={() => {
             setCreating(false);
             setNewName("");
             setCreateError(null);
             setSelectedId(summaries[0]?.id ?? "");
-          }}
-            className="px-3 py-1.5 text-slate-400 hover:text-slate-200 text-xs transition-colors cursor-pointer">
-            Cancel
-          </button>
+          }} />
           {createError && <span className="text-red-400 text-xs">{createError}</span>}
         </div>
       )}

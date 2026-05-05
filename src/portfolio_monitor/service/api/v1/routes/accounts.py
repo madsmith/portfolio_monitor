@@ -2,6 +2,7 @@ import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from portfolio_monitor.service.alerts.models import UserAlertConfig
 from portfolio_monitor.service.settings import AccountStore, Role, SessionStore
 from portfolio_monitor.utils import logfire_set_attribute
 
@@ -105,30 +106,31 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         account_store.save()
         return JSONResponse({"ok": True})
 
-    @logfire.instrument("api.accounts.alerts.get")
+    @logfire.instrument("api.accounts.alert_config.get")
     async def get_account_alerts(request: Request) -> JSONResponse:
         username = request.path_params["username"]
         logfire_set_attribute("username", username)
         if username == default_username:
-            return JSONResponse(account_store.get_default_admin_alerts())
+            return JSONResponse(account_store.get_default_admin_alert_config().to_dict())
         account = account_store.get(username)
         if account is None:
             return JSONResponse({"error": "account not found"}, status_code=404)
-        return JSONResponse(account.alerts)
+        return JSONResponse(account.alert_config.to_dict())
 
-    @logfire.instrument("api.accounts.alerts.update")
+    @logfire.instrument("api.accounts.alert_config.update")
     async def update_account_alerts(request: Request) -> JSONResponse:
         username = request.path_params["username"]
         logfire_set_attribute("username", username)
         try:
-            alerts = await request.json()
+            body = await request.json()
         except Exception:
             return JSONResponse({"error": "invalid request body"}, status_code=400)
+        config = UserAlertConfig.from_dict(body)
         if username == default_username:
-            account_store.set_default_admin_alerts(alerts)
+            account_store.set_default_admin_alert_config(config)
             account_store.save()
             return JSONResponse({"ok": True})
-        if not account_store.update_alerts(username, alerts):
+        if not account_store.update_alert_config(username, config):
             return JSONResponse({"error": "account not found"}, status_code=404)
         account_store.save()
         return JSONResponse({"ok": True})

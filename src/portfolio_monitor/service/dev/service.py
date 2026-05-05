@@ -13,10 +13,11 @@ from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio import PortfolioService
 from portfolio_monitor.watchlist.service import WatchlistService
 from portfolio_monitor.service.alerts import (
-    AlertRouter,
+    AlertBufferStore,
     LoggingAlertDelivery,
     OpenClawAgentHttpDelivery,
     OpenClawGatewayWsDelivery,
+    UserAlertManager,
 )
 from portfolio_monitor.service.api.app import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
@@ -142,21 +143,27 @@ async def run_dev_service(config: DevConfig) -> None:
         detection_engine=detection_engine,
         data_provider=dev_data_provider,
     )
-    alert_router = AlertRouter(bus=bus)
-    # Suppress all alert delivery by default in dev mode;
-    # detectors still process data and build history.
-    alert_router.suppressed_detectors = {
+    account_store = AccountStore(config.settings_path)
+    account_store.load()
+    alert_buffer_store = AlertBufferStore()
+    alert_manager = UserAlertManager(
+        bus=bus,
+        account_store=account_store,
+        default_admin_username=config.dashboard_username or "default",
+        alert_buffer_store=alert_buffer_store,
+    )
+    alert_manager.suppressed_detectors = {
         d.name for d in detection_engine.default_detectors
     } | {
         d.name
         for detectors in detection_engine.asset_detectors.values()
         for d in detectors
     }
-    alert_router.add_target(LoggingAlertDelivery())
+    alert_manager.add_target(LoggingAlertDelivery())
     if config.openclaw_alert_enable_http:
         assert config.openclaw_auth_key, "openclaw_auth_key is required for HTTP delivery"
         assert config.openclaw_agent_id, "openclaw_agent_id is required for HTTP delivery"
-        alert_router.add_target(
+        alert_manager.add_target(
             OpenClawAgentHttpDelivery(
                 config.openclaw_host,
                 config.openclaw_port,
@@ -171,7 +178,7 @@ async def run_dev_service(config: DevConfig) -> None:
         config.openclaw_gateway_token or config.openclaw_gateway_password
     ):
         assert config.openclaw_agent_id, "openclaw_agent_id is required for WS delivery"
-        alert_router.add_target(
+        alert_manager.add_target(
             OpenClawGatewayWsDelivery(
                 config.openclaw_host,
                 config.openclaw_port,
@@ -226,14 +233,12 @@ async def run_dev_service(config: DevConfig) -> None:
         synthetic_source=synthetic_source,
         detection_engine=detection_engine,
         detection_service=detection_service,
-        alert_router=alert_router,
+        alert_manager=alert_manager,
         aggregate_cache=aggregate_cache,
         portfolios=portfolios,
     )
 
     # 10. Production API server (auth workflow, dashboard, API endpoints)
-    account_store = AccountStore(config.settings_path)
-    account_store.load()
     session_store = SessionStore(config.session_store_path)
     session_store.load()
     watchlist_service = WatchlistService(bus=bus, watchlist_path=config.watchlist_path)
@@ -241,7 +246,7 @@ async def run_dev_service(config: DevConfig) -> None:
     for wl in watchlist_service.get_all_watchlists():
         for entry in wl.entries:
             monitor_service.register_symbol(entry.symbol)
-    _wire_watchlist_adapter(bus, detection_engine, alert_router, monitor_service, detection_service, dev_data_provider)
+    _wire_watchlist_adapter(bus, detection_engine, alert_manager, monitor_service, detection_service, dev_data_provider)
     ctx = PortfolioMonitorContext(
         config=config,
         portfolio_service=portfolio_service,
@@ -250,6 +255,7 @@ async def run_dev_service(config: DevConfig) -> None:
         data_provider=dev_data_provider,
         account_store=account_store,
         session_store=session_store,
+        alert_buffer_store=alert_buffer_store,
     )
     api_app = create_api_app(ctx)
 
@@ -287,7 +293,7 @@ async def run_dev_service(config: DevConfig) -> None:
 
     vite: ViteProcess | None = None
     try:
-        await alert_router.connect_all()
+        await alert_manager.connect_all()
         await synthetic_source.start()
         serve_task = asyncio.gather(dev_server.serve(), api_server.serve())
         while not api_server.started:
@@ -311,6 +317,6 @@ async def run_dev_service(config: DevConfig) -> None:
             vite.terminate()
             await vite.wait()
         await synthetic_source.stop()
-        await alert_router.disconnect_all()
+        await alert_manager.disconnect_all()
         loop.remove_signal_handler(signal.SIGINT)
         signal.signal(signal.SIGINT, original_handler)

@@ -70,7 +70,7 @@ export function DataTable<T>({
                 className={[
                   alignClass,
                   col.vis ?? "",
-                  "text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-2 sm:px-3 py-2 border-b border-[#404868]",
+                  "text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-1 sm:px-1.5 py-2 border-b border-[#404868]",
                   col.sortValue ? "cursor-pointer hover:text-slate-300 select-none" : "",
                 ].join(" ")}
               >

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from starlette.requests import Request
 
@@ -6,6 +6,7 @@ from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import DataProvider
 from portfolio_monitor.portfolio import PortfolioService
+from portfolio_monitor.service.alerts.buffer import AlertBufferStore
 from portfolio_monitor.service.settings import AccountStore, SessionStore
 from portfolio_monitor.watchlist.service import WatchlistService
 
@@ -41,3 +42,4 @@ class PortfolioMonitorContext:
     data_provider: DataProvider
     account_store: AccountStore
     session_store: SessionStore
+    alert_buffer_store: AlertBufferStore = field(default_factory=AlertBufferStore)

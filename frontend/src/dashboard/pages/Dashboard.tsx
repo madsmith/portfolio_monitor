@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 import { api, clearToken, getUsername, type PortfolioDetail, type PortfolioSummary, type WatchlistSummary } from "../api/client";
 import { type AssetSymbol as WsAssetSymbol, PortfolioWebSocket } from "../api/ws";
+import { AlertBell } from "../components/AlertBell";
 import { applyPriceUpdate, computeTodayChange, prevCloseKey, type TodayChange } from "../lib/formatters";
 import { OverviewPane } from "../components/panes/OverviewPane";
 import { PortfolioDetailPane } from "../components/panes/PortfolioDetailPane";
@@ -55,6 +56,7 @@ export default function Dashboard() {
   const [portfolioTodayChange, setPortfolioTodayChange] = useState<Record<string, TodayChange>>({});
 
   const wsRef = useRef<PortfolioWebSocket | null>(null);
+  const [latestAlert, setLatestAlert] = useState<Record<string, unknown> | null>(null);
 
   // Promise caches — deduplicate requests within the current UTC hour. Keyed by
   // "<id>:<YYYY-MM-DDTHH>" so stale data is discarded at the top of each hour.
@@ -95,7 +97,8 @@ export default function Dashboard() {
     const unsub = ws.onPriceUpdate((msgs) => {
       setDetail((prev) => prev ? msgs.reduce((d, { symbol, price }) => applyPriceUpdate(d, symbol.ticker, price), prev) : null);
     });
-    return () => { unsub(); ws.close(); wsRef.current = null; };
+    const unsubAlert = ws.onAlert((msg) => setLatestAlert(msg.alert));
+    return () => { unsub(); unsubAlert(); ws.close(); wsRef.current = null; };
   }, []);
 
   // Subscribe to active portfolio's tickers whenever the loaded detail changes portfolio
@@ -202,6 +205,7 @@ export default function Dashboard() {
         <div className="flex items-baseline justify-between mb-4 px-1">
           <span className="text-xl font-semibold text-slate-100 tracking-wide">Portfolio Monitor</span>
           <div className="flex items-center gap-3">
+            <AlertBell latestAlert={latestAlert} />
             {currentUsername && (
               <span className="text-xs text-slate-500">{currentUsername}</span>
             )}

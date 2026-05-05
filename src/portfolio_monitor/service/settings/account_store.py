@@ -3,6 +3,7 @@ from typing import Any
 
 import yaml
 
+from portfolio_monitor.service.alerts.models import UserAlertConfig
 from .models import Account, Role
 from .password import PBKDF2PasswordHasher, PasswordHasher
 
@@ -18,7 +19,7 @@ class AccountStore:
         self._path: Path = settings_path
         self._hasher: PasswordHasher = hasher or PBKDF2PasswordHasher()
         self._accounts: dict[str, Account] = {}
-        self._default_admin_alerts: dict[str, Any] = {}
+        self._default_admin_alert_config: UserAlertConfig = UserAlertConfig()
 
     # ------------------------------------------------------------------
     # Load / save
@@ -27,20 +28,22 @@ class AccountStore:
     def load(self) -> None:
         if not self._path.exists():
             self._accounts = {}
-            self._default_admin_alerts = {}
+            self._default_admin_alert_config = UserAlertConfig()
             return
 
         with self._path.open() as f:
             data = yaml.safe_load(f) or {}
 
-        self._default_admin_alerts = data.get("default_admin_alerts") or {}
+        self._default_admin_alert_config = UserAlertConfig.from_dict(
+            data.get("default_admin_alerts")
+        )
         raw_accounts = data.get("accounts") or []
         self._accounts = {
             account["username"]: Account(
                 username=account["username"],
                 password_hash=account["password_hash"],
                 role=Role(account["role"]),
-                alerts=account.get("alerts") or {},
+                alert_config=UserAlertConfig.from_dict(account.get("alerts")),
             )
             for account in raw_accounts
         }
@@ -48,13 +51,13 @@ class AccountStore:
     def save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data: dict[str, Any] = {
-            "default_admin_alerts": self._default_admin_alerts,
+            "default_admin_alerts": self._default_admin_alert_config.to_dict(),
             "accounts": [
                 {
                     "username": account.username,
                     "password_hash": account.password_hash,
                     "role": str(account.role),
-                    "alerts": account.alerts,
+                    "alerts": account.alert_config.to_dict(),
                 }
                 for account in self._accounts.values()
             ],
@@ -63,14 +66,14 @@ class AccountStore:
             yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
 
     # ------------------------------------------------------------------
-    # Default admin alerts
+    # Default admin alert config
     # ------------------------------------------------------------------
 
-    def get_default_admin_alerts(self) -> dict[str, Any]:
-        return self._default_admin_alerts
+    def get_default_admin_alert_config(self) -> UserAlertConfig:
+        return self._default_admin_alert_config
 
-    def set_default_admin_alerts(self, alerts: dict[str, Any]) -> None:
-        self._default_admin_alerts = alerts
+    def set_default_admin_alert_config(self, config: UserAlertConfig) -> None:
+        self._default_admin_alert_config = config
 
     # ------------------------------------------------------------------
     # Account CRUD
@@ -110,11 +113,11 @@ class AccountStore:
         account.password_hash = self._hasher.hash_password(new_password)
         return True
 
-    def update_alerts(self, username: str, alerts: dict[str, Any]) -> bool:
+    def update_alert_config(self, username: str, config: UserAlertConfig) -> bool:
         account = self._accounts.get(username)
         if account is None:
             return False
-        account.alerts = alerts
+        account.alert_config = config
         return True
 
     def verify(self, username: str, password: str) -> Account | None:

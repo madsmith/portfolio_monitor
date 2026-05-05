@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+
+from portfolio_monitor.service.alerts.models import UserAlertConfig
 
 
 class Role(StrEnum):
@@ -13,4 +14,4 @@ class Account:
     username: str
     password_hash: str
     role: Role
-    alerts: dict[str, Any] = field(default_factory=dict)
+    alert_config: UserAlertConfig = field(default_factory=UserAlertConfig)

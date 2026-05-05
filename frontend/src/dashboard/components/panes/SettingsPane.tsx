@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, getRole, getUsername, type AccountSummary, type AlertConfig, type DetectorInfo } from "../../api/client";
+import { api, getRole, getUsername, type AccountSummary } from "../../api/client";
+import { DropdownSelector } from "../inputs";
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -219,14 +220,12 @@ function AccountsSection() {
                   {isDefault ? (
                     <span className="text-xs text-slate-400">admin</span>
                   ) : (
-                    <select
+                    <DropdownSelector
                       value={a.role}
-                      onChange={(e) => handleRoleChange(a.username, e.target.value)}
-                      className="bg-[#0f1117] border border-[#404868] rounded px-2 py-0.5 text-xs text-slate-300 focus:outline-none"
-                    >
-                      <option value="admin">admin</option>
-                      <option value="normal">normal</option>
-                    </select>
+                      onChange={(v) => handleRoleChange(a.username, v)}
+                      options={[{ value: "admin", label: "admin" }, { value: "normal", label: "normal" }]}
+                      className="w-28"
+                    />
                   )}
                 </td>
                 <td className="py-2 text-right">
@@ -267,14 +266,12 @@ function AccountsSection() {
             onChange={(e) => setNewPassword(e.target.value)}
             className="bg-[#0f1117] border border-[#404868] rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-slate-400 w-40"
           />
-          <select
+          <DropdownSelector
             value={newRole}
-            onChange={(e) => setNewRole(e.target.value)}
-            className="bg-[#0f1117] border border-[#404868] rounded px-3 py-1.5 text-sm text-slate-300 focus:outline-none"
-          >
-            <option value="normal">normal</option>
-            <option value="admin">admin</option>
-          </select>
+            onChange={setNewRole}
+            options={[{ value: "normal", label: "normal" }, { value: "admin", label: "admin" }]}
+            className="w-32"
+          />
           <ActionButton onClick={handleCreate} disabled={creating}>
             {creating ? "Creating…" : "Create"}
           </ActionButton>
@@ -289,330 +286,17 @@ function AccountsSection() {
 }
 
 // ---------------------------------------------------------------------------
-// Alert config editor
+// Alert configs section
 // ---------------------------------------------------------------------------
 
-type DetectorRow = {
-  kind: string;
-  args: Record<string, string>;
-};
-
-type SymbolOverride = {
-  ticker: string;
-  rows: DetectorRow[];
-};
-
-function parseAlertConfig(config: AlertConfig): { defaults: DetectorRow[]; overrides: SymbolOverride[] } {
-  const defaults: DetectorRow[] = [];
-  const overrides: SymbolOverride[] = [];
-
-  const defaultSection = config["default"] as Record<string, unknown> | undefined;
-  if (defaultSection) {
-    for (const [kind, rawArgs] of Object.entries(defaultSection)) {
-      const a = rawArgs as Record<string, unknown>;
-      defaults.push({ kind, args: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, String(v)])) });
-    }
-  }
-
-  for (const [key, value] of Object.entries(config)) {
-    if (key === "default" || key === "templates") continue;
-    if (typeof value !== "object" || value === null) continue;
-    const rows: DetectorRow[] = [];
-    for (const [kind, rawArgs] of Object.entries(value as Record<string, unknown>)) {
-      const a = rawArgs as Record<string, unknown>;
-      rows.push({ kind, args: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, String(v)])) });
-    }
-    overrides.push({ ticker: key, rows });
-  }
-
-  return { defaults, overrides };
-}
-
-function buildAlertConfig(defaults: DetectorRow[], overrides: SymbolOverride[]): AlertConfig {
-  const config: AlertConfig = {};
-
-  function serializeArgs(args: Record<string, string>): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(args)) {
-      if (v === "") continue;
-      const num = parseFloat(v);
-      out[k] = isNaN(num) ? v : num;
-    }
-    return out;
-  }
-
-  if (defaults.length > 0) {
-    const section: Record<string, unknown> = {};
-    for (const row of defaults) {
-      if (!row.kind) continue;
-      section[row.kind] = serializeArgs(row.args);
-    }
-    if (Object.keys(section).length > 0) config["default"] = section;
-  }
-
-  for (const override of overrides) {
-    if (!override.ticker) continue;
-    const section: Record<string, unknown> = {};
-    for (const row of override.rows) {
-      if (!row.kind) continue;
-      section[row.kind] = serializeArgs(row.args);
-    }
-    if (Object.keys(section).length > 0) config[override.ticker] = section;
-  }
-
-  return config;
-}
-
-function DetectorRowEditor({
-  row,
-  detectors,
-  kindMap,
-  onKindChange,
-  onArgChange,
-  onRemove,
-}: {
-  row: DetectorRow;
-  detectors: DetectorInfo[];
-  kindMap: Record<string, DetectorInfo>;
-  onKindChange: (kind: string) => void;
-  onArgChange: (argName: string, value: string) => void;
-  onRemove: () => void;
-}) {
-  const selectClass = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400";
-  const inputClass = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400 w-20";
-  const argSpecs = kindMap[row.kind]?.args ?? [];
-
-  return (
-    <div className="flex gap-2 items-center mb-1 flex-wrap">
-      <select
-        className={`${selectClass} w-44`}
-        value={row.kind}
-        onChange={(e) => onKindChange(e.target.value)}
-      >
-        <option value="">— select kind —</option>
-        {detectors.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
-        {row.kind && !kindMap[row.kind] && <option value={row.kind}>{row.kind}</option>}
-      </select>
-      {argSpecs.map((arg) => (
-        <div key={arg.name} className="flex items-center gap-1">
-          <span className="text-xs text-slate-500 w-16 text-right shrink-0">{arg.name}</span>
-          <input
-            className={inputClass}
-            placeholder={arg.default !== undefined ? String(arg.default) : ""}
-            value={row.args[arg.name] ?? ""}
-            onChange={(e) => onArgChange(arg.name, e.target.value)}
-          />
-        </div>
-      ))}
-      <ActionButton variant="remove" onClick={onRemove}>✕</ActionButton>
-    </div>
-  );
-}
-
-function AlertConfigEditor({
-  username,
-  label,
-}: {
-  username: string;
-  label: string;
-}) {
-  const [defaults, setDefaults] = useState<DetectorRow[]>([]);
-  const [overrides, setOverrides] = useState<SymbolOverride[]>([]);
-  const [detectors, setDetectors] = useState<DetectorInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
-
-  const kindMap: Record<string, DetectorInfo> = Object.fromEntries(detectors.map((d) => [d.name, d]));
-
-  useEffect(() => {
-    const alertsFetch = username === "__me__" ? api.getMyAlerts() : api.getAccountAlerts(username);
-    Promise.all([alertsFetch, api.getDetectors()])
-      .then(([config, dets]) => {
-        const parsed = parseAlertConfig(config);
-        setDefaults(parsed.defaults);
-        setOverrides(parsed.overrides);
-        setDetectors(dets);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [username]);
-
-  function makeDefaultArgs(kind: string): Record<string, string> {
-    return Object.fromEntries(
-      (kindMap[kind]?.args ?? []).map((a) => [a.name, a.default !== undefined ? String(a.default) : ""])
-    );
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    setStatus("idle");
-    try {
-      const config = buildAlertConfig(defaults, overrides);
-      if (username === "__me__") {
-        await api.updateMyAlerts(config);
-      } else {
-        await api.updateAccountAlerts(username, config);
-      }
-      setStatus("saved");
-    } catch {
-      setStatus("error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function setDefaultKind(i: number, kind: string) {
-    setDefaults((prev) => prev.map((r, idx) => idx === i ? { kind, args: makeDefaultArgs(kind) } : r));
-  }
-
-  function updateDefaultArg(i: number, argName: string, value: string) {
-    setDefaults((prev) => prev.map((r, idx) => idx === i ? { ...r, args: { ...r.args, [argName]: value } } : r));
-  }
-
-  function addDefaultRow() {
-    setDefaults((prev) => [...prev, { kind: "", args: {} }]);
-  }
-
-  function removeDefaultRow(i: number) {
-    setDefaults((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
-  function addOverride() {
-    setOverrides((prev) => [...prev, { ticker: "", rows: [{ kind: "", args: {} }] }]);
-  }
-
-  function removeOverride(i: number) {
-    setOverrides((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
-  function updateOverrideTicker(i: number, ticker: string) {
-    setOverrides((prev) => prev.map((o, idx) => idx === i ? { ...o, ticker } : o));
-  }
-
-  function setOverrideRowKind(oi: number, ri: number, kind: string) {
-    setOverrides((prev) => prev.map((o, idx) =>
-      idx === oi ? { ...o, rows: o.rows.map((r, ridx) => ridx === ri ? { kind, args: makeDefaultArgs(kind) } : r) } : o
-    ));
-  }
-
-  function updateOverrideArg(oi: number, ri: number, argName: string, value: string) {
-    setOverrides((prev) => prev.map((o, idx) =>
-      idx === oi ? { ...o, rows: o.rows.map((r, ridx) => ridx === ri ? { ...r, args: { ...r.args, [argName]: value } } : r) } : o
-    ));
-  }
-
-  function addOverrideRow(oi: number) {
-    setOverrides((prev) => prev.map((o, idx) =>
-      idx === oi ? { ...o, rows: [...o.rows, { kind: "", args: {} }] } : o
-    ));
-  }
-
-  function removeOverrideRow(oi: number, ri: number) {
-    setOverrides((prev) => prev.map((o, idx) =>
-      idx === oi ? { ...o, rows: o.rows.filter((_, ridx) => ridx !== ri) } : o
-    ));
-  }
-
-  if (loading) return <p className="text-sm text-slate-500">Loading…</p>;
-
-  const inputClass = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400";
-
-  return (
-    <div>
-      <p className="text-xs text-slate-400 font-medium mb-3">{label}</p>
-
-      <p className="text-xs text-slate-500 mb-1">Default thresholds</p>
-      {defaults.map((row, i) => (
-        <DetectorRowEditor
-          key={i}
-          row={row}
-          detectors={detectors}
-          kindMap={kindMap}
-          onKindChange={(kind) => setDefaultKind(i, kind)}
-          onArgChange={(argName, value) => updateDefaultArg(i, argName, value)}
-          onRemove={() => removeDefaultRow(i)}
-        />
-      ))}
-      <ActionButton onClick={addDefaultRow}>+ detector</ActionButton>
-
-      <p className="text-xs text-slate-500 mt-4 mb-1">Symbol overrides</p>
-      {overrides.map((o, oi) => (
-        <div key={oi} className="mb-3 pl-3 border-l border-[#404868]">
-          <div className="flex gap-2 items-center mb-1">
-            <input className={`${inputClass} w-24`} placeholder="ticker" value={o.ticker} onChange={(e) => updateOverrideTicker(oi, e.target.value.toUpperCase())} />
-            <ActionButton variant="remove" onClick={() => removeOverride(oi)}>✕ remove</ActionButton>
-          </div>
-          {o.rows.map((row, ri) => (
-            <DetectorRowEditor
-              key={ri}
-              row={row}
-              detectors={detectors}
-              kindMap={kindMap}
-              onKindChange={(kind) => setOverrideRowKind(oi, ri, kind)}
-              onArgChange={(argName, value) => updateOverrideArg(oi, ri, argName, value)}
-              onRemove={() => removeOverrideRow(oi, ri)}
-            />
-          ))}
-          <ActionButton onClick={() => addOverrideRow(oi)}>+ detector</ActionButton>
-        </div>
-      ))}
-      <ActionButton onClick={addOverride}>+ symbol override</ActionButton>
-
-      <div className="mt-4 flex gap-3 items-center">
-        <ActionButton onClick={handleSave} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
-        </ActionButton>
-        {status === "saved" && <span className="text-xs text-green-400">Saved</span>}
-        {status === "error" && <span className="text-xs text-red-400">Save failed</span>}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Alert configs section (admin view — one tab per account)
-// ---------------------------------------------------------------------------
-
-function AlertConfigsSection({ accounts }: { accounts: AccountSummary[] }) {
-  const [activeTab, setActiveTab] = useState<string | null>(null);
-  const currentUser = getUsername();
-
-  const tabs = accounts.map((a) => ({
-    username: a.is_default ? a.username : a.username,
-    label: a.is_default ? `${a.username} (default admin)` : a.username,
-    apiKey: a.username,
-  }));
-
-  const selected = activeTab ?? (tabs[0]?.username ?? null);
-
+function AlertConfigsSection() {
   return (
     <div>
       <SectionHeading>Alert Configurations</SectionHeading>
-      <div className="flex gap-1 mb-4 flex-wrap">
-        {tabs.map((t) => (
-          <button
-            key={t.username}
-            onClick={() => setActiveTab(t.username)}
-            className={[
-              "px-3 py-1 rounded text-xs border transition-colors",
-              selected === t.username
-                ? "bg-[#1e2130] border-[#404868] text-slate-200"
-                : "bg-[#0f1117] border-[#2a2f45] text-slate-500 hover:text-slate-300",
-            ].join(" ")}
-          >
-            {t.label}
-            {t.username === currentUser && " (you)"}
-          </button>
-        ))}
-      </div>
-      {selected && (
-        <AlertConfigEditor
-          key={selected}
-          username={selected}
-          label={`Alert thresholds for ${selected}`}
-        />
-      )}
+      <p className="text-sm text-slate-500">
+        Alert rules are managed via the CLI (<code className="text-slate-400">nexus alert --help</code>).
+        A UI for managing channels and rules is coming soon.
+      </p>
     </div>
   );
 }
@@ -671,11 +355,7 @@ export default function SettingsPane() {
 
       {activeTab === "general" && <GeneralSection isDefaultAdmin={isDefaultAdmin} />}
       {activeTab === "users" && isAdmin && <AccountsSection />}
-      {activeTab === "alerts" && (
-        isAdmin
-          ? accountsLoaded && <AlertConfigsSection accounts={accounts} />
-          : <AlertConfigEditor username="__me__" label="My alert thresholds" />
-      )}
+      {activeTab === "alerts" && <AlertConfigsSection />}
     </div>
   );
 }

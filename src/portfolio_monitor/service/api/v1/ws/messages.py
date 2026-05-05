@@ -91,7 +91,12 @@ class PreviousCloseMessage(BaseModel):
     timestamp: datetime
 
 
-ServerMessage = AuthenticatedMessage | PriceUpdateMessage | PriceMessage | PreviousCloseMessage
+class AlertFiredMessage(BaseModel):
+    type: Literal["alert_fired"] = "alert_fired"
+    alert: dict
+
+
+ServerMessage = AuthenticatedMessage | PriceUpdateMessage | PriceMessage | PreviousCloseMessage | AlertFiredMessage
 
 
 def to_socket(msg: ServerMessage) -> str:

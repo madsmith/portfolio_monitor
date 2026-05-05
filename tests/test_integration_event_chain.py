@@ -1,4 +1,4 @@
-"""Integration test: AggregateUpdated → DetectionService → AlertFired → AlertRouter → delivery target."""
+"""Integration test: AggregateUpdated → DetectionService → AlertFired → UserAlertManager → delivery target."""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -20,9 +20,11 @@ from portfolio_monitor.detectors import (
     ZScoreReturnDetector,
     ZScoreVolumeDetector,
 )
+from unittest.mock import MagicMock
+
 from portfolio_monitor.detectors.base import Alert
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.service.alerts import AlertRouter
+from portfolio_monitor.service.alerts import UserAlertManager
 from portfolio_monitor.service.alerts.delivery import AlertDelivery
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
@@ -64,7 +66,7 @@ class EventChain:
     bus: EventBus
     engine: DeviationEngine
     detection_service: DetectionService
-    alert_router: AlertRouter
+    alert_manager: UserAlertManager
     mock_target: AsyncMock
 
     async def publish(self, symbol: AssetSymbol, aggregate: Aggregate) -> None:
@@ -76,21 +78,25 @@ class EventChain:
 
 
 def build_chain(detectors: list[Detector]) -> EventChain:
-    """Wire up EventBus → DetectionService → AlertRouter → mock target."""
+    """Wire up EventBus → DetectionService → UserAlertManager → mock target."""
     bus = EventBus()
     engine = DeviationEngine(default_detectors=detectors)
     data_provider = AsyncMock()
     detection_service = DetectionService(
         bus=bus, detection_engine=engine, data_provider=data_provider
     )
-    alert_router = AlertRouter(bus=bus)
+    alert_manager = UserAlertManager(
+        bus=bus,
+        account_store=MagicMock(),
+        default_admin_username="admin",
+    )
     mock_target = AsyncMock(spec=AlertDelivery)
-    alert_router.add_target(mock_target)
+    alert_manager.add_target(mock_target)
     return EventChain(
         bus=bus,
         engine=engine,
         detection_service=detection_service,
-        alert_router=alert_router,
+        alert_manager=alert_manager,
         mock_target=mock_target,
     )
 

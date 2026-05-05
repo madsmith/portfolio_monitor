@@ -8,11 +8,13 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import DataProvider
 from portfolio_monitor.portfolio.events import PriceUpdated
+from portfolio_monitor.service.alerts.buffer import AlertBufferStore
 from portfolio_monitor.service.settings import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 from portfolio_monitor.utils import logfire_set_attribute
 
 from .messages import (
+    AlertFiredMessage,
     AssetSymbolParam,
     AuthenticateMessage,
     AuthenticatedMessage,
@@ -50,9 +52,16 @@ class WebSocketManager:
       {"type": "previous_close",  "symbol": {...}, "price": 178.00, "timestamp": "..."}
     """
 
-    def __init__(self, bus: EventBus, session_store: SessionStore, data_provider: DataProvider) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        session_store: SessionStore,
+        data_provider: DataProvider,
+        alert_buffer_store: AlertBufferStore | None = None,
+    ) -> None:
         self._session_store: SessionStore = session_store
         self._data_provider: DataProvider = data_provider
+        self._alert_buffer_store: AlertBufferStore | None = alert_buffer_store
         # Maps each authenticated WebSocket to the set of AssetSymbols it has subscribed to
         self._connections: dict[WebSocket, set[AssetSymbol]] = {}
         bus.subscribe(PriceUpdated, self._on_price_updated)
@@ -69,14 +78,24 @@ class WebSocketManager:
             await ws.close(code=1008)
             return
 
-        if not isinstance(msg, AuthenticateMessage) or self._session_store.get(msg.token) is None:
+        session = self._session_store.get(msg.token) if isinstance(msg, AuthenticateMessage) else None
+        if session is None:
             print("Invalid auth token in WS connection attempt", ws.client)
             await ws.close(code=1008)
             return
 
         await ws.send_text(to_socket(AuthenticatedMessage()))
         self._connections[ws] = set()
-        logger.debug("WS authenticated (total=%d)", len(self._connections))
+        logger.debug("WS authenticated user=%s (total=%d)", session.username, len(self._connections))
+
+        alert_task: asyncio.Task | None = None
+        alert_buf = None
+        alert_queue = None
+        if self._alert_buffer_store is not None:
+            alert_buf = self._alert_buffer_store.get_or_create(session.username)
+            alert_queue = alert_buf.subscribe()
+            alert_task = asyncio.create_task(self._push_alerts(ws, alert_queue))
+
         try:
             async for text in ws.iter_text():
                 await self._handle_message(ws, text)
@@ -84,7 +103,22 @@ class WebSocketManager:
             pass
         finally:
             self._connections.pop(ws, None)
+            if alert_task is not None:
+                alert_task.cancel()
+            if alert_buf is not None and alert_queue is not None:
+                alert_buf.unsubscribe(alert_queue)
             logger.debug("WS disconnected (total=%d)", len(self._connections))
+
+    async def _push_alerts(self, ws: WebSocket, queue: asyncio.Queue) -> None:
+        try:
+            while True:
+                alert_dict = await queue.get()
+                try:
+                    await ws.send_text(to_socket(AlertFiredMessage(alert=alert_dict)))
+                except Exception:
+                    break
+        except asyncio.CancelledError:
+            pass
 
     @logfire.instrument("ws.message")
     async def _handle_message(self, ws: WebSocket, text: str) -> None:

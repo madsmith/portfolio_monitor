@@ -4,6 +4,7 @@ import type { Asset, Lot, PortfolioDetail } from "../../api/client";
 import { fmtMoney, fmtPrice, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../../lib/formatters";
 import { DataTable, type ColDef } from "../DataTable";
 import { Chart } from "../Chart";
+import { AssetMenu } from "../AssetMenu";
 
 type EnrichedAsset = Asset & {
   dayChgPrice: number | null;
@@ -33,7 +34,7 @@ function LotTable({ lots, currentPrice, assetType, ticker }: {
           ).map(([label, align, vis]) => (
             <th
               key={label}
-              className={`${align} ${vis} text-[0.65rem] uppercase tracking-wide text-slate-600 font-semibold px-2 sm:px-3 py-1.5 border-b border-[#2a2d3a]`}
+              className={`${align} ${vis} text-[0.65rem] uppercase tracking-wide text-slate-600 font-semibold px-1 sm:px-1.5 py-1.5 border-b border-[#2a2d3a]`}
             >
               {label}
             </th>
@@ -51,11 +52,11 @@ function LotTable({ lots, currentPrice, assetType, ticker }: {
           return (
             <tr key={i} className="border-b border-[#222536] last:border-b-0">
               <td className="pl-4 sm:pl-8 pr-2 sm:pr-3 py-1.5 text-slate-500">{fmtDate(lot.date)}</td>
-              <td className="hidden sm:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{lot.quantity}</td>
-              <td className={`px-2 sm:px-3 py-1.5 text-right tabular-nums ${lotPlColor(priceGain)}`}>{fmtPrice(lot.price, assetType, ticker)}</td>
-              <td className="hidden sm:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.cost_basis)}</td>
-              <td className={`hidden md:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums ${lotPlColor(lotPL)}`}>{fmtMoney(lotPL)}</td>
-              <td className="hidden md:table-cell px-2 sm:px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.fees)}</td>
+              <td className="hidden sm:table-cell px-1 sm:px-1.5 py-1.5 text-right tabular-nums text-slate-500">{lot.quantity}</td>
+              <td className={`px-1 sm:px-1.5 py-1.5 text-right tabular-nums ${lotPlColor(priceGain)}`}>{fmtPrice(lot.price, assetType, ticker)}</td>
+              <td className="hidden sm:table-cell px-1 sm:px-1.5 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.cost_basis)}</td>
+              <td className={`hidden md:table-cell px-1 sm:px-1.5 py-1.5 text-right tabular-nums ${lotPlColor(lotPL)}`}>{fmtMoney(lotPL)}</td>
+              <td className="hidden md:table-cell px-1 sm:px-1.5 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.fees)}</td>
             </tr>
           );
         })}
@@ -110,6 +111,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange }: {
       badge: valueChgMode === "dollar" ? "$" : "%", onBadge: () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
     { key: "pl",        label: "P&L",       align: "right", sortValue: (a) => a.profit_loss,               vis: "hidden lg:table-cell" },
     { key: "plPct",     label: "P&L %",     align: "right", sortValue: (a) => a.profit_loss_percentage,    vis: "hidden lg:table-cell" },
+    { key: "menu",      label: "",          align: "right" },
   ];
 
   return (
@@ -130,7 +132,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange }: {
                 isExpanded ? "bg-[#252a40]" : "",
               ].join(" ")}
             >
-              <td className="px-2 sm:px-3 py-2 font-semibold text-slate-100">
+              <td className="px-1 sm:px-1.5 py-2 font-semibold text-slate-100">
                 <button
                   onClick={() => toggleChartTicker(a.ticker)}
                   className="hover:text-sky-400 transition-colors cursor-pointer"
@@ -138,7 +140,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange }: {
                   {a.ticker}
                 </button>
               </td>
-              <td className="hidden sm:table-cell px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">
+              <td className="hidden sm:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">
                 <span className="inline-flex items-center justify-end gap-1.5">
                   {a.total_quantity}
                   {hasLots && (
@@ -152,19 +154,22 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange }: {
                   )}
                 </span>
               </td>
-              <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtPrice(a.current_price, a.asset_type, a.ticker)}</td>
-              <td className={`px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
+              <td className="px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">{fmtPrice(a.current_price, a.asset_type, a.ticker)}</td>
+              <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
                 {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
               </td>
-              <td className="px-2 sm:px-3 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
-              <td className={`hidden md:table-cell px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
+              <td className="px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
+              <td className={`hidden md:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
                 {valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct)}
               </td>
-              <td className={`hidden lg:table-cell px-2 sm:px-3 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
+              <td className={`hidden lg:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
                 {fmtMoney(a.profit_loss)}
               </td>
-              <td className={`hidden lg:table-cell px-2 sm:px-3 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
+              <td className={`hidden lg:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
                 {fmtPct(a.profit_loss_percentage)}
+              </td>
+              <td className="pl-0 pr-1 sm:pr-1.5 py-2 text-right">
+                <AssetMenu ticker={a.ticker} assetType={a.asset_type} />
               </td>
             </tr>
             {isExpanded && (

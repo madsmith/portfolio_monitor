@@ -91,7 +91,32 @@ export type AccountSummary = {
   is_default?: boolean;
 };
 
-export type AlertConfig = Record<string, unknown>;
+export type AlertRule = {
+  id: string;
+  ticker: string;
+  kind: string;
+  args: Record<string, unknown>;
+};
+
+export type AlertChannel = {
+  name: string;
+  type: string;
+  enabled: boolean;
+  default: boolean;
+  params: Record<string, unknown>;
+};
+
+export type AlertChannelOverride = {
+  rule_id: string;
+  channel_name: string;
+  include: boolean;
+};
+
+export type AlertConfig = {
+  channels: AlertChannel[];
+  rules: AlertRule[];
+  overrides: AlertChannelOverride[];
+};
 
 export type PriceAggregate = {
   timestamp: string;
@@ -232,18 +257,25 @@ export const api = {
   resetAccountPassword: (username: string, password: string): Promise<{ ok: boolean }> =>
     authPut(`/api/v1/accounts/${encodeURIComponent(username)}/password`, { password }),
 
+  // Recent alerts (dashboard channel buffer)
+  getRecentAlerts: (limit?: number): Promise<{ alerts: Record<string, unknown>[] }> =>
+    authGet(`/api/v1/me/alerts/recent${limit ? `?limit=${limit}` : ""}`),
+
+  clearRecentAlerts: (): Promise<{ ok: boolean }> =>
+    authDelete("/api/v1/me/alerts/recent"),
+
   // Alert configs
   getMyAlerts: (): Promise<AlertConfig> =>
-    authGet("/api/v1/me/alerts"),
+    authGet("/api/v1/me/alert-config"),
 
   updateMyAlerts: (config: AlertConfig): Promise<{ ok: boolean }> =>
-    authPut("/api/v1/me/alerts", config),
+    authPut("/api/v1/me/alert-config", config),
 
   getAccountAlerts: (username: string): Promise<AlertConfig> =>
-    authGet(`/api/v1/accounts/${encodeURIComponent(username)}/alerts`),
+    authGet(`/api/v1/accounts/${encodeURIComponent(username)}/alert-config`),
 
   updateAccountAlerts: (username: string, config: AlertConfig): Promise<{ ok: boolean }> =>
-    authPut(`/api/v1/accounts/${encodeURIComponent(username)}/alerts`, config),
+    authPut(`/api/v1/accounts/${encodeURIComponent(username)}/alert-config`, config),
 
   getDetectors: (): Promise<DetectorInfo[]> =>
     authGet("/api/v1/detectors"),

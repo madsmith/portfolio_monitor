@@ -17,7 +17,7 @@ from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.events import AlertFired
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio import PortfolioService
-from portfolio_monitor.service.alerts import AlertRouter
+from portfolio_monitor.service.alerts import UserAlertManager
 from portfolio_monitor.service.dev.price_generator import Regime
 from portfolio_monitor.service.dev.synthetic_source import SyntheticDataSource  # noqa: TC001
 
@@ -35,7 +35,7 @@ class ControlPanelApp:
         synthetic_source: SyntheticDataSource | None,
         detection_engine: DeviationEngine,
         detection_service: DetectionService,
-        alert_router: AlertRouter,
+        alert_manager: UserAlertManager,
         aggregate_cache: AggregateCache,
         portfolio_service: PortfolioService,
     ) -> None:
@@ -43,7 +43,7 @@ class ControlPanelApp:
         self._source: SyntheticDataSource | None = synthetic_source
         self._engine: DeviationEngine = detection_engine
         self._detection_service: DetectionService = detection_service
-        self._alert_router: AlertRouter = alert_router
+        self._alert_manager: UserAlertManager = alert_manager
         self._cache: AggregateCache = aggregate_cache
         self._portfolio_service: PortfolioService = portfolio_service
 
@@ -138,7 +138,7 @@ class ControlPanelApp:
                 "synthetic": self._source is not None,
                 "symbols": symbols_data,
                 "detectors": detector_names,
-                "suppressed_detectors": list(self._alert_router.suppressed_detectors),
+                "suppressed_detectors": list(self._alert_manager.suppressed_detectors),
                 "tick_interval": self._source.tick_interval if self._source is not None else None,
                 "paused": self._source.paused if self._source is not None else False,
             }
@@ -190,11 +190,11 @@ class ControlPanelApp:
     async def toggle_detector(self, request: Request) -> JSONResponse:
         name = request.path_params["name"]
         logfire_set_attribute("detector", name)
-        if name in self._alert_router.suppressed_detectors:
-            self._alert_router.suppressed_detectors.discard(name)
+        if name in self._alert_manager.suppressed_detectors:
+            self._alert_manager.suppressed_detectors.discard(name)
             enabled = True
         else:
-            self._alert_router.suppressed_detectors.add(name)
+            self._alert_manager.suppressed_detectors.add(name)
             enabled = False
         return JSONResponse({"ok": True, "detector": name, "enabled": enabled})
 
@@ -319,7 +319,7 @@ class ControlPanelApp:
     # ------------------------------------------------------------------
 
     async def _on_alert_for_sse(self, event: AlertFired) -> None:
-        if event.alert.kind in self._alert_router.suppressed_detectors:
+        if event.alert.kind in self._alert_manager.suppressed_detectors:
             return
         data = {
             "ticker": str(event.alert.ticker),

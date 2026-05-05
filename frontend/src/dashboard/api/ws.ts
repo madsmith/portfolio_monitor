@@ -29,16 +29,23 @@ export type AuthenticatedMessage = {
   type: "authenticated";
 };
 
+export type AlertFiredMessage = {
+  type: "alert_fired";
+  alert: Record<string, unknown>;
+};
+
 type IncomingMessage =
   | AuthenticatedMessage
   | PriceUpdateMessage
   | PriceMessage
-  | PreviousCloseMessage;
+  | PreviousCloseMessage
+  | AlertFiredMessage;
 
 /** Called once per animation frame with all price updates received since the last flush. */
 type PriceUpdateHandler = (msgs: PriceUpdateMessage[]) => void;
 type PriceHandler = (msg: PriceMessage) => void;
 type PreviousCloseHandler = (msg: PreviousCloseMessage) => void;
+type AlertHandler = (msg: AlertFiredMessage) => void;
 
 /**
  * Manages a WebSocket connection to /api/v1/ws.
@@ -56,6 +63,7 @@ export class PortfolioWebSocket {
   private handlers: PriceUpdateHandler[] = [];
   private priceHandlers: PriceHandler[] = [];
   private previousCloseHandlers: PreviousCloseHandler[] = [];
+  private alertHandlers: AlertHandler[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
   // Keyed by "ticker:type" to provide O(1) dedup
@@ -94,6 +102,8 @@ export class PortfolioWebSocket {
           for (const handler of this.priceHandlers) handler(msg);
         } else if (msg.type === "previous_close") {
           for (const handler of this.previousCloseHandlers) handler(msg);
+        } else if (msg.type === "alert_fired") {
+          for (const handler of this.alertHandlers) handler(msg);
         } else if (msg.type === "price_update") {
           this.pendingUpdates.push(msg);
           if (this.rafHandle === null) {
@@ -156,6 +166,13 @@ export class PortfolioWebSocket {
     this.previousCloseHandlers.push(handler);
     return () => {
       this.previousCloseHandlers = this.previousCloseHandlers.filter((h) => h !== handler);
+    };
+  }
+
+  onAlert(handler: AlertHandler): () => void {
+    this.alertHandlers.push(handler);
+    return () => {
+      this.alertHandlers = this.alertHandlers.filter((h) => h !== handler);
     };
   }
 

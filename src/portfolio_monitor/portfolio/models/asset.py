@@ -93,7 +93,8 @@ class Asset:
         asset_type: Literal["stock", "currency", "crypto"] = "stock",
     ) -> "Asset":
         """Create an Asset from a dictionary."""
-        lots = [Lot.from_dict(lot_data) for lot_data in data.get("lots", [])]
+        assert data is not None, "Missing data to construct asset"
+        lots = [Lot.from_dict(lot_data) for lot_data in data.get("lots", []) or []]
         return cls(
             symbol=AssetSymbol(data["ticker"], AssetTypes(asset_type)),
             lots=lots,
