@@ -77,10 +77,12 @@ class Portfolio(PermissionsHost):
     @classmethod
     def from_dict(cls, data: dict[str, Any], id_hash_seed: str | None = None, owner: str = "default") -> "Portfolio":
         """Create a Portfolio from a dictionary."""
-        if id_hash_seed:
+        if data.get("id"):
+            portfolio_id = data["id"]
+        elif id_hash_seed:
             portfolio_id = hashlib.sha256(id_hash_seed.encode()).hexdigest()[:16]
         else:
-            portfolio_id = data.get("id", "")
+            portfolio_id = ""
 
         perm_data = data.get("permissions")
         permissions = PermissionMap.from_yaml(perm_data) if perm_data is not None else None
@@ -110,7 +112,7 @@ class Portfolio(PermissionsHost):
         return portfolio
 
     def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"name": self.name}
+        d: dict[str, Any] = {"name": self.name, "id": self.id}
         if self.owner and self.owner != "default":
             d["owner"] = self.owner
         for key in ("stocks", "currencies", "crypto"):

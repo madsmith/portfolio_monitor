@@ -40,14 +40,20 @@ def _load_portfolios_by_owner(portfolio_path: Path, path_registry: dict[str, Pat
                 logger.warning("YAML file does not contain a portfolio: %s", yaml_file)
                 continue
             owner = data.get("owner", folder_owner) or folder_owner
+            had_id = bool(data.get("id"))
             portfolio = Portfolio.from_dict(dict(data), id_hash_seed=str(yaml_file), owner=owner)
             by_owner.setdefault(owner, []).append(portfolio)
             if path_registry is not None:
                 path_registry[portfolio.id] = yaml_file
+            if not had_id:
+                with open(yaml_file, "w") as wf:
+                    pyyaml.dump(portfolio.to_dict(), wf, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                logger.info("Persisted id '%s' to %s", portfolio.id, yaml_file)
             logger.info(
-                "Loaded portfolio '%s' (owner=%s) from %s",
+                "Loaded portfolio '%s' (owner=%s, id=%s) from %s",
                 portfolio.name,
                 owner,
+                portfolio.id,
                 yaml_file,
             )
         except Exception:
