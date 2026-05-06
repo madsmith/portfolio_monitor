@@ -134,7 +134,7 @@ def _build_summary_rows(client: APIClient, portfolios: list) -> list[PortfolioSu
         for section, asset_type in _SECTION_TO_TYPE.items():
             for a in detail.get(section, []):
                 data = client.get_json(f"/api/v1/price/{asset_type}/{a['ticker']}/previous-close")
-                prev = data.get("price") if data else None
+                prev = data.get("close") if data else None
                 cur = a["current_price"]
                 if prev is not None and cur is not None:
                     qty = float(a["total_quantity"])
