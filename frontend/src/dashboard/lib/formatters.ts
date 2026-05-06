@@ -5,6 +5,13 @@ import { cryptoPriceDecimals } from "./assetFormat";
 // Display formatters
 // ---------------------------------------------------------------------------
 
+/** Strip trailing decimal zeros from a quantity string, e.g. "4.000000" → "4", "0.6229" → "0.6229". */
+export function fmtQty(qty: string | null): string {
+  if (qty === null) return "—";
+  const n = parseFloat(qty);
+  return isNaN(n) ? qty : n.toString();
+}
+
 export function fmtMoney(v: number | null): string {
   if (v === null) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);

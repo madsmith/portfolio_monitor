@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Asset, type Lot, type LotInput, type PortfolioDetail } from "../../api/client";
-import { fmtMoney, fmtPrice, fmtPct, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../../lib/formatters";
+import { fmtMoney, fmtPrice, fmtPct, fmtQty, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../../lib/formatters";
 import { DataTable, type ColDef } from "../DataTable";
 import { Chart } from "../Chart";
 import { AssetMenu } from "../AssetMenu";
@@ -185,7 +185,7 @@ function LotTable({ lots, currentPrice, assetType, ticker, editing, portfolioId,
           return (
             <tr key={lotIdx} className="border-b border-[#222536] last:border-b-0">
               <td className="pl-4 sm:pl-8 pr-2 sm:pr-3 py-1.5 text-slate-500">{fmtDate(lot.date)}</td>
-              <td className="hidden sm:table-cell px-1 sm:px-1.5 py-1.5 text-right tabular-nums text-slate-500">{lot.quantity}</td>
+              <td className="hidden sm:table-cell px-1 sm:px-1.5 py-1.5 text-right tabular-nums text-slate-500">{fmtQty(lot.quantity)}</td>
               <td className={`px-1 sm:px-1.5 py-1.5 text-right tabular-nums ${lotPlColor(priceGain)}`}>{fmtPrice(lot.price, assetType, ticker)}</td>
               <td className="hidden sm:table-cell px-1 sm:px-1.5 py-1.5 text-right tabular-nums text-slate-500">{fmtMoney(lot.cost_basis)}</td>
               <td className={`hidden md:table-cell px-1 sm:px-1.5 py-1.5 text-right tabular-nums ${lotPlColor(lotPL)}`}>{fmtMoney(lotPL)}</td>
@@ -419,12 +419,13 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
               </td>
               <td className="hidden sm:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">
                 <span className="inline-flex items-center justify-end gap-1.5">
-                  {a.total_quantity}
-                  {(a.lots.length > 0 || editing) && (
+                  {fmtQty(a.total_quantity)}
+                  {(
                     <button
                       onClick={() => toggleTicker(a.ticker)}
                       title="View lots"
-                      className="text-[#404868] hover:text-slate-400 transition-colors cursor-pointer leading-none"
+                      disabled={!editing && a.lots.length === 0}
+                      className={`leading-none transition-colors ${a.lots.length > 0 || editing ? "text-[#404868] hover:text-slate-400 cursor-pointer" : "invisible"}`}
                     >
                       ⓘ
                     </button>
