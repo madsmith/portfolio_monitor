@@ -14,6 +14,11 @@ def accounts_handler(
 ):
     """Return route handlers for account management (admin-only) and per-account alerts."""
 
+    async def list_users(request: Request) -> JSONResponse:
+        """Return just usernames — available to any authenticated user."""
+        usernames = [default_username] + [a.username for a in account_store.get_all()]
+        return JSONResponse([{"username": u} for u in usernames])
+
     @logfire.instrument("api.accounts.list")
     async def list_accounts(request: Request) -> JSONResponse:
         accounts = [
@@ -129,6 +134,7 @@ def accounts_handler(
         })
 
     return (
+        list_users,
         list_accounts,
         create_account,
         delete_account,

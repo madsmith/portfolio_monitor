@@ -94,6 +94,7 @@ export type Asset = {
 };
 
 export type PortfolioDetail = PortfolioSummary & {
+  owner: string;
   stocks: Asset[];
   currencies: Asset[];
   crypto: Asset[];
@@ -103,6 +104,12 @@ export type AccountSummary = {
   username: string;
   role: string;
   is_default?: boolean;
+};
+
+export type PortfolioUserPermission = { read: boolean; write: boolean };
+export type PortfolioUsers = {
+  owner: string;
+  permissions: Record<string, PortfolioUserPermission>;
 };
 
 export type AlertRule = {
@@ -272,6 +279,13 @@ export const api = {
   },
 
   // Account management (admin only)
+  getUsers: (): Promise<{ username: string }[]> =>
+    authGet("/api/v1/users"),
+  getPortfolioUsers: (id: string): Promise<PortfolioUsers> =>
+    authGet(`/api/v1/portfolio/${id}/users`),
+  updatePortfolioUsers: (id: string, permissions: Record<string, PortfolioUserPermission>): Promise<{ ok: boolean }> =>
+    authPut(`/api/v1/portfolio/${id}/users`, { permissions }),
+
   getAccounts: (): Promise<AccountSummary[]> =>
     authGet("/api/v1/accounts"),
 

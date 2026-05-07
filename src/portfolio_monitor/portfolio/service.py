@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any
 
 from portfolio_monitor.core import Currency
 from portfolio_monitor.core.events import EventBus
+from portfolio_monitor.core.permissions import PermissionMap
 from portfolio_monitor.data import AggregateUpdated
 from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
@@ -123,6 +124,21 @@ class PortfolioService:
         if not asset.lots:
             asset_list.remove(asset)
             self._tracked_symbols.discard(asset.symbol)
+        self._save_portfolio(portfolio)
+        return portfolio
+
+    def update_permissions(
+        self,
+        portfolio_id: str,
+        permissions: dict[str, dict[str, bool]],
+        auth: "AuthContext",
+    ) -> Portfolio | None:
+        portfolio = self.get_portfolio(portfolio_id, auth)
+        if portfolio is None:
+            return None
+        if not auth.is_admin and portfolio.owner != auth.username:
+            return None
+        portfolio.permissions = PermissionMap.from_yaml(permissions) if permissions else None
         self._save_portfolio(portfolio)
         return portfolio
 

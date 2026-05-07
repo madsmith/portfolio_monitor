@@ -59,6 +59,7 @@ def _portfolio_summary(p: Portfolio) -> dict:
 def _portfolio_detail(p: Portfolio) -> dict:
     return {
         **_portfolio_summary(p),
+        "owner": p.owner,
         "stocks": [_asset_dict(a) for a in p.stocks],
         "currencies": [_asset_dict(a) for a in p.currencies],
         "crypto": [_asset_dict(a) for a in p.crypto],
@@ -146,3 +147,31 @@ def portfolio_edit_handlers(portfolio_service: PortfolioService):
         return JSONResponse(_portfolio_detail(result))
 
     return add_lot, update_lot, delete_lot, delete_asset_handler
+
+
+def portfolio_users_handler(portfolio_service: PortfolioService):
+    async def get_portfolio_users(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        portfolio_id = request.path_params["id"]
+        portfolio = portfolio_service.get_portfolio(portfolio_id, auth)
+        if portfolio is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({
+            "owner": portfolio.owner,
+            "permissions": portfolio.permissions.to_dict() if portfolio.permissions else {},
+        })
+
+    async def update_portfolio_users(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        portfolio_id = request.path_params["id"]
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid body"}, status_code=400)
+        permissions: dict = body.get("permissions", {})
+        portfolio = portfolio_service.update_permissions(portfolio_id, permissions, auth)
+        if portfolio is None:
+            return JSONResponse({"error": "not found or forbidden"}, status_code=403)
+        return JSONResponse({"ok": True})
+
+    return get_portfolio_users, update_portfolio_users
