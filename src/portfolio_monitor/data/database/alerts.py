@@ -206,38 +206,50 @@ class AlertsModule(DatabaseModule):
     # ------------------------------------------------------------------
 
     def push_record(self, owner: str, alert_dict: dict[str, Any]) -> tuple["AlertRecord", bool]:
-        """Insert or update an alert record. Returns (record, is_new)."""
+        """Insert or update an alert record. Returns (record, is_new).
+
+        If the record exists but is soft-deleted, the update is skipped so
+        that a deleted alert cannot resurface via a detector re-fire.
+        """
         alert_id = alert_dict["id"]
         ticker_info = alert_dict["ticker"]
         ticker = ticker_info["ticker"] if isinstance(ticker_info, dict) else str(ticker_info)
         asset_type = ticker_info.get("asset_type", "") if isinstance(ticker_info, dict) else ""
-        existing = self._conn.execute(
-            "SELECT id FROM alert_records WHERE id = ?", (alert_id,)
+        existing_row = self._conn.execute(
+            "SELECT id, owner, ticker, asset_type, kind, message, extra, at, updated_at, read, deleted"
+            " FROM alert_records WHERE id = ?", (alert_id,)
         ).fetchone()
-        is_new = existing is None
-        with self._conn:
-            if is_new:
-                self._conn.execute(
-                    "INSERT INTO alert_records"
-                    " (id, owner, ticker, asset_type, kind, message, extra, at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (alert_id, owner, ticker, asset_type,
-                     alert_dict["kind"], alert_dict["message"],
-                     json.dumps(alert_dict.get("extra") or {}),
-                     alert_dict["at"], alert_dict["updated_at"]),
-                )
-            else:
+        if existing_row is not None:
+            existing = self._row_to_record(existing_row)
+            if existing.deleted:
+                return existing, False
+            with self._conn:
                 self._conn.execute(
                     "UPDATE alert_records SET message = ?, extra = ?, updated_at = ? WHERE id = ?",
                     (alert_dict["message"],
                      json.dumps(alert_dict.get("extra") or {}),
                      alert_dict["updated_at"], alert_id),
                 )
+            row = self._conn.execute(
+                "SELECT id, owner, ticker, asset_type, kind, message, extra, at, updated_at, read, deleted"
+                " FROM alert_records WHERE id = ?", (alert_id,)
+            ).fetchone()
+            return self._row_to_record(row), False
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO alert_records"
+                " (id, owner, ticker, asset_type, kind, message, extra, at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (alert_id, owner, ticker, asset_type,
+                 alert_dict["kind"], alert_dict["message"],
+                 json.dumps(alert_dict.get("extra") or {}),
+                 alert_dict["at"], alert_dict["updated_at"]),
+            )
         row = self._conn.execute(
             "SELECT id, owner, ticker, asset_type, kind, message, extra, at, updated_at, read, deleted"
             " FROM alert_records WHERE id = ?", (alert_id,)
         ).fetchone()
-        return self._row_to_record(row), is_new
+        return self._row_to_record(row), True
 
     def get_records(self, owner: str, limit: int = 50) -> list["AlertRecord"]:
         rows = self._conn.execute(

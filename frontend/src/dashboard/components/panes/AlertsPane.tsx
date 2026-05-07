@@ -27,10 +27,12 @@ export function AlertsPane({
   alertWsEvent,
   markAlertRead,
   markAllAlertsRead,
+  deleteAlert,
 }: {
   alertWsEvent: AlertWsMessage | null;
   markAlertRead: (id: string) => void;
   markAllAlertsRead: () => void;
+  deleteAlert: (id: string) => void;
 }) {
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);
   const [unread, setUnread] = useState(0);
@@ -137,7 +139,29 @@ export function AlertsPane({
               <span className={["flex-1 text-sm group-hover:text-slate-100", a.read ? "text-slate-400" : "text-slate-200"].join(" ")}>
                 {formatMessage(a)}
               </span>
-              <span className="text-xs text-slate-500 shrink-0">{formatAt(a)}</span>
+              <span className="text-xs text-slate-500 shrink-0 group-hover:hidden">{formatAt(a)}</span>
+              <span className="hidden group-hover:flex items-center gap-1 shrink-0">
+                {!a.read && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); markAlertRead(a.id); }}
+                    title="Mark as read"
+                    className="p-1 text-slate-500 hover:text-slate-200 transition-colors"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteAlert(a.id); }}
+                  title="Delete"
+                  className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </span>
             </li>
           ))}
         </ul>

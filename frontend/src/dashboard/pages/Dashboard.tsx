@@ -288,7 +288,7 @@ export default function Dashboard() {
 
         <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6 min-h-[120px]">
           {isAlertsActive ? (
-            <AlertsPane alertWsEvent={alertWsEvent} markAlertRead={(id) => wsRef.current?.markAlertRead(id)} markAllAlertsRead={() => wsRef.current?.markAllAlertsRead()} />
+            <AlertsPane alertWsEvent={alertWsEvent} markAlertRead={(id) => wsRef.current?.markAlertRead(id)} markAllAlertsRead={() => wsRef.current?.markAllAlertsRead()} deleteAlert={(id) => wsRef.current?.deleteAlert(id)} />
           ) : isSettingsActive ? (
             <SettingsPane />
           ) : watchlistPerfMatch ? (

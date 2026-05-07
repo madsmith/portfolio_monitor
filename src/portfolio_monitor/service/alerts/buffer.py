@@ -35,6 +35,8 @@ class AlertBuffer:
 
     async def push(self, alert_dict: dict[str, Any]) -> None:
         record, is_new = self._alerts_module.push_record(self._owner, alert_dict)
+        if record.deleted:
+            return
         await self._bus.publish(AlertBufferEvent(
             username=self._owner,
             payload={
