@@ -55,13 +55,14 @@ async def get_or_create_dm_room(client: httpx.AsyncClient, target: str) -> str:
     return room_id
 
 
-async def send_message(client: httpx.AsyncClient, room_id: str, body: str) -> None:
+async def send_message(client: httpx.AsyncClient, room_id: str, body: str) -> str:
     txn_id = f"test-{int(time.time() * 1000)}"
     url = f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}"
     resp = await client.put(url, json={"msgtype": "m.text", "body": body})
     resp.raise_for_status()
-    print(f"  Sent — event_id: {resp.json().get('event_id')}")
-    print(resp.json())
+    event_id: str = resp.json().get("event_id", "")
+    print(f"  Sent — event_id: {event_id}")
+    return event_id
 
 
 async def main(target: str) -> None:
@@ -83,8 +84,28 @@ async def main(target: str) -> None:
         print(f"Authenticated as: {resp.json().get('user_id')}")
 
         room_id = await get_or_create_dm_room(client, target)
-        message = f"[Nexus Portfolio Monitor] Test message — Matrix delivery is working."
-        await send_message(client, room_id, message)
+        message = "[Nexus Portfolio Monitor] Test message — Matrix delivery is working."
+        event_id = await send_message(client, room_id, message)
+
+        print("  Waiting 5 seconds before editing…")
+        await asyncio.sleep(5)
+
+        txn_id = f"test-edit-{int(time.time() * 1000)}"
+        url = f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}"
+        resp = await client.put(url, json={
+            "msgtype": "m.text",
+            "body": f"* [Nexus Portfolio Monitor] Test message — edited after 5 seconds.",
+            "m.new_content": {
+                "msgtype": "m.text",
+                "body": "[Nexus Portfolio Monitor] Test message — edited after 5 seconds.",
+            },
+            "m.relates_to": {
+                "rel_type": "m.replace",
+                "event_id": event_id,
+            },
+        })
+        resp.raise_for_status()
+        print(f"  Edited — event_id: {resp.json().get('event_id')}")
         print()
         print("Done.")
 
