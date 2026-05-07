@@ -162,7 +162,7 @@ def _build_asset_rows(client: APIClient, assets: list, asset_type: str) -> list[
     rows: list[AssetRow] = []
     for asset in assets:
         data = client.get_json(f"/api/v1/price/{asset_type}/{asset['ticker']}/previous-close")
-        prev = data.get("price") if data else None
+        prev = data.get("close") if data else None
         cur = asset["current_price"]
         qty = float(asset["total_quantity"])
 

@@ -48,7 +48,6 @@ class WatchlistEntryRow(BaseModel):
     time_added:    Annotated[str|None,   ColumnMeta("Added",    json_only=True)]
     initial_price: Annotated[float|None, ColumnMeta("Init$",    fmt="currency", json_only=True)]
     meta:          Annotated[dict,       ColumnMeta("Meta",     json_only=True)]
-    alerts:        Annotated[dict,       ColumnMeta("Alerts",   json_only=True)]
 
 
 # ---------------------------------------------------------------------------
@@ -121,31 +120,6 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("pairs", nargs="+", metavar="KEY=VALUE")
-
-    # alert sub-group
-    al = sub.add_parser("alert", help="Manage alerts on watchlist entries")
-    help_on_error(al)
-    al_sub = al.add_subparsers(dest="alert_command", metavar="SUBCOMMAND")
-    al_sub.required = True
-
-    s = al_sub.add_parser("show", help="Show alert config for an entry", parents=[_json_parent])
-    help_on_error(s)
-    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
-    s.add_argument("--ticker", required=True, metavar="TICKER")
-
-    s = al_sub.add_parser("set", help="Add/update a detector on an entry (KEY=VALUE ...)", parents=[_json_parent])
-    help_on_error(s)
-    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
-    s.add_argument("--ticker", required=True, metavar="TICKER")
-    s.add_argument("--kind", required=True, metavar="KIND")
-    s.add_argument("args", nargs="*", metavar="KEY=VALUE")
-
-    s = al_sub.add_parser("remove", help="Remove a detector from an entry", parents=[_json_parent])
-    help_on_error(s)
-    s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
-    s.add_argument("--ticker", required=True, metavar="TICKER")
-    s.add_argument("--kind", required=True, metavar="KIND")
-
     p.set_defaults(func=run_watchlist)
 
 
@@ -207,8 +181,6 @@ def run_watchlist(args: argparse.Namespace) -> None:
         _cmd_target(client, args)
     elif cmd == "meta":
         _cmd_meta(client, args)
-    elif cmd == "alert":
-        _cmd_alert(client, args)
     else:
         print(f"Unknown subcommand: {cmd}", file=sys.stderr)
         sys.exit(1)
@@ -240,8 +212,8 @@ def _cmd_show(client: APIClient, args: argparse.Namespace) -> None:
             price_data = client.try_get_json(
                 f"/api/v1/price/{entry['asset_type']}/{entry['ticker']}/previous-close"
             )
-            if price_data and price_data.get("price") is not None:
-                entry["current_price"] = price_data["price"]
+            if price_data and price_data.get("close") is not None:
+                entry["current_price"] = price_data["close"]
     _print_detail(data, args.json_out)
 
 
@@ -326,45 +298,3 @@ def _cmd_meta(client: APIClient, args: argparse.Namespace) -> None:
         sys.exit(1)
     _print_detail(resp.json(), args.json_out)
 
-
-def _cmd_alert(client: APIClient, args: argparse.Namespace) -> None:
-    base = f"/api/v1/watchlist/{args.id}/entries/{args.ticker.upper()}/alerts"
-    cmd = args.alert_command
-
-    if cmd == "show":
-        data = client.get_json(base)
-        if args.json_out:
-            print(json.dumps(data, indent=2))
-        else:
-            if not data:
-                print("No alerts configured.")
-            else:
-                for kind, kargs in data.items():
-                    print(f"  {kind}: {kargs}")
-
-    elif cmd == "set":
-        # Get current alerts, merge in the new one, then PUT
-        current = client.get_json(base)
-        assert isinstance(current, dict)
-        current[args.kind] = _parse_kvpairs(args.args)
-        resp = client.put(base, json=current)
-        if not resp.is_success:
-            print(f"Error: {resp.text}", file=sys.stderr)
-            sys.exit(1)
-        if args.json_out:
-            print(resp.text)
-        else:
-            print(f"Alert '{args.kind}' set on {args.ticker.upper()}")
-
-    elif cmd == "remove":
-        current = client.get_json(base)
-        assert isinstance(current, dict)
-        current.pop(args.kind, None)
-        resp = client.put(base, json=current)
-        if not resp.is_success:
-            print(f"Error: {resp.text}", file=sys.stderr)
-            sys.exit(1)
-        if args.json_out:
-            print(resp.text)
-        else:
-            print(f"Alert '{args.kind}' removed from {args.ticker.upper()}")
