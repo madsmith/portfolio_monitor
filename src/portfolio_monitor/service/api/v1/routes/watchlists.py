@@ -24,7 +24,6 @@ def _entry_dict(entry: WatchlistEntry, current_price: float | None = None) -> di
         "time_added": entry.time_added.isoformat() if entry.time_added else None,
         "initial_price": entry.initial_price,
         "meta": entry.meta,
-        "alerts": entry.alerts,
     }
 
 
@@ -115,8 +114,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             target_buy=float(body["target_buy"]) if body.get("target_buy") is not None else None,
             target_sell=float(body["target_sell"]) if body.get("target_sell") is not None else None,
             initial_price=initial_price,
-            meta=dict(body.get("meta") or {}),
-            alerts=dict(body.get("alerts") or {}),
+            meta=dict(body.get("meta") or {})
         )
         if entry.initial_price is None:
             agg = await data_provider.get_aggregate(entry.symbol)
@@ -159,34 +157,6 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
         return JSONResponse(_watchlist_detail(wl))
 
-    @logfire.instrument("api.watchlists.entry.alerts.get")
-    async def get_entry_alerts(request: Request) -> JSONResponse:
-        auth = AuthContext.from_request(request)
-        wl = watchlist_service.get_watchlist(request.path_params["id"], auth)
-        if wl is None:
-            return JSONResponse({"error": "not found"}, status_code=404)
-        entry = wl.get_entry(request.path_params["ticker"].upper())
-        if entry is None:
-            return JSONResponse({"error": "entry not found"}, status_code=404)
-        return JSONResponse(entry.alerts)
-
-    @logfire.instrument("api.watchlists.entry.alerts.update")
-    async def update_entry_alerts(request: Request) -> JSONResponse:
-        auth = AuthContext.from_request(request)
-        alerts = await request.json()
-        if not isinstance(alerts, dict):
-            return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
-        wl = await watchlist_service.update_entry_alerts(
-            request.path_params["id"],
-            request.path_params["ticker"].upper(),
-            alerts,
-            auth,
-        )
-        if wl is None:
-            return JSONResponse({"error": "not found or forbidden"}, status_code=404)
-        entry = wl.get_entry(request.path_params["ticker"].upper())
-        return JSONResponse(entry.alerts if entry else {})
-
     return (
         list_watchlists,
         create_watchlist,
@@ -195,6 +165,4 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
         add_entry,
         remove_entry,
         update_entry,
-        get_entry_alerts,
-        update_entry_alerts,
     )

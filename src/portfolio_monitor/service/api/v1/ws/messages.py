@@ -60,6 +60,11 @@ class MarkAllAlertsReadMessage(BaseModel):
     type: Literal["mark_all_alerts_read"]
 
 
+class DeleteAlertMessage(BaseModel):
+    type: Literal["delete_alert"]
+    alert_id: str
+
+
 ClientMessage = Annotated[
     Union[
         AuthenticateMessage,
@@ -69,6 +74,7 @@ ClientMessage = Annotated[
         GetPreviousCloseMessage,
         MarkAlertReadMessage,
         MarkAllAlertsReadMessage,
+        DeleteAlertMessage,
     ],
     Field(discriminator="type"),
 ]
@@ -123,6 +129,13 @@ class AllAlertsReadMessage(BaseModel):
     unread_count: int = 0
 
 
+class AlertDeletedMessage(BaseModel):
+    """Fired when a single alert is deleted from the buffer."""
+    type: Literal["alert_deleted"] = "alert_deleted"
+    alert_id: str
+    unread_count: int
+
+
 class AlertsClearedMessage(BaseModel):
     """Fired when all alerts are deleted from the buffer."""
     type: Literal["alerts_cleared"] = "alerts_cleared"
@@ -143,6 +156,7 @@ ServerMessage = (
     | AlertEventMessage
     | AlertReadMessage
     | AllAlertsReadMessage
+    | AlertDeletedMessage
     | AlertsClearedMessage
     | UnreadCountMessage
 )

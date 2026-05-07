@@ -4,7 +4,8 @@ import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from portfolio_monitor.service.settings import AccountStore, Role, SessionStore
+from portfolio_monitor.account import AccountStore, Role
+from portfolio_monitor.session import SessionStore
 from portfolio_monitor.utils import logfire_set_attribute
 
 

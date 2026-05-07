@@ -16,7 +16,7 @@ from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.events import AlertFired
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio import PortfolioService
+from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts import UserAlertManager
 from portfolio_monitor.service.dev.price_generator import Regime
 from portfolio_monitor.service.dev.synthetic_source import SyntheticDataSource  # noqa: TC001

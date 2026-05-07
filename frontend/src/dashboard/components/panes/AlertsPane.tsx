@@ -66,6 +66,10 @@ export function AlertsPane({
         );
         setUnread(alertWsEvent.unread_count);
         break;
+      case "alert_deleted":
+        setAlerts((prev) => prev.filter((a) => a.id !== alertWsEvent.alert_id));
+        setUnread(alertWsEvent.unread_count);
+        break;
       case "all_alerts_read":
         setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
         setUnread(0);

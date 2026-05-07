@@ -12,6 +12,7 @@ from portfolio_monitor.service.alerts.models import (
     RuleChannelOverride,
     UserAlertConfig,
 )
+from portfolio_monitor.service.alerts.channel_pool import ChannelPool
 from portfolio_monitor.service.alerts.rule_events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
 from portfolio_monitor.service.alerts.user_alert_manager import UserAlertManager
 
@@ -21,6 +22,7 @@ __all__ = [
     "AlertDelivery",
     "AlertRule",
     "ChannelConfig",
+    "ChannelPool",
     "LoggingAlertDelivery",
     "MatrixDelivery",
     "OpenClawAgentHttpDelivery",

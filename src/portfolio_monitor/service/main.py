@@ -3,7 +3,7 @@ import asyncio
 import logging
 import secrets
 import sys
-from collections import defaultdict
+
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -22,22 +22,21 @@ from uvicorn.server import Server
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import Aggregate, AggregateCache, AggregateUpdated, MarketInfo, PolygonDataProvider
-from portfolio_monitor.detectors import DeviationEngine, DetectorRegistry
+from portfolio_monitor.data.database import AppDatabase
+from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio import PortfolioService
+from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts import (
     AlertBufferStore,
-    LoggingAlertDelivery,
-    OpenClawAgentHttpDelivery,
-    OpenClawGatewayWsDelivery,
-    UserAlertConfig,
+    ChannelPool,
     UserAlertManager,
 )
 from portfolio_monitor.service.event_hooks import AlertConfigAdapter, WatchlistAdapter
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
-from portfolio_monitor.service.settings import AccountStore, SessionStore
+from portfolio_monitor.account import AccountStore
+from portfolio_monitor.session import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 from portfolio_monitor.service.vite import ViteProcess, start_vite
 from portfolio_monitor.utils.trace import TRACE
@@ -51,8 +50,9 @@ logger = logging.getLogger(__name__)
 async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, is_dev: bool = False) -> None:
     """Run the monitor service until interrupted"""
 
-    if not config.portfolio_path:
-        raise ValueError("Portfolio path not configured")
+    # Initialize database
+    db = AppDatabase(config.datastore_path)
+    db.initialize()
 
     # Load aggregate cache
     with logfire.span("service.startup.cache_load"):
@@ -73,25 +73,14 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         # Create data provider
         data_provider = PolygonDataProvider(config, aggregate_cache)
 
-        # Initialize account and session stores
-        account_store = AccountStore(config.settings_path)
-        account_store.load()
+        # Initialize stores and services backed by AppDatabase
+        account_store = AccountStore(db)
+        session_store = SessionStore(db, config.dashboard_username or "default")
 
-        # (alerts.yaml seeding removed — alert rules now managed via UserAlertConfig API)
+        portfolio_service = PortfolioService(bus=bus, db=db)
+        watchlist_service = WatchlistService(bus=bus, db=db)
 
-        session_store = SessionStore(config.session_store_path)
-        session_store.load()
-
-        portfolio_service = PortfolioService(bus=bus, portfolio_path=config.portfolio_path)
-        watchlist_service = WatchlistService(bus=bus, watchlist_path=config.watchlist_path)
-
-        # Build per-account detection engine (includes watchlist entry alert configs)
-        detection_engine, detector_accounts = _build_per_account_engine(
-            account_store,
-            portfolio_service,
-            watchlist_service,
-            default_admin_username=config.dashboard_username or "default",
-        )
+        detection_engine = DeviationEngine()
 
         # Create services — subscriptions happen in constructors
         detection_service = DetectionService(
@@ -99,48 +88,34 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
             detection_engine=detection_engine,
             data_provider=data_provider,
         )
-        alert_buffer_store = AlertBufferStore()
+        alert_buffer_store = AlertBufferStore(db.alerts, bus)
+        channel_pool = ChannelPool()
         alert_manager = UserAlertManager(
             bus=bus,
-            account_store=account_store,
-            default_admin_username=config.dashboard_username or "default",
             alert_buffer_store=alert_buffer_store,
+            alerts_module=db.alerts,
+            channel_pool=channel_pool,
         )
-        for detector_id, usernames in detector_accounts.items():
-            for username in usernames:
-                alert_manager.register_detector_account(detector_id, username)
+
+        alert_adapter = AlertConfigAdapter(
+            engine=detection_engine,
+            alert_manager=alert_manager,
+            detection_service=detection_service,
+            portfolio_service=portfolio_service,
+            watchlist_service=watchlist_service,
+            alerts_module=db.alerts,
+        )
+        alert_adapter.wire(bus)
+        alert_adapter.load_all()
+
         if not is_live:
             alert_manager.suppressed_detectors = {
                 detector.name()
                 for detectors in detection_engine.asset_detectors.values()
                 for detector in detectors
             }
-        alert_manager.add_target(LoggingAlertDelivery())
-        if config.openclaw_alert_enable_http and config.openclaw_auth_key and config.openclaw_agent_id:
-            alert_manager.add_target(
-                OpenClawAgentHttpDelivery(
-                    config.openclaw_host,
-                    config.openclaw_port,
-                    config.openclaw_auth_key,
-                    config.openclaw_agent_id,
-                    name="Portfolio Alert",
-                    session_key=config.openclaw_session_key,
-                )
-            )
-        if config.openclaw_alert_enable_ws and (config.openclaw_gateway_token or config.openclaw_gateway_password) and config.openclaw_agent_id:
-            alert_manager.add_target(
-                OpenClawGatewayWsDelivery(
-                    config.openclaw_host,
-                    config.openclaw_port,
-                    config.openclaw_agent_id,
-                    gateway_token=config.openclaw_gateway_token or None,
-                    gateway_password=config.openclaw_gateway_password or None,
-                    device_identity_file=config.openclaw_gateway_device_identity_file,
-                    name="Portfolio Alert",
-                    session_key=config.openclaw_session_key,
-                    extra_prompt=config.openclaw_alert_extra_prompt,
-                )
-            )
+        # TODO(openclaw): openclaw delivery will be a channel type in the DB config
+        # alert_manager.add_target(LoggingAlertDelivery())
 
         monitor = MonitorService(
             bus=bus,
@@ -152,8 +127,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
             for entry in wl.entries:
                 monitor.register_symbol(entry.symbol)
 
-        WatchlistAdapter(detection_engine, alert_manager, monitor, detection_service, data_provider).wire(bus)
-        AlertConfigAdapter(detection_engine, alert_manager, detection_service, portfolio_service, watchlist_service).wire(bus)
+        WatchlistAdapter(detection_engine, alert_manager, monitor, detection_service, data_provider, alert_adapter=alert_adapter).wire(bus)
 
     # Prime services
     with logfire.span("service.startup.prime"):
@@ -163,6 +137,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
     # Start API server
     ctx = PortfolioMonitorContext(
         config=config,
+        db=db,
         portfolio_service=portfolio_service,
         watchlist_service=watchlist_service,
         bus=bus,
@@ -300,98 +275,6 @@ async def _deep_prime(symbol: AssetSymbol, data_provider: PolygonDataProvider) -
     prior_close_time = MarketInfo.get_market_close(symbol, close_time - timedelta(days=2))
     
     _ = await data_provider.get_range(symbol, prior_close_time, close_time, cache_write=True)
-
-
-def _build_per_account_engine(
-    account_store: AccountStore,
-    portfolio_service: PortfolioService,
-    watchlist_service: WatchlistService,
-    default_admin_username: str = "default",
-) -> tuple[DeviationEngine, dict[str, list[str]]]:
-    """Build a DeviationEngine with one detector per (account x symbol x kind).
-
-    Includes both account alert configs and watchlist entry alert configs.
-
-    Returns:
-        engine: DeviationEngine with all detectors registered as asset detectors.
-        detector_accounts: mapping of detector_id → list of account usernames.
-    """
-    all_symbols: list[AssetSymbol] = list(
-        {asset.symbol for portfolio in portfolio_service.get_all_portfolios() for asset in portfolio.assets()}
-        | {entry.symbol for wl in watchlist_service.get_all_watchlists() for entry in wl.entries}
-    )
-    ticker_to_symbol: dict[str, AssetSymbol] = {s.ticker: s for s in all_symbols}
-
-    # Account-level alert configs
-    account_configs: list[tuple[str, UserAlertConfig]] = [
-        (default_admin_username, account_store.get_default_admin_alert_config()),
-    ] + [(a.username, a.alert_config) for a in account_store.get_all()]
-
-    # symbol → list of (detector, username) to register
-    symbol_detectors: dict[AssetSymbol, list[tuple[object, str]]] = {}
-    detector_accounts: dict[str, list[str]] = {}
-
-    for username, alert_config in account_configs:
-        if not alert_config.rules:
-            continue
-
-        # ticker → set of kinds already covered by symbol-specific rules for this account
-        symbol_overrides: defaultdict[str, set[str]] = defaultdict(set)
-
-        # Symbol-specific rules (ticker != "")
-        for rule in alert_config.rules:
-            if not rule.ticker:
-                continue
-            symbol = ticker_to_symbol.get(rule.ticker)
-            if symbol is None:
-                logger.warning(
-                    "Alert rule for '%s' references unknown ticker '%s', skipping",
-                    username,
-                    rule.ticker,
-                )
-                continue
-            detector = DetectorRegistry.create_detector(rule.kind, rule.args)
-            if detector is None:
-                continue
-            symbol_detectors.setdefault(symbol, []).append((detector, username))
-            detector_accounts.setdefault(detector.detector_id, []).append(username)
-            symbol_overrides[rule.ticker].add(rule.kind)
-
-        # Default rules (ticker == "") — expand to all symbols, skip overridden kinds
-        for rule in alert_config.rules:
-            if rule.ticker:
-                continue
-            for symbol in all_symbols:
-                if rule.kind in symbol_overrides[symbol.ticker]:
-                    continue
-                detector = DetectorRegistry.create_detector(rule.kind, rule.args)
-                if detector is None:
-                    continue
-                symbol_detectors.setdefault(symbol, []).append((detector, username))
-                detector_accounts.setdefault(detector.detector_id, []).append(username)
-
-    # Watchlist entry alert configs — per-entry, per-owner
-    for wl in watchlist_service.get_all_watchlists():
-        for entry in wl.entries:
-            if not entry.alerts:
-                continue
-            symbol = ticker_to_symbol.get(entry.symbol.ticker) or entry.symbol
-            for kind, args in entry.alerts.items():
-                if not isinstance(args, dict):
-                    continue
-                detector = DetectorRegistry.create_detector(kind, args)
-                if detector is None:
-                    continue
-                symbol_detectors.setdefault(symbol, []).append((detector, wl.owner))
-                detector_accounts.setdefault(detector.detector_id, []).append(wl.owner)
-
-    engine = DeviationEngine()
-    for symbol, pairs in symbol_detectors.items():
-        for detector, _ in pairs:
-            engine.add_detector(symbol, detector)  # type: ignore[arg-type]
-
-    return engine, detector_accounts
-
 
 
 def generate_auth_key(config_path: Path) -> None:

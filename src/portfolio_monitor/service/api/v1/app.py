@@ -5,7 +5,6 @@ from starlette.routing import Route, Router, WebSocketRoute
 from portfolio_monitor.service.alerts.buffer import AlertBufferStore
 from portfolio_monitor.service.api.auth import require_admin, require_auth
 from portfolio_monitor.service.context import PortfolioMonitorContext
-from portfolio_monitor.service.settings import AccountStore
 
 from .routes.accounts import accounts_handler
 from .routes.detectors import list_detectors
@@ -19,23 +18,16 @@ from .routes.watchlists import watchlists_handler
 from .ws import WebSocketManager
 
 
-def _recent_alerts_handler(
-    alert_buffer_store: AlertBufferStore,
-    account_store: AccountStore,
-    default_username: str | None,
-):
+def _recent_alerts_handler(alert_buffer_store: AlertBufferStore):
     async def get_recent_alerts(request: Request) -> JSONResponse:
-        username = request.user.display_name
+        username = request.user.username
         limit = min(int(request.query_params.get("limit", 50)), 100)
-        buf = alert_buffer_store.get(username)
-        alerts = buf.get_recent(limit) if buf else []
+        alerts = alert_buffer_store.get(username).get_recent(limit)
         return JSONResponse({"alerts": alerts})
 
     async def clear_recent_alerts(request: Request) -> JSONResponse:
-        username = request.user.display_name
-        buf = alert_buffer_store.get(username)
-        if buf is not None:
-            buf.clear()
+        username = request.user.username
+        await alert_buffer_store.get(username).clear()
         return JSONResponse({"ok": True})
 
     return get_recent_alerts, clear_recent_alerts
@@ -58,8 +50,18 @@ class APIv1ServiceApp(Router):
             config.dashboard_username,
             config.dashboard_password,
         )
-        me, get_my_alerts, update_my_alerts, add_alert_rule, update_alert_rule, delete_alert_rule = me_handler(
-            account_store, session_store, config.dashboard_username, ctx.bus
+        (
+            me,
+            get_my_alerts,
+            add_alert_rule,
+            update_alert_rule,
+            delete_alert_rule,
+            add_alert_channel,
+            update_alert_channel,
+            delete_alert_channel,
+        ) = me_handler(
+            account_store, session_store, config.dashboard_username, ctx.bus,
+            alerts_module=ctx.db.alerts,
         )
         (
             list_accounts,
@@ -68,8 +70,7 @@ class APIv1ServiceApp(Router):
             update_account,
             reset_password,
             get_account_alerts,
-            update_account_alerts,
-        ) = accounts_handler(account_store, session_store, config.dashboard_username)
+        ) = accounts_handler(account_store, config.dashboard_username, ctx.db.alerts)
 
         (
             list_watchlists,
@@ -79,8 +80,6 @@ class APIv1ServiceApp(Router):
             add_wl_entry,
             remove_wl_entry,
             update_wl_entry,
-            get_wl_entry_alerts,
-            update_wl_entry_alerts,
         ) = watchlists_handler(ctx.watchlist_service, ctx.data_provider)
 
         ws_manager = WebSocketManager(
@@ -90,9 +89,7 @@ class APIv1ServiceApp(Router):
             alert_buffer_store=ctx.alert_buffer_store,
         )
 
-        get_recent_alerts, clear_recent_alerts = _recent_alerts_handler(
-            ctx.alert_buffer_store, account_store, config.dashboard_username
-        )
+        get_recent_alerts, clear_recent_alerts = _recent_alerts_handler(ctx.alert_buffer_store)
         add_lot, update_lot, delete_lot, delete_asset = portfolio_edit_handlers(ctx.portfolio_service)
         super().__init__(
             routes=[
@@ -103,10 +100,12 @@ class APIv1ServiceApp(Router):
                 # Authenticated — any valid session
                 Route("/me", require_auth(me), methods=["GET"]),
                 Route("/me/alert-config", require_auth(get_my_alerts), methods=["GET"]),
-                Route("/me/alert-config", require_auth(update_my_alerts), methods=["PUT"]),
                 Route("/me/alert-config/rules", require_auth(add_alert_rule), methods=["POST"]),
                 Route("/me/alert-config/rules/{rule_id}", require_auth(update_alert_rule), methods=["PUT"]),
                 Route("/me/alert-config/rules/{rule_id}", require_auth(delete_alert_rule), methods=["DELETE"]),
+                Route("/me/alert-config/channels", require_auth(add_alert_channel), methods=["POST"]),
+                Route("/me/alert-config/channels/{channel_id}", require_auth(update_alert_channel), methods=["PUT"]),
+                Route("/me/alert-config/channels/{channel_id}", require_auth(delete_alert_channel), methods=["DELETE"]),
                 Route("/me/alerts/recent", require_auth(get_recent_alerts), methods=["GET"]),
                 Route("/me/alerts/recent", require_auth(clear_recent_alerts), methods=["DELETE"]),
                 Route("/accounts/{username}/password", require_auth(reset_password), methods=["PUT"]),
@@ -123,8 +122,6 @@ class APIv1ServiceApp(Router):
                 Route("/watchlist/{id}/entries", require_auth(add_wl_entry), methods=["POST"]),
                 Route("/watchlist/{id}/entries/{ticker}", require_auth(remove_wl_entry), methods=["DELETE"]),
                 Route("/watchlist/{id}/entries/{ticker}", require_auth(update_wl_entry), methods=["PUT"]),
-                Route("/watchlist/{id}/entries/{ticker}/alerts", require_auth(get_wl_entry_alerts), methods=["GET"]),
-                Route("/watchlist/{id}/entries/{ticker}/alerts", require_auth(update_wl_entry_alerts), methods=["PUT"]),
                 Route("/price/{type}/{ticker}", require_auth(current_price_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/previous-close", require_auth(previous_close_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/history", require_auth(price_history_handler(ctx.data_provider)), methods=["GET"]),
@@ -139,7 +136,6 @@ class APIv1ServiceApp(Router):
                 Route("/accounts/{username}", require_admin(delete_account), methods=["DELETE"]),
                 Route("/accounts/{username}", require_admin(update_account), methods=["PUT"]),
                 Route("/accounts/{username}/alert-config", require_admin(get_account_alerts), methods=["GET"]),
-                Route("/accounts/{username}/alert-config", require_admin(update_account_alerts), methods=["PUT"]),
                 WebSocketRoute("/ws", ws_manager.handle),
             ]
         )

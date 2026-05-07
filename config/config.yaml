@@ -1,4 +1,5 @@
 portfolio_monitor:
+  datastore_path: "config/app_data.db"
   portfolio_path: "config/portfolios"
   aggregate_cache_path: "config/aggregate_cache.db"
   settings_path: "config/settings.yaml"

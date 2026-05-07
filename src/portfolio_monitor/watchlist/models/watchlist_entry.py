@@ -8,10 +8,9 @@ from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 @dataclass
 class WatchlistEntry:
-    """A single symbol being watched, with optional metadata and alert config."""
+    """A single symbol being watched, with optional metadata."""
 
     symbol: AssetSymbol
-    alerts: dict[str, Any] = field(default_factory=dict)   # kind → args
     notes: str = ""
     target_buy: float | None = None
     target_sell: float | None = None
@@ -38,7 +37,6 @@ class WatchlistEntry:
 
         return cls(
             symbol=symbol,
-            alerts=dict(data.get("alerts") or {}),
             notes=str(data.get("notes") or ""),
             target_buy=float(data["target_buy"]) if data.get("target_buy") is not None else None,
             target_sell=float(data["target_sell"]) if data.get("target_sell") is not None else None,
@@ -64,7 +62,5 @@ class WatchlistEntry:
             d["initial_price"] = self.initial_price
         if self.meta:
             d["meta"] = self.meta
-        if self.alerts:
-            d["alerts"] = self.alerts
         return d
 

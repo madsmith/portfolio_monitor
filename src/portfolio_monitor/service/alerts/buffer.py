@@ -1,96 +1,108 @@
-"""In-memory per-user alert ring buffer for the dashboard channel."""
-import asyncio
+"""DB-backed per-user alert buffer with EventBus-driven push."""
+from dataclasses import dataclass
 from typing import Any
+
+from portfolio_monitor.core.events import EventBus
+from portfolio_monitor.data.database.alerts import AlertRecord, AlertsModule
+
+
+@dataclass
+class AlertBufferEvent:
+    """Published on every alert state change for a user.
+
+    The WS manager subscribes to this and forwards the payload to all
+    open sockets for the named user.
+    """
+    username: str
+    payload: dict[str, Any]
 
 
 class AlertBuffer:
-    """Stores the most recent N alerts for one user and notifies live WS subscribers.
+    """DB-backed alert store for one user.
 
-    Alerts are keyed by id so repeated updates to the same ongoing alert update
-    in-place rather than appending a duplicate. Each stored entry carries a
-    `read` bool that is preserved across updates so the user's read state isn't
-    reset when the underlying price moves.
-
-    Queue messages pushed to subscribers are dicts with an `event` key:
-      {"event": "fired",   "alert": {..., "read": False}, "unread_count": N}
-      {"event": "updated", "alert": {..., "read": bool},  "unread_count": N}
-      {"event": "read",    "alert_id": "...",              "unread_count": N}
-      {"event": "all_read",                                "unread_count": 0}
-      {"event": "cleared",                                 "unread_count": 0}
+    Mutation methods are async because they publish to the EventBus.
+    Read methods (get_recent, unread_count) are synchronous DB reads.
     """
 
-    MAX_SIZE = 100
-
-    def __init__(self) -> None:
-        self._alerts: dict[str, dict[str, Any]] = {}  # id → entry (with read field)
-        self._order: list[str] = []  # alert ids, newest first
-        self._queues: list[asyncio.Queue[dict[str, Any]]] = []
+    def __init__(self, owner: str, alerts_module: AlertsModule, bus: EventBus) -> None:
+        self._owner: str = owner
+        self._alerts_module: AlertsModule = alerts_module
+        self._bus: EventBus = bus
 
     @property
     def unread_count(self) -> int:
-        return sum(1 for a in self._alerts.values() if not a.get("read", False))
+        return self._alerts_module.get_unread_count(self._owner)
 
-    def push(self, alert_dict: dict[str, Any]) -> None:
-        alert_id = alert_dict["id"]
-        if alert_id in self._alerts:
-            read = self._alerts[alert_id]["read"]
-            self._alerts[alert_id] = {**alert_dict, "read": read}
-            event = "updated"
-        else:
-            if len(self._order) >= self.MAX_SIZE:
-                evicted = self._order.pop()
-                self._alerts.pop(evicted, None)
-            self._order.insert(0, alert_id)
-            self._alerts[alert_id] = {**alert_dict, "read": False}
-            event = "fired"
-        self._broadcast({"event": event, "alert": self._alerts[alert_id], "unread_count": self.unread_count})
+    async def push(self, alert_dict: dict[str, Any]) -> None:
+        record, is_new = self._alerts_module.push_record(self._owner, alert_dict)
+        await self._bus.publish(AlertBufferEvent(
+            username=self._owner,
+            payload={
+                "event": "fired" if is_new else "updated",
+                "alert": self._record_to_dict(record),
+                "unread_count": self.unread_count,
+            },
+        ))
 
-    def mark_read(self, alert_id: str) -> int:
-        if alert_id in self._alerts:
-            self._alerts[alert_id]["read"] = True
-        count = self.unread_count
-        self._broadcast({"event": "read", "alert_id": alert_id, "unread_count": count})
+    async def mark_read(self, alert_id: str) -> int:
+        count = self._alerts_module.mark_record_read(self._owner, alert_id)
+        await self._bus.publish(AlertBufferEvent(
+            username=self._owner,
+            payload={"event": "read", "alert_id": alert_id, "unread_count": count},
+        ))
         return count
 
-    def mark_all_read(self) -> None:
-        for a in self._alerts.values():
-            a["read"] = True
-        self._broadcast({"event": "all_read", "unread_count": 0})
+    async def mark_all_read(self) -> None:
+        self._alerts_module.mark_all_records_read(self._owner)
+        await self._bus.publish(AlertBufferEvent(
+            username=self._owner,
+            payload={"event": "all_read", "unread_count": 0},
+        ))
 
-    def clear(self) -> None:
-        self._alerts.clear()
-        self._order.clear()
-        self._broadcast({"event": "cleared", "unread_count": 0})
+    async def delete(self, alert_id: str) -> int:
+        count = self._alerts_module.delete_record(self._owner, alert_id)
+        await self._bus.publish(AlertBufferEvent(
+            username=self._owner,
+            payload={"event": "deleted", "alert_id": alert_id, "unread_count": count},
+        ))
+        return count
+
+    async def clear(self) -> None:
+        self._alerts_module.clear_records(self._owner)
+        await self._bus.publish(AlertBufferEvent(
+            username=self._owner,
+            payload={"event": "cleared", "unread_count": 0},
+        ))
 
     def get_recent(self, limit: int = 50) -> list[dict[str, Any]]:
-        return [self._alerts[aid] for aid in self._order if aid in self._alerts][:limit]
+        return [self._record_to_dict(r) for r in self._alerts_module.get_records(self._owner, limit)]
 
-    def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
-        q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self._queues.append(q)
-        return q
-
-    def unsubscribe(self, q: asyncio.Queue[dict[str, Any]]) -> None:
-        try:
-            self._queues.remove(q)
-        except ValueError:
-            pass
-
-    def _broadcast(self, msg: dict[str, Any]) -> None:
-        for q in self._queues:
-            q.put_nowait(msg)
+    @staticmethod
+    def _record_to_dict(record: AlertRecord) -> dict[str, Any]:
+        return {
+            "id": record.id,
+            "ticker": {"ticker": record.ticker, "asset_type": record.asset_type},
+            "kind": record.kind,
+            "message": record.message,
+            "extra": record.extra,
+            "at": record.at,
+            "updated_at": record.updated_at,
+            "read": record.read,
+        }
 
 
 class AlertBufferStore:
-    """Singleton holding one AlertBuffer per username."""
+    """Holds one AlertBuffer per username, all backed by the same module and bus."""
 
-    def __init__(self) -> None:
+    def __init__(self, alerts_module: AlertsModule, bus: EventBus) -> None:
+        self._alerts_module: AlertsModule = alerts_module
+        self._bus: EventBus = bus
         self._buffers: dict[str, AlertBuffer] = {}
 
     def get_or_create(self, username: str) -> AlertBuffer:
         if username not in self._buffers:
-            self._buffers[username] = AlertBuffer()
+            self._buffers[username] = AlertBuffer(username, self._alerts_module, self._bus)
         return self._buffers[username]
 
-    def get(self, username: str) -> AlertBuffer | None:
-        return self._buffers.get(username)
+    def get(self, username: str) -> AlertBuffer:
+        return self.get_or_create(username)

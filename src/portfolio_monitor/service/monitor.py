@@ -8,7 +8,7 @@ import logfire
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import Aggregate, AggregateUpdated, DataProvider, MarketInfo
 from portfolio_monitor.utils import logfire_set_attribute
-from portfolio_monitor.portfolio import PortfolioService
+from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.types import AssetSymbol, AssetUpdateRecord
 
 logger = logging.getLogger(__name__)

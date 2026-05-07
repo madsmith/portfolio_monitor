@@ -576,9 +576,10 @@ function WatchlistTable({
 // Main WatchlistsPane
 // ---------------------------------------------------------------------------
 
-export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
+export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }: {
   watchlists: WatchlistSummary[];
   ws: React.RefObject<PortfolioWebSocket | null>;
+  onMutated: () => void;
 }) {
   const [summaries, setSummaries] = useState<WatchlistSummary[]>(initialWatchlists);
   const [selectedId, setSelectedId] = useState<string>(initialWatchlists[0]?.id ?? "");
@@ -608,12 +609,13 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deletingWl, setDeletingWl] = useState(false);
 
-  // Sync summaries when Dashboard's initial prop arrives (async load)
+  // Sync summaries whenever the parent re-fetches (e.g. after navigation)
   useEffect(() => {
-    if (initialWatchlists.length > 0) {
-      setSummaries((prev) => (prev.length === 0 ? initialWatchlists : prev));
-      setSelectedId((prev) => prev || initialWatchlists[0].id);
-    }
+    setSummaries(initialWatchlists);
+    setSelectedId((prev) => {
+      const stillExists = initialWatchlists.some((w) => w.id === prev);
+      return stillExists ? prev : (initialWatchlists[0]?.id ?? "");
+    });
   }, [initialWatchlists]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset edit state when switching watchlists
@@ -701,6 +703,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
       keepEditingOnSelectRef.current = true;
       focusEntryOnOpen.current = true;
       setEditing(true);
+      onMutated();
     } catch {
       setCreateError("Failed to create watchlist");
     } finally {
@@ -719,6 +722,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws }: {
       setDetail(null);
       setEditing(false);
       setDeleteConfirm(false);
+      onMutated();
     } finally {
       setDeletingWl(false);
     }

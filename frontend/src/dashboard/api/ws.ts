@@ -49,6 +49,12 @@ export type AllAlertsReadMessage = {
   unread_count: number;
 };
 
+export type AlertDeletedMessage = {
+  type: "alert_deleted";
+  alert_id: string;
+  unread_count: number;
+};
+
 export type AlertsClearedMessage = {
   type: "alerts_cleared";
   unread_count: number;
@@ -62,6 +68,7 @@ export type UnreadCountMessage = {
 export type AlertWsMessage =
   | AlertEventMessage
   | AlertReadMessage
+  | AlertDeletedMessage
   | AllAlertsReadMessage
   | AlertsClearedMessage
   | UnreadCountMessage;
@@ -141,6 +148,7 @@ export class PortfolioWebSocket {
         } else if (
           msg.type === "alert_event" ||
           msg.type === "alert_read" ||
+          msg.type === "alert_deleted" ||
           msg.type === "all_alerts_read" ||
           msg.type === "alerts_cleared" ||
           msg.type === "unread_count"
@@ -206,6 +214,12 @@ export class PortfolioWebSocket {
   markAllAlertsRead(): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: "mark_all_alerts_read" }));
+    }
+  }
+
+  deleteAlert(alertId: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "delete_alert", alert_id: alertId }));
     }
   }
 

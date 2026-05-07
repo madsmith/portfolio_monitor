@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import defaultdict
 
 import logfire
 from pydantic import TypeAdapter, ValidationError
@@ -8,12 +9,13 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import DataProvider
 from portfolio_monitor.portfolio.events import PriceUpdated
-from portfolio_monitor.service.alerts.buffer import AlertBuffer, AlertBufferStore
-from portfolio_monitor.service.settings import SessionStore
+from portfolio_monitor.service.alerts.buffer import AlertBuffer, AlertBufferEvent, AlertBufferStore
+from portfolio_monitor.session import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 from portfolio_monitor.utils import logfire_set_attribute
 
 from .messages import (
+    AlertDeletedMessage,
     AlertEventMessage,
     AlertReadMessage,
     AlertsClearedMessage,
@@ -22,6 +24,7 @@ from .messages import (
     AuthenticateMessage,
     AuthenticatedMessage,
     ClientMessage,
+    DeleteAlertMessage,
     GetPreviousCloseMessage,
     GetPriceMessage,
     MarkAlertReadMessage,
@@ -37,12 +40,12 @@ from .messages import (
 
 logger = logging.getLogger(__name__)
 
-_AUTH_TIMEOUT = 10.0  # seconds to receive the authenticate message
+_AUTH_TIMEOUT = 10.0
 _client_message = TypeAdapter(ClientMessage)
 
 
 class WebSocketManager:
-    """Routes PriceUpdated events and alert buffer events to subscribed WebSocket clients.
+    """Routes PriceUpdated and AlertBufferEvents to subscribed WebSocket clients.
 
     Protocol (client → server):
       {"type": "authenticate",          "token": "<token>"}   ← must be first message
@@ -52,6 +55,7 @@ class WebSocketManager:
       {"type": "get_previous_close",    "symbol": {...}}
       {"type": "mark_alert_read",       "alert_id": "..."}
       {"type": "mark_all_alerts_read"}
+      {"type": "delete_alert",          "alert_id": "..."}
 
     Protocol (server → client):
       {"type": "authenticated"}
@@ -61,6 +65,7 @@ class WebSocketManager:
       {"type": "previous_close",  "symbol": {...}, "price": 178.00, "timestamp": "..."}
       {"type": "alert_event",     "event": "fired"|"updated", "alert": {...}, "unread_count": N}
       {"type": "alert_read",      "alert_id": "...", "unread_count": N}
+      {"type": "alert_deleted",   "alert_id": "...", "unread_count": N}
       {"type": "all_alerts_read", "unread_count": 0}
       {"type": "alerts_cleared",  "unread_count": 0}
     """
@@ -76,7 +81,10 @@ class WebSocketManager:
         self._data_provider: DataProvider = data_provider
         self._alert_buffer_store: AlertBufferStore | None = alert_buffer_store
         self._connections: dict[WebSocket, set[AssetSymbol]] = {}
+        self._user_sockets: dict[str, set[WebSocket]] = defaultdict(set)
         bus.subscribe(PriceUpdated, self._on_price_updated)
+        if alert_buffer_store is not None:
+            bus.subscribe(AlertBufferEvent, self._on_alert_buffer_event)
 
     async def handle(self, ws: WebSocket) -> None:
         """Accept and serve a single WebSocket connection."""
@@ -86,27 +94,24 @@ class WebSocketManager:
             msg = _client_message.validate_json(first_text)
         except WebSocketDisconnect:
             return
-        except (asyncio.TimeoutError, ValidationError, ValueError, Exception):
+        except Exception:
             await ws.close(code=1008)
             return
 
         session = self._session_store.get(msg.token) if isinstance(msg, AuthenticateMessage) else None
         if session is None:
-            print("Invalid auth token in WS connection attempt", ws.client)
+            logger.warning("Invalid auth token in WS connection attempt from %s", ws.client)
             await ws.close(code=1008)
             return
 
         await ws.send_text(to_socket(AuthenticatedMessage()))
         self._connections[ws] = set()
+        self._user_sockets[session.username].add(ws)
         logger.debug("WS authenticated user=%s (total=%d)", session.username, len(self._connections))
 
-        alert_task: asyncio.Task | None = None
         alert_buf: AlertBuffer | None = None
-        alert_queue = None
         if self._alert_buffer_store is not None:
             alert_buf = self._alert_buffer_store.get_or_create(session.username)
-            alert_queue = alert_buf.subscribe()
-            alert_task = asyncio.create_task(self._push_alerts(ws, alert_queue))
             await ws.send_text(to_socket(UnreadCountMessage(unread_count=alert_buf.unread_count)))
 
         try:
@@ -116,37 +121,8 @@ class WebSocketManager:
             pass
         finally:
             self._connections.pop(ws, None)
-            if alert_task is not None:
-                alert_task.cancel()
-            if alert_buf is not None and alert_queue is not None:
-                alert_buf.unsubscribe(alert_queue)
-            logger.debug("WS disconnected (total=%d)", len(self._connections))
-
-    async def _push_alerts(self, ws: WebSocket, queue: asyncio.Queue) -> None:
-        try:
-            while True:
-                msg = await queue.get()
-                event = msg.get("event")
-                try:
-                    if event in ("fired", "updated"):
-                        await ws.send_text(to_socket(AlertEventMessage(
-                            event=event,
-                            alert=msg["alert"],
-                            unread_count=msg["unread_count"],
-                        )))
-                    elif event == "read":
-                        await ws.send_text(to_socket(AlertReadMessage(
-                            alert_id=msg["alert_id"],
-                            unread_count=msg["unread_count"],
-                        )))
-                    elif event == "all_read":
-                        await ws.send_text(to_socket(AllAlertsReadMessage()))
-                    elif event == "cleared":
-                        await ws.send_text(to_socket(AlertsClearedMessage()))
-                except Exception:
-                    break
-        except asyncio.CancelledError:
-            pass
+            self._user_sockets[session.username].discard(ws)
+            logger.debug("WS disconnected user=%s (total=%d)", session.username, len(self._connections))
 
     @logfire.instrument("ws.message")
     async def _handle_message(self, ws: WebSocket, text: str, alert_buf: AlertBuffer | None = None) -> None:
@@ -178,10 +154,40 @@ class WebSocketManager:
                     )))
             case MarkAlertReadMessage():
                 if alert_buf is not None:
-                    alert_buf.mark_read(msg.alert_id)
+                    await alert_buf.mark_read(msg.alert_id)
             case MarkAllAlertsReadMessage():
                 if alert_buf is not None:
-                    alert_buf.mark_all_read()
+                    await alert_buf.mark_all_read()
+            case DeleteAlertMessage():
+                if alert_buf is not None:
+                    await alert_buf.delete(msg.alert_id)
+
+    async def _on_alert_buffer_event(self, event: AlertBufferEvent) -> None:
+        sockets = self._user_sockets.get(event.username)
+        if not sockets:
+            return
+        p = event.payload
+        ev = p.get("event")
+        if ev in ("fired", "updated"):
+            text = to_socket(AlertEventMessage(event=ev, alert=p["alert"], unread_count=p["unread_count"]))
+        elif ev == "read":
+            text = to_socket(AlertReadMessage(alert_id=p["alert_id"], unread_count=p["unread_count"]))
+        elif ev == "deleted":
+            text = to_socket(AlertDeletedMessage(alert_id=p["alert_id"], unread_count=p["unread_count"]))
+        elif ev == "all_read":
+            text = to_socket(AllAlertsReadMessage())
+        elif ev == "cleared":
+            text = to_socket(AlertsClearedMessage())
+        else:
+            return
+        dead: list[WebSocket] = []
+        for ws in list(sockets):
+            try:
+                await ws.send_text(text)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            sockets.discard(ws)
 
     async def _on_price_updated(self, event: PriceUpdated) -> None:
         payload = to_socket(PriceUpdateMessage(

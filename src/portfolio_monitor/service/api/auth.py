@@ -4,14 +4,30 @@ from typing import Any
 from starlette.authentication import (
     AuthCredentials,
     AuthenticationBackend,
-    SimpleUser,
+    BaseUser,
 )
 from starlette.requests import HTTPConnection, Request
 from starlette.responses import JSONResponse, Response
 
-from portfolio_monitor.service.settings import SessionStore
+from portfolio_monitor.session import SessionStore
 
 Handler = Callable[[Request], Coroutine[Any, Any, Response]]
+
+
+class PortfolioUser(BaseUser):
+    """Authenticated user with username and role, available via request.user."""
+
+    def __init__(self, username: str, role: str) -> None:
+        self.username: str = username
+        self.role: str = role
+
+    @property
+    def is_authenticated(self) -> bool:
+        return True
+
+    @property
+    def display_name(self) -> str:
+        return self.username
 
 
 def require_auth(handler: Handler) -> Handler:
@@ -28,7 +44,7 @@ def require_admin(handler: Handler) -> Handler:
     async def _wrapper(request: Request) -> Response:
         if not request.user.is_authenticated:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        if "role:admin" not in request.auth.scopes:
+        if not isinstance(request.user, PortfolioUser) or request.user.role != "admin":
             return JSONResponse({"error": "forbidden"}, status_code=403)
         return await handler(request)
     return _wrapper
@@ -46,7 +62,7 @@ class SessionBackend(AuthenticationBackend):
 
     async def authenticate(
         self, conn: HTTPConnection
-    ) -> tuple[AuthCredentials, SimpleUser] | None:
+    ) -> tuple[AuthCredentials, PortfolioUser] | None:
         auth_header = conn.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             return None
@@ -58,5 +74,5 @@ class SessionBackend(AuthenticationBackend):
 
         return (
             AuthCredentials(["authenticated", f"role:{session.role}"]),
-            SimpleUser(session.username),
+            PortfolioUser(session.username, str(session.role)),
         )

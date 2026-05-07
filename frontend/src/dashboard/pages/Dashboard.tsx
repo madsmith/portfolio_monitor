@@ -135,13 +135,14 @@ export default function Dashboard() {
   }, [detail]);
 
   // Fetch watchlist summaries once
+  const [watchlistRefreshKey, setWatchlistRefreshKey] = useState(0);
   useEffect(() => {
     let active = true;
     api.getWatchlists()
       .then((list) => { if (active) setWatchlists(list); })
       .catch(() => {});
     return () => { active = false; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watchlistRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch portfolio list once. Also kicks off background detail+prevClose fetches for all
   // portfolios so the overview "Today's Chg" column is populated immediately.
@@ -293,7 +294,7 @@ export default function Dashboard() {
           ) : watchlistPerfMatch ? (
             <WatchlistPerformancePane id={watchlistPerfMatch.params.id!} />
           ) : isWatchlistActive ? (
-            <WatchlistsPane watchlists={watchlists} ws={wsRef} />
+            <WatchlistsPane watchlists={watchlists} ws={wsRef} onMutated={() => setWatchlistRefreshKey((k) => k + 1)} />
           ) : activeId === null ? (
             <OverviewPane
               portfolios={portfolios}

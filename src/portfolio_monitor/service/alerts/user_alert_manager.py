@@ -1,43 +1,41 @@
 import logging
 
 from portfolio_monitor.core.events import EventBus
+from portfolio_monitor.data.database.alerts import AlertsModule
 from portfolio_monitor.detectors.base import Alert
 from portfolio_monitor.detectors.events import AlertCleared, AlertFired, AlertUpdated
 from portfolio_monitor.service.alerts.buffer import AlertBufferStore
+from portfolio_monitor.service.alerts.channel_pool import ChannelPool
 from portfolio_monitor.service.alerts.delivery import AlertDelivery
-from portfolio_monitor.service.alerts.delivery.matrix import MatrixDelivery
-from portfolio_monitor.service.alerts.models import ChannelConfig, UserAlertConfig
-from portfolio_monitor.service.settings.account_store import AccountStore
 
 logger = logging.getLogger(__name__)
 
 
 class UserAlertManager:
-    """Routes alerts to delivery backends using per-user UserAlertConfig.
+    """Routes alerts to delivery backends.
 
-    Subscribes to AlertFired/Updated/Cleared events and fans out to:
-      1. Global targets (LoggingAlertDelivery, openclaw, etc.) — all alerts
-      2. Per-user channel targets — resolved from each user's effective_channels()
-
-    Channel-specific delivery (dashboard buffer, Matrix) is added in later phases;
-    the routing infrastructure is wired here.
+    Subscribes to AlertFired/Updated/Cleared and fans out to:
+      1. Global targets (LoggingAlertDelivery, etc.) — all non-suppressed alerts
+      2. Per-user DB-configured channels via ChannelPool
+      3. Per-user dashboard buffer (AlertBufferStore)
     """
 
     def __init__(
         self,
         bus: EventBus,
-        account_store: AccountStore,
-        default_admin_username: str,
         alert_buffer_store: AlertBufferStore | None = None,
+        alerts_module: AlertsModule | None = None,
+        channel_pool: ChannelPool | None = None,
+        # kept for call-site compatibility during transition
+        account_store: object = None,
+        default_admin_username: str = "default",
     ) -> None:
         self._bus: EventBus = bus
-        self._account_store: AccountStore = account_store
-        self._default_admin_username: str = default_admin_username
         self._alert_buffer_store: AlertBufferStore | None = alert_buffer_store
-        # (username, channel_name) → connected MatrixDelivery instance
-        self._matrix_deliveries: dict[tuple[str, str], MatrixDelivery] = {}
+        self._alerts_module: AlertsModule | None = alerts_module
+        self._channel_pool: ChannelPool = channel_pool or ChannelPool()
 
-        # detector_id → username, built alongside DeviationEngine
+        # detector_id → username, populated by AlertConfigAdapter
         self._detector_username: dict[str, str] = {}
 
         # Global delivery targets — receive every non-suppressed alert
@@ -76,16 +74,6 @@ class UserAlertManager:
         self._detector_username.pop(detector_id, None)
 
     # ------------------------------------------------------------------
-    # User config lookup
-    # ------------------------------------------------------------------
-
-    def _get_user_config(self, username: str) -> UserAlertConfig:
-        if username == self._default_admin_username:
-            return self._account_store.get_default_admin_alert_config()
-        account = self._account_store.get(username)
-        return account.alert_config if account else UserAlertConfig()
-
-    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
@@ -99,24 +87,21 @@ class UserAlertManager:
                 failed.append(target)
         for t in failed:
             self._global_targets.remove(t)
+        # Pool entries connect lazily via ensure_connected in _fan_out
 
     async def disconnect_all(self) -> None:
         for target in self._global_targets:
             await target.disconnect()
-        for delivery in self._matrix_deliveries.values():
-            await delivery.disconnect()
-        self._matrix_deliveries.clear()
+        await self._channel_pool.disconnect_all()
 
     # ------------------------------------------------------------------
     # Event bus callbacks
     # ------------------------------------------------------------------
 
     async def _on_alert_fired(self, event: AlertFired) -> None:
-        print(" >> Fanning out alert", event.alert)  # TODO: remove
         await self._fan_out(event.alert, update_buffer=True)
 
     async def _on_alert_updated(self, event: AlertUpdated) -> None:
-        print(" >> Fanning out alert update", event.alert)  # TODO: remove
         await self._fan_out(event.alert, update_buffer=True)
 
     async def _on_alert_cleared(self, event: AlertCleared) -> None:
@@ -124,61 +109,34 @@ class UserAlertManager:
 
     async def _fan_out(self, alert: Alert, update_buffer: bool = True) -> None:
         if alert.kind in self.suppressed_detectors:
-            print(" >> Suppressed alert", alert)  # TODO: remove
             return
 
         for target in self._global_targets:
             try:
-                print(" >> Sending alert to global target", target)  # TODO: remove
                 await target.send_alert(alert)
             except Exception:
                 logger.exception("Error delivering alert to global target %s", target)
 
         username = self._detector_username.get(alert.detector_id)
         if not username:
-            print("  !!!!  No username found for detector", alert.detector_id)  # TODO: remove
             return
 
         if update_buffer and self._alert_buffer_store is not None:
-            print("  !!!!  Pushing alert to buffer", alert, "for user", username)  # TODO: remove
-            self._alert_buffer_store.get_or_create(username).push(alert.to_dict())
+            await self._alert_buffer_store.get_or_create(username).push(alert.to_dict())
 
-        config = self._get_user_config(username)
-        matching_rule = next(
-            (
-                r for r in config.rules
-                if r.kind == alert.kind
-                and (r.ticker == "" or r.ticker == alert.ticker.ticker)
-            ),
-            None,
-        )
-        if matching_rule is None:
+        if self._alerts_module is None:
             return
 
-        for channel in config.effective_channels(matching_rule):
-            await self._deliver_to_channel(alert, username, channel)
-
-    async def _deliver_to_channel(
-        self, alert: Alert, username: str, channel: ChannelConfig
-    ) -> None:
-        if channel.type == "matrix":
-            delivery = await self._get_matrix_delivery(username, channel)
-            if delivery is not None:
-                try:
-                    await delivery.send_alert(alert)
-                except Exception:
-                    logger.exception("Matrix delivery error for user %s channel %s", username, channel.name)
-
-    async def _get_matrix_delivery(
-        self, username: str, channel: ChannelConfig
-    ) -> MatrixDelivery | None:
-        key = (username, channel.name)
-        if key not in self._matrix_deliveries:
+        channels = self._alerts_module.get_channels(username)
+        for ch in channels:
+            if not ch.enabled:
+                continue
+            delivery = await self._channel_pool.ensure_connected(ch.type, ch.config)
+            if delivery is None:
+                continue
             try:
-                d = MatrixDelivery.from_channel_params(channel.params)
-                await d.connect()
-                self._matrix_deliveries[key] = d
-            except (KeyError, Exception):
-                logger.exception("Failed to init Matrix delivery for user %s channel %s", username, channel.name)
-                return None
-        return self._matrix_deliveries[key]
+                await delivery.send_alert(alert)
+            except Exception:
+                logger.exception(
+                    "Error delivering alert via channel type=%r owner=%s", ch.type, username
+                )

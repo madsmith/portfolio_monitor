@@ -7,28 +7,14 @@ from appconf import AppConfig, Bind, BindDefault
 class PortfolioMonitorConfig(AppConfig):
     """Typed configuration for the Portfolio Monitor application."""
 
-    portfolio_path = Bind[Path](
-        "portfolio_monitor.portfolio_path",
-        converter=Path,
-    )
-    watchlist_path = BindDefault[Path](
-        "portfolio_monitor.watchlist_path",
-        default="./config/watchlists",
-        converter=Path,
-    )
     aggregate_cache_path = BindDefault[Path](
         "portfolio_monitor.aggregate_cache_path",
         default="./config/aggregate_cache.db",
         converter=Path,
     )
-    settings_path = BindDefault[Path](
-        "portfolio_monitor.settings_path",
-        default="./config/settings.yaml",
-        converter=Path,
-    )
-    session_store_path = BindDefault[Path](
-        "portfolio_monitor.session_store_path",
-        default="./config/sessions.yaml",
+    datastore_path = BindDefault[Path](
+        "portfolio_monitor.datastore_path",
+        default="./config/app_data.db",
         converter=Path,
     )
 

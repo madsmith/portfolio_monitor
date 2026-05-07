@@ -2,12 +2,16 @@ import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from portfolio_monitor.service.alerts.models import UserAlertConfig
-from portfolio_monitor.service.settings import AccountStore, Role, SessionStore
+from portfolio_monitor.account import AccountStore, Role
+from portfolio_monitor.data.database.alerts import AlertsModule
 from portfolio_monitor.utils import logfire_set_attribute
 
 
-def accounts_handler(account_store: AccountStore, session_store: SessionStore, default_username: str):
+def accounts_handler(
+    account_store: AccountStore,
+    default_username: str,
+    alerts_module: AlertsModule,
+):
     """Return route handlers for account management (admin-only) and per-account alerts."""
 
     @logfire.instrument("api.accounts.list")
@@ -84,8 +88,8 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         """Reset password for an account (admin or self)."""
         target_username = request.path_params["username"]
         logfire_set_attribute("username", target_username)
-        caller = request.user.display_name
-        is_admin = "role:admin" in request.auth.scopes
+        caller = request.user.username
+        is_admin = request.user.role == "admin"
         # Admins can reset anyone's password; others can only reset their own
         if not is_admin and caller != target_username:
             return JSONResponse({"error": "forbidden"}, status_code=403)
@@ -110,30 +114,19 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
     async def get_account_alerts(request: Request) -> JSONResponse:
         username = request.path_params["username"]
         logfire_set_attribute("username", username)
-        if username == default_username:
-            return JSONResponse(account_store.get_default_admin_alert_config().to_dict())
-        account = account_store.get(username)
-        if account is None:
-            return JSONResponse({"error": "account not found"}, status_code=404)
-        return JSONResponse(account.alert_config.to_dict())
-
-    @logfire.instrument("api.accounts.alert_config.update")
-    async def update_account_alerts(request: Request) -> JSONResponse:
-        username = request.path_params["username"]
-        logfire_set_attribute("username", username)
-        try:
-            body = await request.json()
-        except Exception:
-            return JSONResponse({"error": "invalid request body"}, status_code=400)
-        config = UserAlertConfig.from_dict(body)
-        if username == default_username:
-            account_store.set_default_admin_alert_config(config)
-            account_store.save()
-            return JSONResponse({"ok": True})
-        if not account_store.update_alert_config(username, config):
-            return JSONResponse({"error": "account not found"}, status_code=404)
-        account_store.save()
-        return JSONResponse({"ok": True})
+        db_rules = alerts_module.get_rules(username)
+        channels = alerts_module.get_channels(username)
+        return JSONResponse({
+            "rules": [
+                {"id": r.id, "ticker": r.ticker or "", "asset_type": r.asset_type,
+                 "kind": r.kind, "args": r.args}
+                for r in db_rules
+            ],
+            "channels": [
+                {"id": c.id, "type": c.type, "config": c.config, "enabled": c.enabled}
+                for c in channels
+            ],
+        })
 
     return (
         list_accounts,
@@ -142,5 +135,4 @@ def accounts_handler(account_store: AccountStore, session_store: SessionStore, d
         update_account,
         reset_password,
         get_account_alerts,
-        update_account_alerts,
     )

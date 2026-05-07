@@ -14,7 +14,6 @@ config/alerts.yaml
 cofnig/alerts_dev.yaml
 config_private.yaml
 config/portfolios
-config/aggregate_cache.db
 config/device*identity.json
 config/watchlists
 incoming_frame.json
@@ -22,3 +21,10 @@ tmp/
 config/settings.yaml
 config/sessions.yaml
 .env
+
+config/aggregate_cache.db
+config/app_data.db
+config/*.db
+*.db-wal
+*.db-shm
+yaml2db*

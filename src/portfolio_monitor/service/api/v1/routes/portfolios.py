@@ -5,7 +5,7 @@ from starlette.responses import JSONResponse
 from portfolio_monitor.core import Currency
 from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.portfolio import Asset, Lot, Portfolio
-from portfolio_monitor.portfolio import PortfolioService
+from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.context import AuthContext
 
 

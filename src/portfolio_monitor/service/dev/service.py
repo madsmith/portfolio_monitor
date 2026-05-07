@@ -8,21 +8,21 @@ import uvicorn
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import AggregateUpdated, MemoryOnlyAggregateCache, PolygonDataProvider
+from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
-from portfolio_monitor.portfolio import PortfolioService
+from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.watchlist.service import WatchlistService
 from portfolio_monitor.service.alerts import (
     AlertBufferStore,
-    LoggingAlertDelivery,
-    OpenClawAgentHttpDelivery,
-    OpenClawGatewayWsDelivery,
+    ChannelPool,
     UserAlertManager,
 )
 from portfolio_monitor.service.api.app import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
-from portfolio_monitor.service.settings import AccountStore, SessionStore
+from portfolio_monitor.account import AccountStore
+from portfolio_monitor.session import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 from portfolio_monitor.service.vite import ViteProcess, start_vite
 
@@ -39,7 +39,9 @@ logger = logging.getLogger(__name__)
 async def run_dev_service(config: DevConfig) -> None:
     """Run the monitor service in dev mode with synthetic data."""
 
-    assert config.portfolio_path, "portfolio_path is required"
+    # Initialize database
+    db = AppDatabase(config.datastore_path)
+    db.initialize()
 
     # 2. Memory-only aggregate cache
     aggregate_cache = MemoryOnlyAggregateCache()
@@ -53,7 +55,7 @@ async def run_dev_service(config: DevConfig) -> None:
     bus.subscribe(AggregateUpdated, _persist_aggregate)
 
     # Load portfolios
-    portfolio_service = PortfolioService(bus=bus, portfolio_path=config.portfolio_path)
+    portfolio_service = PortfolioService(bus=bus, db=db)
     portfolios = portfolio_service.get_all_portfolios()
 
     if config.debug:
@@ -140,54 +142,17 @@ async def run_dev_service(config: DevConfig) -> None:
         detection_engine=detection_engine,
         data_provider=dev_data_provider,
     )
-    account_store = AccountStore(config.settings_path)
-    account_store.load()
-    alert_buffer_store = AlertBufferStore()
+    account_store = AccountStore(db)
+    alert_buffer_store = AlertBufferStore(db.alerts, bus)
+    channel_pool = ChannelPool()
     alert_manager = UserAlertManager(
         bus=bus,
-        account_store=account_store,
-        default_admin_username=config.dashboard_username or "default",
         alert_buffer_store=alert_buffer_store,
+        alerts_module=db.alerts,
+        channel_pool=channel_pool,
     )
-    alert_manager.suppressed_detectors = {
-        d.name for d in detection_engine.default_detectors
-    } | {
-        d.name
-        for detectors in detection_engine.asset_detectors.values()
-        for d in detectors
-    }
-    alert_manager.add_target(LoggingAlertDelivery())
-    if config.openclaw_alert_enable_http:
-        assert config.openclaw_auth_key, "openclaw_auth_key is required for HTTP delivery"
-        assert config.openclaw_agent_id, "openclaw_agent_id is required for HTTP delivery"
-        alert_manager.add_target(
-            OpenClawAgentHttpDelivery(
-                config.openclaw_host,
-                config.openclaw_port,
-                config.openclaw_auth_key,
-                config.openclaw_agent_id,
-                name="Portfolio Alert",
-                session_key=config.openclaw_session_key,
-            )
-        )
-
-    if config.openclaw_alert_enable_ws and (
-        config.openclaw_gateway_token or config.openclaw_gateway_password
-    ):
-        assert config.openclaw_agent_id, "openclaw_agent_id is required for WS delivery"
-        alert_manager.add_target(
-            OpenClawGatewayWsDelivery(
-                config.openclaw_host,
-                config.openclaw_port,
-                config.openclaw_agent_id,
-                gateway_token=config.openclaw_gateway_token or None,
-                gateway_password=config.openclaw_gateway_password or None,
-                device_identity_file=config.openclaw_gateway_device_identity_file,
-                name="Portfolio Alert",
-                session_key=config.openclaw_session_key,
-                extra_prompt=config.openclaw_alert_extra_prompt,
-            )
-        )
+    # TODO(openclaw): openclaw delivery will be a channel type in the DB config
+    # alert_manager.add_target(LoggingAlertDelivery())
 
     # 8. Prime with synthetic history starting from the seed point (previous close).
     # Seed aggregates go into the cache first so get_previous_close() has a real
@@ -236,17 +201,36 @@ async def run_dev_service(config: DevConfig) -> None:
     )
 
     # 10. Production API server (auth workflow, dashboard, API endpoints)
-    session_store = SessionStore(config.session_store_path)
-    session_store.load()
-    watchlist_service = WatchlistService(bus=bus, watchlist_path=config.watchlist_path)
+    session_store = SessionStore(db, config.dashboard_username or "default")
+    watchlist_service = WatchlistService(bus=bus, db=db)
     monitor_service = MonitorService(bus=bus, data_provider=dev_data_provider, portfolio_service=portfolio_service)
     for wl in watchlist_service.get_all_watchlists():
         for entry in wl.entries:
             monitor_service.register_symbol(entry.symbol)
-    WatchlistAdapter(detection_engine, alert_manager, monitor_service, detection_service, dev_data_provider).wire(bus)
-    AlertConfigAdapter(detection_engine, alert_manager, detection_service, portfolio_service, watchlist_service).wire(bus)
+    WatchlistAdapter(detection_engine, alert_manager, monitor_service, detection_service, dev_data_provider, alert_adapter=alert_adapter).wire(bus)
+    alert_adapter = AlertConfigAdapter(
+        engine=detection_engine,
+        alert_manager=alert_manager,
+        detection_service=detection_service,
+        portfolio_service=portfolio_service,
+        watchlist_service=watchlist_service,
+        alerts_module=db.alerts,
+    )
+    alert_adapter.wire(bus)
+    alert_adapter.load_all()
+
+    alert_manager.suppressed_detectors = {
+        detector.name()
+        for detector in detection_engine.default_detectors
+    } | {
+        detector.name()
+        for detectors in detection_engine.asset_detectors.values()
+        for detector in detectors
+    }
+
     ctx = PortfolioMonitorContext(
         config=config,
+        db=db,
         portfolio_service=portfolio_service,
         watchlist_service=watchlist_service,
         bus=bus,

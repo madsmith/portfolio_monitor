@@ -1,13 +1,10 @@
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-import yaml as pyyaml
-from omegaconf import OmegaConf
 
 from portfolio_monitor.core import Currency
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import AggregateUpdated
+from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 if TYPE_CHECKING:
@@ -22,65 +19,24 @@ logger = logging.getLogger(__name__)
 _ASSET_TYPE_ATTR: dict[str, str] = {"stock": "stocks", "currency": "currencies", "crypto": "crypto"}
 
 
-def _load_portfolios_by_owner(portfolio_path: Path, path_registry: dict[str, Path] | None = None) -> dict[str, list[Portfolio]]:
-    """Load all portfolios from */<owner>/*.yaml, keyed by owner directory name."""
-    by_owner: dict[str, list[Portfolio]] = {}
-    if not portfolio_path.exists():
-        logger.warning("Portfolio path %s does not exist", portfolio_path)
-        return by_owner
-    yaml_files = sorted(
-        list(portfolio_path.glob("*/*.yaml")) + list(portfolio_path.glob("*/*.yml"))
-    )
-    for yaml_file in yaml_files:
-        folder_owner = yaml_file.parent.name
-        try:
-            with open(yaml_file) as f:
-                data = OmegaConf.load(f)
-            if "name" not in data:
-                logger.warning("YAML file does not contain a portfolio: %s", yaml_file)
-                continue
-            owner = data.get("owner", folder_owner) or folder_owner
-            had_id = bool(data.get("id"))
-            portfolio = Portfolio.from_dict(dict(data), id_hash_seed=str(yaml_file), owner=owner)
-            by_owner.setdefault(owner, []).append(portfolio)
-            if path_registry is not None:
-                path_registry[portfolio.id] = yaml_file
-            if not had_id:
-                with open(yaml_file, "w") as wf:
-                    pyyaml.dump(portfolio.to_dict(), wf, default_flow_style=False, allow_unicode=True, sort_keys=False)
-                logger.info("Persisted id '%s' to %s", portfolio.id, yaml_file)
-            logger.info(
-                "Loaded portfolio '%s' (owner=%s, id=%s) from %s",
-                portfolio.name,
-                owner,
-                portfolio.id,
-                yaml_file,
-            )
-        except Exception:
-            logger.exception("Error loading portfolio from %s", yaml_file)
-    return by_owner
-
-
 class PortfolioService:
-    """Manages portfolio state and price updates.
+    """Manages portfolio state and price updates, backed by PortfoliosModule (SQLite).
 
-    Loads portfolios from *portfolio_path*/<owner>/*.yaml on startup.
-    Portfolios under ``default/`` are considered global (visible to all users).
-    Portfolios under ``<username>/`` are visible only to that user (and admins).
+    Portfolios are loaded from the database on startup into an in-memory cache.
+    Mutations update both the cache and the database.
 
     Subscribes to AggregateUpdated to push prices into portfolios.
     Publishes PriceUpdated and PortfolioUpdated events.
     """
 
-    def __init__(self, bus: EventBus, portfolio_path: Path) -> None:
+    def __init__(self, bus: EventBus, db: AppDatabase) -> None:
         self._bus: EventBus = bus
-        self._portfolio_paths: dict[str, Path] = {}
-        self._portfolios_by_owner: dict[str, list[Portfolio]] = _load_portfolios_by_owner(
-            portfolio_path, self._portfolio_paths
-        )
+        self._portfolios_module = db.portfolios
+        self._portfolios_by_owner: dict[str, list[Portfolio]] = {}
         self._tracked_symbols: set[AssetSymbol] = set()
 
-        for portfolio in self.get_all_portfolios():
+        for portfolio in db.portfolios.get_all():
+            self._portfolios_by_owner.setdefault(portfolio.owner, []).append(portfolio)
             for asset in portfolio.assets():
                 self._tracked_symbols.add(asset.symbol)
 
@@ -108,23 +64,15 @@ class PortfolioService:
                 return p
         return None
 
-    #######################################################
-    # Event Bus Callbacks
-    #######################################################
-
-    #######################################################
+    # ------------------------------------------------------------------
     # Mutations
-    #######################################################
+    # ------------------------------------------------------------------
 
     def _can_write(self, portfolio: Portfolio, auth: "AuthContext") -> bool:
         return auth.is_admin or portfolio.can("write", auth.username)
 
     def _save_portfolio(self, portfolio: Portfolio) -> None:
-        path = self._portfolio_paths.get(portfolio.id)
-        if path is None:
-            raise ValueError(f"No file path tracked for portfolio {portfolio.id}")
-        with open(path, "w") as f:
-            pyyaml.dump(portfolio.to_dict(), f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        self._portfolios_module.upsert(portfolio)
 
     def _asset_list(self, portfolio: Portfolio, asset_type: str) -> list[Asset] | None:
         attr = _ASSET_TYPE_ATTR.get(asset_type)
@@ -192,6 +140,10 @@ class PortfolioService:
         self._tracked_symbols.discard(asset.symbol)
         self._save_portfolio(portfolio)
         return portfolio
+
+    # ------------------------------------------------------------------
+    # Event bus callbacks
+    # ------------------------------------------------------------------
 
     async def _on_aggregate_updated(self, event: AggregateUpdated) -> None:
         if event.symbol not in self._tracked_symbols:
