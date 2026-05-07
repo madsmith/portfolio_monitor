@@ -27,8 +27,8 @@ from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts import (
-    AlertBufferStore,
     ChannelPool,
+    DashboardBufferDelivery,
     UserAlertManager,
 )
 from portfolio_monitor.service.event_hooks import AlertConfigAdapter, WatchlistAdapter
@@ -88,14 +88,13 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
             detection_engine=detection_engine,
             data_provider=data_provider,
         )
-        alert_buffer_store = AlertBufferStore(db.alerts, bus)
         channel_pool = ChannelPool()
         alert_manager = UserAlertManager(
             bus=bus,
-            alert_buffer_store=alert_buffer_store,
             alerts_module=db.alerts,
             channel_pool=channel_pool,
         )
+        alert_manager.add_implicit_delivery(DashboardBufferDelivery(db.alerts, bus))
 
         alert_adapter = AlertConfigAdapter(
             engine=detection_engine,
@@ -144,7 +143,6 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         data_provider=data_provider,
         account_store=account_store,
         session_store=session_store,
-        alert_buffer_store=alert_buffer_store,
     )
     api_app: Starlette = create_api_app(ctx)
     uvicorn_config = uvicorn.Config(

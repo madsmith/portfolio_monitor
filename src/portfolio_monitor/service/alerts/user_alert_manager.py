@@ -4,7 +4,7 @@ from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.database.alerts import AlertChannelSub, AlertsModule
 from portfolio_monitor.detectors.base import Alert
 from portfolio_monitor.detectors.events import AlertCleared, AlertFired, AlertUpdated
-from portfolio_monitor.service.alerts.buffer import AlertBufferStore
+from portfolio_monitor.service.alerts.events import UserAlertDeletedEvent, UserAlertsClearedEvent
 from portfolio_monitor.service.alerts.channel_pool import ChannelPool
 from portfolio_monitor.service.alerts.delivery import AlertDelivery
 from portfolio_monitor.service.alerts.delivery.base import AlertEventType
@@ -17,22 +17,20 @@ class UserAlertManager:
 
     Subscribes to AlertFired/Updated/Cleared and fans out to:
       1. Global targets (LoggingAlertDelivery, etc.) — all non-suppressed alerts
-      2. Per-user DB-configured channel subscriptions via ChannelPool — each channel
-         receives the AlertEventType and decides how to handle it
-      3. Per-user dashboard buffer (AlertBufferStore) — skipped on Cleared
+      2. Implicit per-user deliveries (e.g. DashboardBufferDelivery) — called
+         with target=username for every alert that has a known owner
+      3. Per-user DB-configured channel subscriptions via ChannelPool
     """
 
     def __init__(
         self,
         bus: EventBus,
-        alert_buffer_store: AlertBufferStore | None = None,
         alerts_module: AlertsModule | None = None,
         channel_pool: ChannelPool | None = None,
         account_store: object = None,
         default_admin_username: str = "default",
     ) -> None:
         self._bus: EventBus = bus
-        self._alert_buffer_store: AlertBufferStore | None = alert_buffer_store
         self._alerts_module: AlertsModule | None = alerts_module
         self._channel_pool: ChannelPool = channel_pool or ChannelPool()
 
@@ -44,12 +42,17 @@ class UserAlertManager:
         # Global delivery targets — receive every non-suppressed alert
         self._global_targets: list[AlertDelivery] = []
 
+        # Implicit per-user deliveries — called with target=username for every user alert
+        self._implicit_per_user_deliveries: list[AlertDelivery] = []
+
         # dev-mode: suppress delivery by detector kind
         self.suppressed_detectors: set[str] = set()
 
         self._bus.subscribe(AlertFired, self._on_alert_fired)
         self._bus.subscribe(AlertUpdated, self._on_alert_updated)
         self._bus.subscribe(AlertCleared, self._on_alert_cleared)
+        self._bus.subscribe(UserAlertsClearedEvent, self._on_alerts_cleared_by_user)
+        self._bus.subscribe(UserAlertDeletedEvent, self._on_alert_deleted_by_user)
 
     # ------------------------------------------------------------------
     # Target registration
@@ -65,6 +68,9 @@ class UserAlertManager:
             self._global_targets.remove(target)
         except ValueError:
             pass
+
+    def add_implicit_delivery(self, delivery: AlertDelivery) -> None:
+        self._implicit_per_user_deliveries.append(delivery)
 
     # ------------------------------------------------------------------
     # Detector–user and detector–rule wiring
@@ -115,6 +121,40 @@ class UserAlertManager:
     async def _on_alert_cleared(self, event: AlertCleared) -> None:
         await self._fan_out(event.alert, AlertEventType.CLEARED)
 
+    async def _on_alert_deleted_by_user(self, event: UserAlertDeletedEvent) -> None:
+        if self._alerts_module is None:
+            return
+        subs = self._alerts_module.get_subscriptions(event.username)
+        for sub in subs:
+            config = self._alerts_module.get_channel_config(sub.channel_config_id)
+            if config is None:
+                continue
+            delivery = await self._channel_pool.ensure_connected(config.type, config.config)
+            if delivery is None:
+                continue
+            if hasattr(delivery, "redact_for_alert"):
+                try:
+                    await delivery.redact_for_alert(sub.target, event.alert_id)
+                except Exception:
+                    logger.exception("single redact failed type=%r target=%s", config.type, sub.target)
+
+    async def _on_alerts_cleared_by_user(self, event: UserAlertsClearedEvent) -> None:
+        if self._alerts_module is None:
+            return
+        subs = self._alerts_module.get_subscriptions(event.username)
+        for sub in subs:
+            config = self._alerts_module.get_channel_config(sub.channel_config_id)
+            if config is None:
+                continue
+            delivery = await self._channel_pool.ensure_connected(config.type, config.config)
+            if delivery is None:
+                continue
+            if hasattr(delivery, "clear_for_target"):
+                try:
+                    await delivery.clear_for_target(sub.target)
+                except Exception:
+                    logger.exception("bulk clear failed type=%r target=%s", config.type, sub.target)
+
     # ------------------------------------------------------------------
     # Delivery helpers
     # ------------------------------------------------------------------
@@ -143,8 +183,11 @@ class UserAlertManager:
         if not username:
             return
 
-        if event != AlertEventType.CLEARED and self._alert_buffer_store is not None:
-            await self._alert_buffer_store.get_or_create(username).push(alert.to_dict())
+        for delivery in self._implicit_per_user_deliveries:
+            try:
+                await delivery.send_alert(alert, target=username, event=event)
+            except Exception:
+                logger.exception("Error delivering alert via implicit delivery %s", delivery)
 
         if self._alerts_module is None:
             return

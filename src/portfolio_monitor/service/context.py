@@ -7,7 +7,6 @@ from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import DataProvider
 from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.portfolio.service import PortfolioService
-from portfolio_monitor.service.alerts.buffer import AlertBufferStore
 from portfolio_monitor.account import AccountStore
 from portfolio_monitor.session import SessionStore
 from portfolio_monitor.watchlist.service import WatchlistService
@@ -43,4 +42,3 @@ class PortfolioMonitorContext:
     data_provider: DataProvider
     account_store: AccountStore
     session_store: SessionStore
-    alert_buffer_store: AlertBufferStore

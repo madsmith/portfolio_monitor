@@ -14,8 +14,8 @@ from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.watchlist.service import WatchlistService
 from portfolio_monitor.service.alerts import (
-    AlertBufferStore,
     ChannelPool,
+    DashboardBufferDelivery,
     UserAlertManager,
 )
 from portfolio_monitor.service.api.app import create_api_app
@@ -143,14 +143,13 @@ async def run_dev_service(config: DevConfig) -> None:
         data_provider=dev_data_provider,
     )
     account_store = AccountStore(db)
-    alert_buffer_store = AlertBufferStore(db.alerts, bus)
     channel_pool = ChannelPool()
     alert_manager = UserAlertManager(
         bus=bus,
-        alert_buffer_store=alert_buffer_store,
         alerts_module=db.alerts,
         channel_pool=channel_pool,
     )
+    alert_manager.add_implicit_delivery(DashboardBufferDelivery(db.alerts, bus))
     # TODO(openclaw): openclaw delivery will be a channel type in the DB config
     # alert_manager.add_target(LoggingAlertDelivery())
 
@@ -237,7 +236,6 @@ async def run_dev_service(config: DevConfig) -> None:
         data_provider=dev_data_provider,
         account_store=account_store,
         session_store=session_store,
-        alert_buffer_store=alert_buffer_store,
     )
     api_app = create_api_app(ctx)
 

@@ -25,6 +25,7 @@ class MatrixDelivery:
     """
 
     _MAX_TRACKED_EVENTS = 30
+    _REDACTED = "_redacted"  # sentinel: alert was sent, redacted, and should not re-fire
 
     def __init__(self, homeserver: str, access_token: str, display_name: str = "Nexus Alert") -> None:
         self._homeserver: str = homeserver.rstrip("/")
@@ -82,8 +83,6 @@ class MatrixDelivery:
         return target
 
     async def send_alert(self, alert: Alert, *, target: str = "", event: AlertEventType = AlertEventType.FIRED) -> None:
-        if event == AlertEventType.CLEARED:
-            return
         if not target:
             logger.debug("MatrixDelivery: no target specified, skipping")
             return
@@ -91,6 +90,16 @@ class MatrixDelivery:
         if self._client is None:
             logger.warning("MatrixDelivery.send_alert called before connect()")
             return
+
+        if event == AlertEventType.CLEARED:
+            await self._redact_alert(alert, target)
+            return
+
+        cached = self._get_event(target, alert.id)
+        if cached == self._REDACTED:
+            logger.debug("MatrixDelivery: suppressing re-fire of redacted alert %s", alert.id[:8])
+            return
+
         try:
             room_id = await self._get_or_create_dm_room(target)
         except Exception:
@@ -100,7 +109,7 @@ class MatrixDelivery:
         body = f"[{self._display_name}] {alert.ticker.ticker}: {alert.message}"
         txn_id = f"{int(time.time() * 1000)}-{alert.id[:8]}"
 
-        existing_event_id = self._get_event(target, alert.id) if event == AlertEventType.UPDATED else None
+        existing_event_id = cached if event == AlertEventType.UPDATED else None
 
         if existing_event_id:
             payload: dict[str, Any] = {
@@ -123,6 +132,77 @@ class MatrixDelivery:
                     self._store_event(target, alert.id, event_id)
         except Exception:
             logger.exception("MatrixDelivery send error for alert %s", alert.id)
+
+    async def _redact_alert(self, alert: Alert, target: str) -> None:
+        event_id = self._get_event(target, alert.id)
+        if not event_id or event_id == self._REDACTED:
+            return
+        try:
+            room_id = await self._get_or_create_dm_room(target)
+        except Exception:
+            logger.exception("MatrixDelivery: failed to get room for redaction, target=%s", target)
+            return
+        txn_id = f"redact-{int(time.time() * 1000)}-{alert.id[:8]}"
+        url = f"{self._homeserver}/_matrix/client/v3/rooms/{room_id}/redact/{event_id}/{txn_id}"
+        try:
+            resp = await self._client.put(url, json={"reason": "alert cleared"})  # type: ignore[union-attr]
+            if resp.status_code >= 400:
+                logger.error("Matrix redact failed (status=%d): %s", resp.status_code, resp.text[:200])
+            else:
+                self._store_event(target, alert.id, self._REDACTED)
+                logger.info("MatrixDelivery: redacted alert %s for %s", alert.id[:8], target)
+        except Exception:
+            logger.exception("MatrixDelivery redact error for alert %s", alert.id)
+
+    async def redact_for_alert(self, target: str, alert_id: str) -> None:
+        target = self._normalize_target(target)
+        if self._client is None:
+            return
+        event_id = self._get_event(target, alert_id)
+        if not event_id or event_id == self._REDACTED:
+            return
+        try:
+            room_id = await self._get_or_create_dm_room(target)
+        except Exception:
+            logger.exception("MatrixDelivery: failed to get room for single redact, target=%s", target)
+            return
+        txn_id = f"redact-{int(time.time() * 1000)}-{alert_id[:8]}"
+        url = f"{self._homeserver}/_matrix/client/v3/rooms/{room_id}/redact/{event_id}/{txn_id}"
+        try:
+            resp = await self._client.put(url, json={"reason": "alert deleted"})
+            if resp.status_code >= 400:
+                logger.error("Matrix single redact failed (status=%d): %s", resp.status_code, resp.text[:200])
+            else:
+                self._store_event(target, alert_id, self._REDACTED)
+                logger.info("MatrixDelivery: redacted alert %s for %s", alert_id[:8], target)
+        except Exception:
+            logger.exception("MatrixDelivery single redact error for alert %s", alert_id)
+
+    async def clear_for_target(self, target: str) -> None:
+        target = self._normalize_target(target)
+        if self._client is None:
+            return
+        cache = self._sent_events.get(target)
+        if not cache:
+            return
+        try:
+            room_id = await self._get_or_create_dm_room(target)
+        except Exception:
+            logger.exception("MatrixDelivery: failed to get room for bulk clear, target=%s", target)
+            return
+        for alert_id, event_id in list(cache.items()):
+            if not event_id or event_id == self._REDACTED:
+                continue
+            txn_id = f"redact-bulk-{int(time.time() * 1000)}-{alert_id[:8]}"
+            url = f"{self._homeserver}/_matrix/client/v3/rooms/{room_id}/redact/{event_id}/{txn_id}"
+            try:
+                resp = await self._client.put(url, json={"reason": "alerts cleared"})
+                if resp.status_code >= 400:
+                    logger.error("Matrix bulk redact failed (status=%d): %s", resp.status_code, resp.text[:200])
+                else:
+                    cache[alert_id] = self._REDACTED
+            except Exception:
+                logger.exception("MatrixDelivery bulk redact error for event %s", event_id)
 
     async def _get_or_create_dm_room(self, target: str) -> str:
         if target in self._room_cache:

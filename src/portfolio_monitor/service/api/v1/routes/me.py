@@ -7,7 +7,7 @@ from portfolio_monitor.account import AccountStore
 from portfolio_monitor.data.database.alerts import AlertsModule
 from portfolio_monitor.detectors.registry import DetectorRegistry
 from portfolio_monitor.service.alerts.models import AlertRule as ServiceAlertRule
-from portfolio_monitor.service.alerts.rule_events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
+from portfolio_monitor.service.alerts.events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
 from portfolio_monitor.session import SessionStore
 from portfolio_monitor.utils import logfire_set_attribute
 

@@ -2,7 +2,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route, Router, WebSocketRoute
 
-from portfolio_monitor.service.alerts.buffer import AlertBufferStore
+from portfolio_monitor.core.events import EventBus
+from portfolio_monitor.data.database.alerts import AlertsModule
+from portfolio_monitor.service.alerts.events import AlertStatusEvent, UserAlertsClearedEvent
 from portfolio_monitor.service.api.auth import require_admin, require_auth
 from portfolio_monitor.service.context import PortfolioMonitorContext
 
@@ -19,16 +21,18 @@ from .routes.watchlists import watchlists_handler
 from .ws import WebSocketManager
 
 
-def _recent_alerts_handler(alert_buffer_store: AlertBufferStore):
+def _recent_alerts_handler(alerts_module: AlertsModule, bus: EventBus):
     async def get_recent_alerts(request: Request) -> JSONResponse:
         username = request.user.username
         limit = min(int(request.query_params.get("limit", 50)), 100)
-        alerts = alert_buffer_store.get(username).get_recent(limit)
+        alerts = [r.to_dict() for r in alerts_module.get_records(username, limit)]
         return JSONResponse({"alerts": alerts})
 
     async def clear_recent_alerts(request: Request) -> JSONResponse:
         username = request.user.username
-        await alert_buffer_store.get(username).clear()
+        alerts_module.clear_records(username)
+        await bus.publish(AlertStatusEvent(username=username, payload={"event": "cleared", "unread_count": 0}))
+        await bus.publish(UserAlertsClearedEvent(username=username))
         return JSONResponse({"ok": True})
 
     return get_recent_alerts, clear_recent_alerts
@@ -94,10 +98,10 @@ class APIv1ServiceApp(Router):
             bus=ctx.bus,
             session_store=session_store,
             data_provider=ctx.data_provider,
-            alert_buffer_store=ctx.alert_buffer_store,
+            alerts_module=ctx.db.alerts,
         )
 
-        get_recent_alerts, clear_recent_alerts = _recent_alerts_handler(ctx.alert_buffer_store)
+        get_recent_alerts, clear_recent_alerts = _recent_alerts_handler(ctx.db.alerts, ctx.bus)
         add_lot, update_lot, delete_lot, delete_asset = portfolio_edit_handlers(ctx.portfolio_service)
         super().__init__(
             routes=[

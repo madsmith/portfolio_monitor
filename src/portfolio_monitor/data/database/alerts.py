@@ -48,6 +48,18 @@ class AlertRecord:
     read: bool
     deleted: bool
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "ticker": {"ticker": self.ticker, "asset_type": self.asset_type},
+            "kind": self.kind,
+            "message": self.message,
+            "extra": self.extra,
+            "at": self.at,
+            "updated_at": self.updated_at,
+            "read": self.read,
+        }
+
 
 class AlertsModule(DatabaseModule):
     name = "alerts"

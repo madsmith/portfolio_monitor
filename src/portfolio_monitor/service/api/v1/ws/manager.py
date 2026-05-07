@@ -8,8 +8,9 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import DataProvider
+from portfolio_monitor.data.database.alerts import AlertsModule
 from portfolio_monitor.portfolio.events import PriceUpdated
-from portfolio_monitor.service.alerts.buffer import AlertBuffer, AlertBufferEvent, AlertBufferStore
+from portfolio_monitor.service.alerts.events import AlertStatusEvent, UserAlertDeletedEvent
 from portfolio_monitor.session import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
 from portfolio_monitor.utils import logfire_set_attribute
@@ -45,7 +46,7 @@ _client_message = TypeAdapter(ClientMessage)
 
 
 class WebSocketManager:
-    """Routes PriceUpdated and AlertBufferEvents to subscribed WebSocket clients.
+    """Routes PriceUpdated and AlertStatusEvents to subscribed WebSocket clients.
 
     Protocol (client → server):
       {"type": "authenticate",          "token": "<token>"}   ← must be first message
@@ -75,16 +76,17 @@ class WebSocketManager:
         bus: EventBus,
         session_store: SessionStore,
         data_provider: DataProvider,
-        alert_buffer_store: AlertBufferStore | None = None,
+        alerts_module: AlertsModule | None = None,
     ) -> None:
+        self._bus: EventBus = bus
         self._session_store: SessionStore = session_store
         self._data_provider: DataProvider = data_provider
-        self._alert_buffer_store: AlertBufferStore | None = alert_buffer_store
+        self._alerts_module: AlertsModule | None = alerts_module
         self._connections: dict[WebSocket, set[AssetSymbol]] = {}
         self._user_sockets: dict[str, set[WebSocket]] = defaultdict(set)
         bus.subscribe(PriceUpdated, self._on_price_updated)
-        if alert_buffer_store is not None:
-            bus.subscribe(AlertBufferEvent, self._on_alert_buffer_event)
+        if alerts_module is not None:
+            bus.subscribe(AlertStatusEvent, self._on_alert_status_event)
 
     async def handle(self, ws: WebSocket) -> None:
         """Accept and serve a single WebSocket connection."""
@@ -109,14 +111,13 @@ class WebSocketManager:
         self._user_sockets[session.username].add(ws)
         logger.debug("WS authenticated user=%s (total=%d)", session.username, len(self._connections))
 
-        alert_buf: AlertBuffer | None = None
-        if self._alert_buffer_store is not None:
-            alert_buf = self._alert_buffer_store.get_or_create(session.username)
-            await ws.send_text(to_socket(UnreadCountMessage(unread_count=alert_buf.unread_count)))
+        if self._alerts_module is not None:
+            unread = self._alerts_module.get_unread_count(session.username)
+            await ws.send_text(to_socket(UnreadCountMessage(unread_count=unread)))
 
         try:
             async for text in ws.iter_text():
-                await self._handle_message(ws, text, alert_buf)
+                await self._handle_message(ws, text, session.username)
         except WebSocketDisconnect:
             pass
         finally:
@@ -125,12 +126,14 @@ class WebSocketManager:
             logger.debug("WS disconnected user=%s (total=%d)", session.username, len(self._connections))
 
     @logfire.instrument("ws.message")
-    async def _handle_message(self, ws: WebSocket, text: str, alert_buf: AlertBuffer | None = None) -> None:
+    async def _handle_message(self, ws: WebSocket, text: str, username: str) -> None:
         try:
             msg = _client_message.validate_json(text)
         except (ValidationError, ValueError):
             return
         logfire_set_attribute("message_type", msg.type)
+        if self._alerts_module is None:
+            return
         match msg:
             case SubscribeAssetSymbolMessage():
                 self._connections[ws].update(s.to_asset_symbol() for s in msg.symbols)
@@ -153,16 +156,26 @@ class WebSocketManager:
                         timestamp=aggregate.date_open,
                     )))
             case MarkAlertReadMessage():
-                if alert_buf is not None:
-                    await alert_buf.mark_read(msg.alert_id)
+                count = self._alerts_module.mark_record_read(username, msg.alert_id)
+                await self._bus.publish(AlertStatusEvent(
+                    username=username,
+                    payload={"event": "read", "alert_id": msg.alert_id, "unread_count": count},
+                ))
             case MarkAllAlertsReadMessage():
-                if alert_buf is not None:
-                    await alert_buf.mark_all_read()
+                self._alerts_module.mark_all_records_read(username)
+                await self._bus.publish(AlertStatusEvent(
+                    username=username,
+                    payload={"event": "all_read", "unread_count": 0},
+                ))
             case DeleteAlertMessage():
-                if alert_buf is not None:
-                    await alert_buf.delete(msg.alert_id)
+                count = self._alerts_module.delete_record(username, msg.alert_id)
+                await self._bus.publish(AlertStatusEvent(
+                    username=username,
+                    payload={"event": "deleted", "alert_id": msg.alert_id, "unread_count": count},
+                ))
+                await self._bus.publish(UserAlertDeletedEvent(username=username, alert_id=msg.alert_id))
 
-    async def _on_alert_buffer_event(self, event: AlertBufferEvent) -> None:
+    async def _on_alert_status_event(self, event: AlertStatusEvent) -> None:
         sockets = self._user_sockets.get(event.username)
         if not sockets:
             return

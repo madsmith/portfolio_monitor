@@ -7,7 +7,7 @@ from portfolio_monitor.detectors.registry import DetectorRegistry
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts.models import AlertRule as ServiceAlertRule
-from portfolio_monitor.service.alerts.rule_events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
+from portfolio_monitor.service.alerts.events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
 from portfolio_monitor.service.alerts.user_alert_manager import UserAlertManager
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 from portfolio_monitor.watchlist.service import WatchlistService
