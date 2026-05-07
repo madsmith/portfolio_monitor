@@ -17,6 +17,7 @@ class PriceValueDetector(DetectorBase):
     Fires immediately with no warmup period — the first bar that crosses
     the limit in the specified direction will trigger. Useful for price targets,
     stop-loss levels, or watching a specific breakout point."""
+    display_name = "Price Value"
 
     @classmethod
     def name(cls) -> str:

@@ -13,6 +13,7 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
     by more than N standard deviations. Triggers on both upward and downward outliers,
     making it well-suited for detecting sudden directional moves that are statistically unusual
     relative to recent price behaviour."""
+    display_name = "Z-Score Return"
 
     @classmethod
     def name(cls) -> str:
@@ -20,8 +21,8 @@ class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
 
     def __init__(
         self,
-        period: Annotated[str, "Rolling window over which the return distribution is calculated (e.g. '2h', '4h')"] = "2h",
         threshold: Annotated[float, "Minimum absolute Z-score (standard deviations from mean return) to trigger"] = 2.0,
+        period: Annotated[str, "Rolling window over which the return distribution is calculated (e.g. '2h', '4h')"] = "2h",
     ) -> None:
         super().__init__(period)
         self.threshold = threshold

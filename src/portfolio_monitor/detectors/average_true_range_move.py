@@ -15,6 +15,7 @@ class AverageTrueRangeMoveDetector(DetectorBase):
     """Alerts when the current bar's high-low range exceeds a multiple of the Average True Range (ATR).
     ATR is the mean true range over recent samples, where true range accounts for gaps by including
     the previous close. Useful for detecting abnormally large price swings relative to recent volatility."""
+    display_name = "Average True Range"
 
     @classmethod
     def name(cls) -> str:
@@ -22,8 +23,8 @@ class AverageTrueRangeMoveDetector(DetectorBase):
 
     def __init__(
         self,
-        samples: Annotated[int, "Number of recent bars used to compute the ATR baseline"] = 30,
         threshold: Annotated[float, "Minimum multiple of ATR the current bar's range must exceed to trigger (e.g. 2.0 = 2× ATR)"] = 2.0,
+        samples: Annotated[int, "Number of recent bars used to compute the ATR baseline"] = 30,
     ) -> None:
         super().__init__()
         self.samples = samples

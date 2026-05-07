@@ -221,6 +221,7 @@ export type DetectorArgSpec = {
 
 export type DetectorInfo = {
   name: string;
+  display_name: string;
   args: DetectorArgSpec[];
   description?: string;
 };

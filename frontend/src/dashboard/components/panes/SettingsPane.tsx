@@ -6,7 +6,9 @@ import {
   type AccountSummary,
   type AlertChannelConfig,
   type AlertChannelConfigFull,
+  type AlertRule,
   type AlertSubscription,
+  type DetectorInfo,
 } from "../../api/client";
 import { Button } from "../buttons";
 import { DropdownSelector } from "../inputs";
@@ -17,6 +19,10 @@ import { DropdownSelector } from "../inputs";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">{children}</h2>;
+}
+
+function SectionSubheading({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{children}</h3>;
 }
 
 function TextInput({
@@ -425,6 +431,48 @@ function AdminAlertChannelsSection() {
 // User: Alert Configurations section
 // ---------------------------------------------------------------------------
 
+type ArgRenderers = Record<string, (args: Record<string, unknown>) => React.ReactNode>;
+
+function thresholdRenderer(
+  format: "percent" | "multiple",
+  intervalKey: "period" | "samples",
+): (args: Record<string, unknown>) => React.ReactNode {
+  return (args) => {
+    const t = args.threshold as number | undefined;
+    const interval = args[intervalKey];
+    if (t == null) return null;
+    const tStr = format === "percent"
+      ? `${(t * 100).toFixed(0)}%`
+      : `${t}x`;
+    const iStr = intervalKey === "samples"
+      ? `${interval} bars`
+      : String(interval ?? "");
+    return (
+      <span className="text-xs text-slate-500 tabular-nums">
+        {tStr}{iStr ? ` over ${iStr}` : ""}
+      </span>
+    );
+  };
+}
+
+const RULE_ARG_RENDERERS: ArgRenderers = {
+  price_value: (args) => {
+    const limit = args.limit as number | undefined;
+    const dir = args.direction as string | undefined;
+    const arrow = dir === "below" ? "↓" : "↑";
+    const price = limit != null
+      ? `$${Number(limit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : "—";
+    return <span className="text-xs text-slate-500 tabular-nums">{arrow} {price}</span>;
+  },
+  percent_change:           thresholdRenderer("percent",  "period"),
+  SMA_deviation:            thresholdRenderer("percent",  "period"),
+  volume_spike:             thresholdRenderer("multiple", "period"),
+  zscore_volume:            thresholdRenderer("multiple", "period"),
+  zscore_return:            thresholdRenderer("multiple", "period"),
+  average_true_range_move:  thresholdRenderer("multiple", "samples"),
+};
+
 const MODE_OPTIONS = [
   { value: "default", label: "Default" },
   { value: "opt_in", label: "Opt-in" },
@@ -439,6 +487,12 @@ function targetPlaceholder(type: string): string {
 function AlertConfigsSection() {
   const [available, setAvailable] = useState<AlertChannelConfig[]>([]);
   const [subs, setSubs] = useState<AlertSubscription[]>([]);
+  const [rules, setRules] = useState<AlertRule[]>([]);
+  const [detectors, setDetectors] = useState<DetectorInfo[]>([]);
+  const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editRuleArgs, setEditRuleArgs] = useState<Record<string, string>>({});
+  const [editRuleSaving, setEditRuleSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -452,10 +506,12 @@ function AlertConfigsSection() {
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
-    Promise.all([api.getAvailableChannels(), api.getMyAlerts()])
-      .then(([channels, config]) => {
+    Promise.all([api.getAvailableChannels(), api.getMyAlerts(), api.getDetectors()])
+      .then(([channels, config, dets]) => {
         setAvailable(channels);
         setSubs(config.subscriptions);
+        setRules(config.rules ?? []);
+        setDetectors(dets);
         if (channels.length > 0) setFormChannelId(channels[0].id);
       })
       .catch(() => {})
@@ -512,21 +568,69 @@ function AlertConfigsSection() {
     finally { setConfirmDelete(null); }
   }
 
+  async function handleDeleteRule(id: string) {
+    setDeletingRuleId(id);
+    try {
+      await api.deleteAlertRule(id);
+      setRules((prev) => prev.filter((r) => r.id !== id));
+    } catch { alert("Failed to delete rule"); }
+    finally { setDeletingRuleId(null); }
+  }
+
+  function handleStartEditRule(rule: AlertRule) {
+    const init: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rule.args)) init[k] = String(v);
+    setEditRuleArgs(init);
+    setEditingRuleId(rule.id);
+  }
+
+  async function handleSaveRule(rule: AlertRule) {
+    setEditRuleSaving(true);
+    try {
+      const det = detectors.find((d) => d.name === rule.kind);
+      const parsed: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(editRuleArgs)) {
+        const spec = det?.args.find((a) => a.name === k);
+        const t = spec?.type ?? "str";
+        if (t === "float") parsed[k] = parseFloat(v);
+        else if (t === "int") parsed[k] = parseInt(v, 10);
+        else parsed[k] = v;
+      }
+      await api.updateAlertRule(rule.id, { args: parsed });
+      setRules((prev) => prev.map((r) => r.id === rule.id ? { ...r, args: parsed } : r));
+      setEditingRuleId(null);
+    } catch { alert("Failed to save rule"); }
+    finally { setEditRuleSaving(false); }
+  }
+
   const channelOptions = available.map((ch) => ({ value: ch.id, label: `${ch.name} (${ch.type})` }));
+
+  function ruleValueDisplay(rule: AlertRule) {
+    const renderer = RULE_ARG_RENDERERS[rule.kind];
+    if (renderer) return renderer(rule.args);
+    if (Object.keys(rule.args).length === 0) return null;
+    return (
+      <span className="text-xs text-slate-500 truncate">
+        {Object.entries(rule.args).map(([k, v]) => `${k}=${v}`).join("  ")}
+      </span>
+    );
+  }
 
   if (loading) return <p className="text-sm text-slate-500">Loading…</p>;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <SectionHeading>Alert Configurations</SectionHeading>
+      <SectionHeading>Alert Configurations</SectionHeading>
+
+      <div className="flex items-center justify-between mb-2">
+        <SectionSubheading>Delivery</SectionSubheading>
         {!adding && available.length > 0 && (
           <Button variant="ghost" onClick={openAdd}>Add</Button>
         )}
       </div>
 
       {subs.length === 0 && !adding && (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 mb-4">
           {available.length === 0
             ? "No alert channels have been configured by an administrator yet."
             : "No channel subscriptions yet. Click Add to set one up."}
@@ -613,6 +717,72 @@ function AlertConfigsSection() {
               <Button variant="primary" onClick={handleAdd} disabled={formSaving}>{formSaving ? "Adding…" : "Add"}</Button>
               <Button variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <SectionSubheading>Asset Alerts</SectionSubheading>
+        {rules.length === 0 ? (
+          <p className="text-sm text-slate-500">No alert rules configured.</p>
+        ) : (
+          <div className="space-y-1">
+            {[...rules].sort((a, b) => {
+              const ta = a.ticker || "\xff", tb = b.ticker || "\xff";
+              return ta !== tb ? ta.localeCompare(tb) : a.kind.localeCompare(b.kind);
+            }).map((rule) => {
+              const det = detectors.find((d) => d.name === rule.kind);
+              if (editingRuleId === rule.id) {
+                return (
+                  <div key={rule.id} className="bg-[#161a27] border border-[#404868] rounded-lg px-4 py-3">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm text-slate-200 font-bold">{rule.ticker || "all symbols"}</span>
+                      <span className="text-sm text-slate-200">{det?.display_name || rule.kind}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mb-3">
+                      {(det?.args ?? []).map((arg) => (
+                        <div key={arg.name} className="flex-1 min-w-[80px]">
+                          <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1">{arg.name}</label>
+                          <input
+                            className="w-full bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-slate-400"
+                            value={editRuleArgs[arg.name] ?? ""}
+                            onChange={(e) => setEditRuleArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="primary" onClick={() => handleSaveRule(rule)} disabled={editRuleSaving}>{editRuleSaving ? "Saving…" : "Save"}</Button>
+                      <Button variant="ghost" onClick={() => setEditingRuleId(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div key={rule.id} className="group flex items-center bg-[#161a27] border border-[#404868] rounded-lg px-4 py-2.5 hover:bg-[#1e2338] hover:border-[#555c7a] transition-colors">
+                  <span className="w-16 shrink-0 text-sm text-slate-200 font-bold truncate">{rule.ticker || "all"}</span>
+                  <span className="w-44 shrink-0 text-sm text-slate-200 truncate">{det?.display_name || rule.kind}</span>
+                  <span className="shrink-0">{ruleValueDisplay(rule)}</span>
+                  <span className="flex-1" />
+                  <div className="relative shrink-0 ml-3 w-16 flex justify-end">
+                    <span className="text-[10px] text-slate-600 font-mono group-hover:invisible">{rule.id.slice(0, 8)}</span>
+                    <div className="absolute inset-0 hidden group-hover:flex items-center justify-end gap-3">
+                      <button
+                        className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer text-sm leading-none"
+                        title="Edit"
+                        onClick={() => handleStartEditRule(rule)}
+                      >✎</button>
+                      <button
+                        className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer text-sm leading-none disabled:opacity-40"
+                        title="Delete"
+                        disabled={deletingRuleId === rule.id}
+                        onClick={() => handleDeleteRule(rule.id)}
+                      >✕</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

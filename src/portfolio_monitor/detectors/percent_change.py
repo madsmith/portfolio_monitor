@@ -24,6 +24,7 @@ class PercentChangeDetector(DetectorBase):
     For period='1d' the reference is the previous market session close; for shorter periods
     (e.g. '4h') it is the price from that far back in the rolling window. Triggers on both
     up and down moves, and resets cleanly if the direction reverses."""
+    display_name = "Percent Change"
 
     @classmethod
     def name(cls) -> str:

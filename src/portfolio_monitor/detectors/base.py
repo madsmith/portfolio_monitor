@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Annotated, Any, Generic, NamedTuple, Protocol, TypeVar, get_args, get_origin, runtime_checkable
+from typing import Annotated, Any, ClassVar, Generic, NamedTuple, Protocol, TypeVar, get_args, get_origin, runtime_checkable
 from uuid import uuid4
 
 from portfolio_monitor.core import parse_period
@@ -62,6 +62,7 @@ class DetectorInfo:
     name: str
     args: list[DetectorArgSpec]
     description: str = ""
+    display_name: str = ""
 
 
 def _round_floats(obj: Any, precision: int = 4) -> Any:
@@ -117,6 +118,8 @@ class Detector(Protocol):
 
 
 class DetectorBase(ABC, Detector):
+    display_name: ClassVar[str] = ""
+
     def __init__(self) -> None:
         self._detector_id: str = uuid4().hex
         self._current_alerts: dict[AssetSymbol, Alert | None] = {}
@@ -152,7 +155,7 @@ class DetectorBase(ABC, Detector):
             args.append(DetectorArgSpec(name=param_name, type=type_str, default=param.default, description=description))
         doc = inspect.getdoc(cls) or ""
         description = doc.splitlines()[0] if doc else ""
-        return DetectorInfo(name=cls.name(), args=args, description=description)
+        return DetectorInfo(name=cls.name(), args=args, description=description, display_name=cls.display_name)
 
     @abstractmethod
     def update(self, aggregate: Aggregate) -> None:

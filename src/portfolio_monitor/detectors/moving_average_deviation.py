@@ -12,6 +12,7 @@ class SMADeviationDetector(TimeRangeDetectorBase[float]):
     """Alerts when the current price deviates from the Simple Moving Average by more than a
     fractional threshold. Triggers on both sides (above and below the SMA), making it useful
     for detecting sustained mean-reversion setups or breakouts away from a recent price anchor."""
+    display_name = "SMA Deviation"
 
     @classmethod
     def name(cls) -> str:
@@ -19,8 +20,8 @@ class SMADeviationDetector(TimeRangeDetectorBase[float]):
 
     def __init__(
         self,
-        period: Annotated[str, "Rolling window used to compute the SMA (e.g. '2h', '1d')"] = "2h",
         threshold: Annotated[float, "Minimum fractional deviation from the SMA to trigger (e.g. 0.05 = 5%)"] = 0.05,
+        period: Annotated[str, "Rolling window used to compute the SMA (e.g. '2h', '1d')"] = "2h",
     ) -> None:
         super().__init__(period)
         self.threshold = threshold

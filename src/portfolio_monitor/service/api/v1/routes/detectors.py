@@ -19,5 +19,5 @@ async def list_detectors(request: Request) -> JSONResponse:
             if not arg.required:
                 entry["default"] = arg.default
             args.append(entry)
-        result.append({"name": info.name, "description": info.description, "args": args})
+        result.append({"name": info.name, "display_name": info.display_name, "description": info.description, "args": args})
     return JSONResponse(result)

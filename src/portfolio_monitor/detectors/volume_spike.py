@@ -12,6 +12,7 @@ class VolumeSpikeDetector(TimeRangeDetectorBase[float]):
     """Alerts when current bar volume exceeds the rolling mean volume by a set multiple.
     Uses a simple average over the trailing window — good for catching obvious bursts
     of activity without requiring statistical warmup."""
+    display_name = "Volume Spike"
 
     @classmethod
     def name(cls) -> str:
@@ -19,8 +20,8 @@ class VolumeSpikeDetector(TimeRangeDetectorBase[float]):
 
     def __init__(
         self,
-        period: Annotated[str, "Rolling window over which average volume is calculated (e.g. '2h', '30m')"] = "2h",
         threshold: Annotated[float, "Minimum multiple of average volume to trigger (e.g. 2.0 = current bar ≥ 2× average)"] = 2.0,
+        period: Annotated[str, "Rolling window over which average volume is calculated (e.g. '2h', '30m')"] = "2h",
     ) -> None:
         super().__init__(period)
         self.threshold = threshold

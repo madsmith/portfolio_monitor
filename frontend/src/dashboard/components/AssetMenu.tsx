@@ -8,15 +8,6 @@ import { DropdownSelector, Input } from "./inputs";
 // Helpers
 // ---------------------------------------------------------------------------
 
-const KIND_LABELS: Record<string, string> = {
-  percent_change: "% Change",
-  price_value: "Price Value",
-  SMA_deviation: "SMA Deviation",
-  volume_spike: "Volume Spike",
-  zscore_return: "Z-Score Return",
-  zscore_volume: "Z-Score Volume",
-  average_true_range_move: "ATR Move",
-};
 
 // Threshold first, then period/samples, then anything else in original order.
 const ARG_PRIORITY = ["threshold", "period", "samples"];
@@ -132,7 +123,7 @@ function AddAlertForm({
         <DropdownSelector
           value={kindName}
           onChange={handleKindChange}
-          options={detectors.map((d) => ({ value: d.name, label: KIND_LABELS[d.name] ?? d.name }))}
+          options={detectors.map((d) => ({ value: d.name, label: d.display_name || d.name }))}
         />
         <button
           type="button"
@@ -231,7 +222,7 @@ function EditRuleRow({
   return (
     <div className="bg-[#151720] border border-[#404868] rounded p-3 mb-2">
       <div className="text-xs text-slate-400 mb-2 font-medium">
-        {KIND_LABELS[rule.kind] ?? rule.kind}
+        {kindDef?.display_name || rule.kind}
       </div>
       <div className="flex flex-wrap gap-2 mb-2">
         {ordered.map((arg) => (
@@ -360,7 +351,7 @@ function ManageAlertsModal({
                 >
                   <div>
                     <span className="text-sm text-slate-200 font-medium">
-                      {KIND_LABELS[rule.kind] ?? rule.kind}
+                      {detectors.find((d) => d.name === rule.kind)?.display_name || rule.kind}
                     </span>
                     {rule.ticker === "" && (
                       <span className="ml-2 text-xs text-slate-500">all symbols</span>
@@ -529,6 +520,8 @@ function AssetDropdown({
 
 type ModalKind = "add" | "manage" | null;
 
+let _closeOpenMenu: (() => void) | null = null;
+
 export function AssetMenu({ ticker, assetType }: { ticker: string; assetType: string }) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
@@ -538,11 +531,14 @@ export function AssetMenu({ ticker, assetType }: { ticker: string; assetType: st
     e.stopPropagation();
     if (menuPos) {
       setMenuPos(null);
+      _closeOpenMenu = null;
       return;
     }
+    _closeOpenMenu?.();
     const rect = btnRef.current?.getBoundingClientRect();
     if (rect) {
       setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+      _closeOpenMenu = () => setMenuPos(null);
     }
   }
 
