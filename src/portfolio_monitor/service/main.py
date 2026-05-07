@@ -96,6 +96,16 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         )
         alert_manager.add_implicit_delivery(DashboardBufferDelivery(db.alerts, bus))
 
+        monitor = MonitorService(
+            bus=bus,
+            data_provider=data_provider,
+            portfolio_service=portfolio_service,
+        )
+        # Pre-register watchlist symbols in monitor so they're polled from startup
+        for wl in watchlist_service.get_all_watchlists():
+            for entry in wl.entries:
+                monitor.register_symbol(entry.symbol)
+
         alert_adapter = AlertConfigAdapter(
             engine=detection_engine,
             alert_manager=alert_manager,
@@ -103,6 +113,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
             portfolio_service=portfolio_service,
             watchlist_service=watchlist_service,
             alerts_module=db.alerts,
+            monitor=monitor,
         )
         alert_adapter.wire(bus)
         alert_adapter.load_all()
@@ -115,16 +126,6 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
             }
         # TODO(openclaw): openclaw delivery will be a channel type in the DB config
         # alert_manager.add_target(LoggingAlertDelivery())
-
-        monitor = MonitorService(
-            bus=bus,
-            data_provider=data_provider,
-            portfolio_service=portfolio_service,
-        )
-        # Pre-register watchlist symbols in monitor so they're polled from startup
-        for wl in watchlist_service.get_all_watchlists():
-            for entry in wl.entries:
-                monitor.register_symbol(entry.symbol)
 
         WatchlistAdapter(detection_engine, alert_manager, monitor, detection_service, data_provider, alert_adapter=alert_adapter).wire(bus)
 

@@ -9,6 +9,7 @@ from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts.models import AlertRule as ServiceAlertRule
 from portfolio_monitor.service.alerts.events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
 from portfolio_monitor.service.alerts.user_alert_manager import UserAlertManager
+from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 from portfolio_monitor.watchlist.service import WatchlistService
 
@@ -30,6 +31,7 @@ class AlertConfigAdapter:
         portfolio_service: PortfolioService,
         watchlist_service: WatchlistService,
         alerts_module: AlertsModule,
+        monitor: MonitorService,
     ) -> None:
         self._engine: DeviationEngine = engine
         self._alert_manager: UserAlertManager = alert_manager
@@ -37,6 +39,7 @@ class AlertConfigAdapter:
         self._portfolio_service: PortfolioService = portfolio_service
         self._watchlist_service: WatchlistService = watchlist_service
         self._alerts_module: AlertsModule = alerts_module
+        self._monitor: MonitorService = monitor
         # rule id → [(symbol, detector_id)] for cleanup on remove/update
         self._rule_detectors: dict[str, list[tuple[AssetSymbol, str]]] = {}
 
@@ -100,6 +103,8 @@ class AlertConfigAdapter:
                 rule.kind, symbol, rule.id, username,
             )
         self._rule_detectors[rule.id] = registered
+        for symbol, _ in registered:
+            self._monitor.register_symbol(symbol)
 
     def apply_rules_to_symbol(self, symbol: AssetSymbol, owner: str) -> None:
         """Register detectors for a newly-tracked symbol against the owner's existing rules.
@@ -138,6 +143,21 @@ class AlertConfigAdapter:
         for symbol, detector_id in registrations:
             self._engine.remove_detector(symbol, detector_id)
             self._alert_manager.unregister_detector_account(detector_id)
+            if self._is_alert_only_symbol(symbol):
+                self._monitor.unregister_symbol(symbol)
+
+    def _is_alert_only_symbol(self, symbol: AssetSymbol) -> bool:
+        """True if this symbol has no remaining alert detectors and is not in any portfolio or watchlist."""
+        for registrations in self._rule_detectors.values():
+            if any(s == symbol for s, _ in registrations):
+                return False
+        for portfolio in self._portfolio_service.get_all_portfolios():
+            if any(a.symbol == symbol for a in portfolio.assets()):
+                return False
+        for wl in self._watchlist_service.get_all_watchlists():
+            if any(e.symbol == symbol for e in wl.entries):
+                return False
+        return True
 
     def _symbols_for_rule(
         self, ticker: str, asset_type_hint: str | None
