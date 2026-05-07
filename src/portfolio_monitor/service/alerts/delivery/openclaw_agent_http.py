@@ -8,7 +8,7 @@ import httpx
 
 from portfolio_monitor.data import _PRICE_PRECISION
 from portfolio_monitor.detectors import Alert, _round_floats
-from .base import AlertDelivery
+from .base import AlertDelivery, AlertEventType
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class OpenClawAgentHttpDelivery(AlertDelivery):
 
         self._client: httpx.AsyncClient | None = None
 
-    async def send_alert(self, alert: Alert) -> None:
+    async def send_alert(self, alert: Alert, *, target: str = "", event: AlertEventType = AlertEventType.FIRED) -> None:
         if self._client is None:
             logger.warning("OpenClawAgentHttpDelivery not connected, dropping alert")
             return

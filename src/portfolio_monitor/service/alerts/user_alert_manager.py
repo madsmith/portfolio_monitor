@@ -7,6 +7,7 @@ from portfolio_monitor.detectors.events import AlertCleared, AlertFired, AlertUp
 from portfolio_monitor.service.alerts.buffer import AlertBufferStore
 from portfolio_monitor.service.alerts.channel_pool import ChannelPool
 from portfolio_monitor.service.alerts.delivery import AlertDelivery
+from portfolio_monitor.service.alerts.delivery.base import AlertEventType
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +17,9 @@ class UserAlertManager:
 
     Subscribes to AlertFired/Updated/Cleared and fans out to:
       1. Global targets (LoggingAlertDelivery, etc.) — all non-suppressed alerts
-      2. Per-user DB-configured channel subscriptions via ChannelPool
-      3. Per-user dashboard buffer (AlertBufferStore)
-
-    Channel delivery only fires on AlertFired (not Updated/Cleared) to avoid DM spam.
+      2. Per-user DB-configured channel subscriptions via ChannelPool — each channel
+         receives the AlertEventType and decides how to handle it
+      3. Per-user dashboard buffer (AlertBufferStore) — skipped on Cleared
     """
 
     def __init__(
@@ -107,13 +107,13 @@ class UserAlertManager:
     # ------------------------------------------------------------------
 
     async def _on_alert_fired(self, event: AlertFired) -> None:
-        await self._fan_out(event.alert, update_buffer=True, deliver_to_channels=True, is_update=False)
+        await self._fan_out(event.alert, AlertEventType.FIRED)
 
     async def _on_alert_updated(self, event: AlertUpdated) -> None:
-        await self._fan_out(event.alert, update_buffer=True, deliver_to_channels=True, is_update=True)
+        await self._fan_out(event.alert, AlertEventType.UPDATED)
 
     async def _on_alert_cleared(self, event: AlertCleared) -> None:
-        await self._fan_out(event.alert, update_buffer=False, deliver_to_channels=False, is_update=False)
+        await self._fan_out(event.alert, AlertEventType.CLEARED)
 
     # ------------------------------------------------------------------
     # Delivery helpers
@@ -129,13 +129,13 @@ class UserAlertManager:
             return False
         return self._alerts_module.has_rule_channel_override(rule_id, sub.id)
 
-    async def _fan_out(self, alert: Alert, update_buffer: bool = True, deliver_to_channels: bool = True, is_update: bool = False) -> None:
+    async def _fan_out(self, alert: Alert, event: AlertEventType) -> None:
         if alert.kind in self.suppressed_detectors:
             return
 
         for target in self._global_targets:
             try:
-                await target.send_alert(alert)
+                await target.send_alert(alert, event=event)
             except Exception:
                 logger.exception("Error delivering alert to global target %s", target)
 
@@ -143,10 +143,10 @@ class UserAlertManager:
         if not username:
             return
 
-        if update_buffer and self._alert_buffer_store is not None:
+        if event != AlertEventType.CLEARED and self._alert_buffer_store is not None:
             await self._alert_buffer_store.get_or_create(username).push(alert.to_dict())
 
-        if not deliver_to_channels or self._alerts_module is None:
+        if self._alerts_module is None:
             return
 
         rule_id = self._detector_rule.get(alert.detector_id)
@@ -161,7 +161,7 @@ class UserAlertManager:
             if delivery is None:
                 continue
             try:
-                await delivery.send_alert(alert, target=sub.target, is_update=is_update)
+                await delivery.send_alert(alert, target=sub.target, event=event)
             except Exception:
                 logger.exception(
                     "Channel delivery failed type=%r target=%s", config.type, sub.target

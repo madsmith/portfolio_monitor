@@ -24,7 +24,7 @@ from websockets.asyncio.client import ClientConnection
 
 from portfolio_monitor.detectors import Alert
 from portfolio_monitor.service.alerts.delivery.openclaw_agent_http import _compact_alert
-from .base import AlertDelivery
+from .base import AlertDelivery, AlertEventType
 from portfolio_monitor import __version__
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ class OpenClawGatewayWsDelivery(AlertDelivery):
         await self._do_disconnect()
         logger.info("OpenClawGatewayWsDelivery disconnected")
 
-    async def send_alert(self, alert: Alert) -> None:
+    async def send_alert(self, alert: Alert, *, target: str = "", event: AlertEventType = AlertEventType.FIRED) -> None:
         """Send an alert as a gateway ``agent`` method frame."""
         if not self._connected or self._ws is None:
             async with self._connect_lock:

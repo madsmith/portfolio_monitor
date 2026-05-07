@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import httpx
 
 from portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.service.alerts.delivery.base import AlertEventType
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,9 @@ class MatrixDelivery:
             return f"{target}:{domain}" if domain else target
         return target
 
-    async def send_alert(self, alert: Alert, *, target: str = "", is_update: bool = False) -> None:
+    async def send_alert(self, alert: Alert, *, target: str = "", event: AlertEventType = AlertEventType.FIRED) -> None:
+        if event == AlertEventType.CLEARED:
+            return
         if not target:
             logger.debug("MatrixDelivery: no target specified, skipping")
             return
@@ -97,7 +100,7 @@ class MatrixDelivery:
         body = f"[{self._display_name}] {alert.ticker.ticker}: {alert.message}"
         txn_id = f"{int(time.time() * 1000)}-{alert.id[:8]}"
 
-        existing_event_id = self._get_event(target, alert.id) if is_update else None
+        existing_event_id = self._get_event(target, alert.id) if event == AlertEventType.UPDATED else None
 
         if existing_event_id:
             payload: dict[str, Any] = {

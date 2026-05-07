@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from portfolio_monitor.detectors import Alert
+from portfolio_monitor.service.alerts.delivery.base import AlertEventType
 from portfolio_monitor.utils import get_trace_logger
 
 logger = get_trace_logger(__name__)
@@ -16,8 +17,8 @@ class LoggingAlertDelivery:
     Replace with a real backend (e.g. OpenClaw webhook) later.
     """
 
-    async def send_alert(self, alert: Alert, *, target: str = "", is_update: bool = False) -> None:
-        logger.trace(f"Portfolio Alert: {alert.message}")
+    async def send_alert(self, alert: Alert, *, target: str = "", event: AlertEventType = AlertEventType.FIRED) -> None:
+        logger.trace(f"Portfolio Alert [{event.value}]: {alert.message}")
         return
         # Short circuit debug logic for now
         print(f"!!!!! Alert !!!!! {alert.ticker} - {alert.kind}")
