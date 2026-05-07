@@ -16,7 +16,7 @@ class LoggingAlertDelivery:
     Replace with a real backend (e.g. OpenClaw webhook) later.
     """
 
-    async def send_alert(self, alert: Alert, *, target: str = "") -> None:
+    async def send_alert(self, alert: Alert, *, target: str = "", is_update: bool = False) -> None:
         logger.trace(f"Portfolio Alert: {alert.message}")
         return
         # Short circuit debug logic for now

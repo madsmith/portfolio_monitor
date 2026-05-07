@@ -107,13 +107,13 @@ class UserAlertManager:
     # ------------------------------------------------------------------
 
     async def _on_alert_fired(self, event: AlertFired) -> None:
-        await self._fan_out(event.alert, update_buffer=True, deliver_to_channels=True)
+        await self._fan_out(event.alert, update_buffer=True, deliver_to_channels=True, is_update=False)
 
     async def _on_alert_updated(self, event: AlertUpdated) -> None:
-        await self._fan_out(event.alert, update_buffer=True, deliver_to_channels=False)
+        await self._fan_out(event.alert, update_buffer=True, deliver_to_channels=True, is_update=True)
 
     async def _on_alert_cleared(self, event: AlertCleared) -> None:
-        await self._fan_out(event.alert, update_buffer=False, deliver_to_channels=False)
+        await self._fan_out(event.alert, update_buffer=False, deliver_to_channels=False, is_update=False)
 
     # ------------------------------------------------------------------
     # Delivery helpers
@@ -129,7 +129,7 @@ class UserAlertManager:
             return False
         return self._alerts_module.has_rule_channel_override(rule_id, sub.id)
 
-    async def _fan_out(self, alert: Alert, update_buffer: bool = True, deliver_to_channels: bool = True) -> None:
+    async def _fan_out(self, alert: Alert, update_buffer: bool = True, deliver_to_channels: bool = True, is_update: bool = False) -> None:
         if alert.kind in self.suppressed_detectors:
             return
 
@@ -161,7 +161,7 @@ class UserAlertManager:
             if delivery is None:
                 continue
             try:
-                await delivery.send_alert(alert, target=sub.target)
+                await delivery.send_alert(alert, target=sub.target, is_update=is_update)
             except Exception:
                 logger.exception(
                     "Channel delivery failed type=%r target=%s", config.type, sub.target

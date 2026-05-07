@@ -1,6 +1,7 @@
 """Matrix delivery backend — sends alert messages as DMs via the Matrix HTTP API."""
 import logging
 import time
+from collections import OrderedDict
 from typing import Any
 from urllib.parse import urlparse
 
@@ -22,13 +23,16 @@ class MatrixDelivery:
     caches the room ID in memory for subsequent sends.
     """
 
+    _MAX_TRACKED_EVENTS = 30
+
     def __init__(self, homeserver: str, access_token: str, display_name: str = "Nexus Alert") -> None:
         self._homeserver: str = homeserver.rstrip("/")
         self._access_token: str = access_token
         self._display_name: str = display_name
         self._client: httpx.AsyncClient | None = None
         self._sender_id: str | None = None
-        self._room_cache: dict[str, str] = {}  # target Matrix ID → room_id
+        self._room_cache: dict[str, str] = {}  # target → room_id
+        self._sent_events: dict[str, OrderedDict[str, str]] = {}  # target → (alert_id → event_id)
 
     @classmethod
     def from_channel_params(cls, params: dict[str, Any]) -> "MatrixDelivery":
@@ -58,6 +62,16 @@ class MatrixDelivery:
             await self._client.aclose()
             self._client = None
         self._room_cache.clear()
+        self._sent_events.clear()
+
+    def _store_event(self, target: str, alert_id: str, event_id: str) -> None:
+        cache = self._sent_events.setdefault(target, OrderedDict())
+        cache[alert_id] = event_id
+        if len(cache) > self._MAX_TRACKED_EVENTS:
+            cache.popitem(last=False)
+
+    def _get_event(self, target: str, alert_id: str) -> str | None:
+        return self._sent_events.get(target, {}).get(alert_id)
 
     def _normalize_target(self, target: str) -> str:
         """Append homeserver domain if target is missing the server part."""
@@ -66,8 +80,7 @@ class MatrixDelivery:
             return f"{target}:{domain}" if domain else target
         return target
 
-    async def send_alert(self, alert: Alert, *, target: str = "") -> None:
-        print("Senging alert", alert, target)
+    async def send_alert(self, alert: Alert, *, target: str = "", is_update: bool = False) -> None:
         if not target:
             logger.debug("MatrixDelivery: no target specified, skipping")
             return
@@ -83,16 +96,28 @@ class MatrixDelivery:
 
         body = f"[{self._display_name}] {alert.ticker.ticker}: {alert.message}"
         txn_id = f"{int(time.time() * 1000)}-{alert.id[:8]}"
-        url = (
-            f"{self._homeserver}/_matrix/client/v3/rooms/"
-            f"{room_id}/send/m.room.message/{txn_id}"
-        )
+
+        existing_event_id = self._get_event(target, alert.id) if is_update else None
+
+        if existing_event_id:
+            payload: dict[str, Any] = {
+                "msgtype": "m.text",
+                "body": f"* {body}",
+                "m.new_content": {"msgtype": "m.text", "body": body},
+                "m.relates_to": {"rel_type": "m.replace", "event_id": existing_event_id},
+            }
+        else:
+            payload = {"msgtype": "m.text", "body": body}
+
+        url = f"{self._homeserver}/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}"
         try:
-            resp = await self._client.put(url, json={"msgtype": "m.text", "body": body})
+            resp = await self._client.put(url, json=payload)
             if resp.status_code >= 400:
-                logger.error(
-                    "Matrix send failed (status=%d): %s", resp.status_code, resp.text[:200]
-                )
+                logger.error("Matrix send failed (status=%d): %s", resp.status_code, resp.text[:200])
+            elif not existing_event_id:
+                event_id = resp.json().get("event_id", "")
+                if event_id:
+                    self._store_event(target, alert.id, event_id)
         except Exception:
             logger.exception("MatrixDelivery send error for alert %s", alert.id)
 
