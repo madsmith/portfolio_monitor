@@ -1,3 +1,3 @@
 """
-Test package for Nexus Portfolio Monitor.
+Test package for Portfolio Monitor.
 """

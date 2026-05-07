@@ -10,7 +10,7 @@ class DevConfig(PortfolioMonitorConfig):
     """Dev mode config — inherits from PortfolioMonitorConfig.
 
     Only defines fields that differ from the base class or are dev-specific.
-    All other settings (portfolio_path, credentials, etc.) are read from the
+    All other settings (credentials, paths, etc.) are read from the
     config file exactly as in production.
     """
 

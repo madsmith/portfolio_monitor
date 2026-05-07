@@ -1,5 +1,5 @@
 """
-Tests for the Currency class in Nexus Portfolio Monitor.
+Tests for the Currency class in Portfolio Monitor.
 """
 
 import decimal

@@ -1,5 +1,5 @@
 """
-Pytest configuration file for Nexus Portfolio Monitor tests.
+Pytest configuration file for Portfolio Monitor tests.
 """
 
 from decimal import Decimal  # noqa: F401

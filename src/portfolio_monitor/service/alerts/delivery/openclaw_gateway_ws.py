@@ -248,7 +248,7 @@ class OpenClawGatewayWsDelivery(AlertDelivery):
                 "maxProtocol": 3,
                 "client": {
                     "id": client_id,
-                    "displayName": "Nexus Portfolio Monitor",
+                    "displayName": "Portfolio Monitor",
                     "version": __version__,
                     "platform": "python",
                     "mode": mode,

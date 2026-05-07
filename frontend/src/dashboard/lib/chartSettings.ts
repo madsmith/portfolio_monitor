@@ -12,7 +12,7 @@ const DEFAULTS: ChartSettings = {
   chartRange: 365,
 };
 
-const KEY = "nexus:chartSettings";
+const KEY = "portfolio:chartSettings";
 
 export function loadChartSettings(): ChartSettings {
   try {

@@ -27,7 +27,7 @@ class MatrixDelivery:
     _MAX_TRACKED_EVENTS = 30
     _REDACTED = "_redacted"  # sentinel: alert was sent, redacted, and should not re-fire
 
-    def __init__(self, homeserver: str, access_token: str, display_name: str = "Nexus Alert") -> None:
+    def __init__(self, homeserver: str, access_token: str, display_name: str = "Portfolio Alert") -> None:
         self._homeserver: str = homeserver.rstrip("/")
         self._access_token: str = access_token
         self._display_name: str = display_name
@@ -41,7 +41,7 @@ class MatrixDelivery:
         return cls(
             homeserver=params["homeserver"],
             access_token=params["access_token"],
-            display_name=params.get("display_name", "Nexus Alert"),
+            display_name=params.get("display_name", "Portfolio Alert"),
         )
 
     async def connect(self) -> None:

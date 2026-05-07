@@ -1,5 +1,5 @@
 """
-Tests for the Portfolio module in Nexus Portfolio Monitor.
+Tests for the Portfolio module in Portfolio Monitor.
 """
 
 from datetime import datetime

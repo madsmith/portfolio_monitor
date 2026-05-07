@@ -1,4 +1,4 @@
-"""Watchlist package for Nexus Portfolio Monitor."""
+"""Watchlist package for Portfolio Monitor."""
 
 from .models import Watchlist, WatchlistEntry
 

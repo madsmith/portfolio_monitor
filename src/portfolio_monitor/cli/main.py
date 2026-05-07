@@ -15,7 +15,7 @@ from portfolio_monitor.cli.utils import help_on_error
 def get_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="portfolio-manager",
-        description="Nexus Portfolio Monitor CLI",
+        description="Portfolio Monitor CLI",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}",

@@ -84,7 +84,7 @@ async def main(target: str) -> None:
         print(f"Authenticated as: {resp.json().get('user_id')}")
 
         room_id = await get_or_create_dm_room(client, target)
-        message = "[Nexus Portfolio Monitor] Test message — Matrix delivery is working."
+        message = "[Portfolio Monitor] Test message — Matrix delivery is working."
         event_id = await send_message(client, room_id, message)
 
         print("  Waiting 5 seconds before editing…")
@@ -94,10 +94,10 @@ async def main(target: str) -> None:
         url = f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}"
         resp = await client.put(url, json={
             "msgtype": "m.text",
-            "body": f"* [Nexus Portfolio Monitor] Test message — edited after 5 seconds.",
+            "body": f"* [Portfolio Monitor] Test message — edited after 5 seconds.",
             "m.new_content": {
                 "msgtype": "m.text",
-                "body": "[Nexus Portfolio Monitor] Test message — edited after 5 seconds.",
+                "body": "[Portfolio Monitor] Test message — edited after 5 seconds.",
             },
             "m.relates_to": {
                 "rel_type": "m.replace",
