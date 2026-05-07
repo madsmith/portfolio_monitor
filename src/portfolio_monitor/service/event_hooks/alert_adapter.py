@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -72,7 +73,9 @@ class AlertConfigAdapter:
         self._register_rule(event.username, event.rule)
         now = datetime.now(ZoneInfo("UTC"))
         for symbol, _, detector in self._rule_detectors.get(event.rule.id, []):
-            await self._detection_service.prime_detectors(symbol, [detector], now)
+            asyncio.create_task(
+                self._detection_service.prime_detectors(symbol, [detector], now)
+            )
 
     async def _on_rule_removed(self, event: AlertRuleRemoved) -> None:
         self._unregister_rule(event.rule.id)
@@ -86,7 +89,7 @@ class AlertConfigAdapter:
     # ------------------------------------------------------------------
 
     def _register_rule(self, username: str, rule: ServiceAlertRule) -> None:
-        symbols = self._symbols_for_rule(rule.ticker, rule.args.get("asset_type"))
+        symbols = self._symbols_for_rule(rule.ticker, rule.args.get("asset_type"), username)
         if not symbols:
             logger.warning(
                 "Rule %s (ticker=%r) matched no known symbols — skipping",
@@ -166,20 +169,24 @@ class AlertConfigAdapter:
         return True
 
     def _symbols_for_rule(
-        self, ticker: str, asset_type_hint: str | None
+        self, ticker: str, asset_type_hint: str | None, owner: str
     ) -> list[AssetSymbol]:
-        """Resolve a rule's ticker to concrete AssetSymbol instances.
+        """Resolve a rule's ticker to concrete AssetSymbol instances for a specific owner.
 
-        ticker="" means the rule applies to all tracked symbols.
-        ticker set means match that specific ticker across portfolios/watchlists.
+        ticker="" means the rule applies to all symbols tracked by owner.
+        ticker set means match that specific ticker in owner's portfolios/watchlists.
         If a specific ticker isn't tracked yet and asset_type_hint is given,
         constructs the symbol so detectors are pre-registered for it.
         """
         all_symbols: set[AssetSymbol] = set()
         for portfolio in self._portfolio_service.get_all_portfolios():
+            if portfolio.owner != owner:
+                continue
             for asset in portfolio.assets():
                 all_symbols.add(asset.symbol)
         for wl in self._watchlist_service.get_all_watchlists():
+            if wl.owner != owner:
+                continue
             for entry in wl.entries:
                 all_symbols.add(entry.symbol)
 

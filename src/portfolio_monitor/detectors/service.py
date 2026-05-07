@@ -1,4 +1,6 @@
+from contextlib import contextmanager
 from datetime import datetime, timedelta
+from typing import Generator
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import AggregateUpdated, DataProvider
@@ -32,8 +34,18 @@ class DetectionService:
         # Keyed by alert id for O(1) updates; preserves insertion order (Python 3.7+)
         self._alert_log: dict[str, Alert] = {}
         self._max_alert_history: int = max_alert_history
+        self._suppress_alerts: bool = False
 
         self._bus.subscribe(AggregateUpdated, self._on_aggregate_updated)
+
+    @contextmanager
+    def suppressed(self) -> Generator[None, None, None]:
+        """Context manager that suppresses alert event publishing while still running detection."""
+        self._suppress_alerts = True
+        try:
+            yield
+        finally:
+            self._suppress_alerts = False
 
     async def prime(
         self,
@@ -107,6 +119,8 @@ class DetectionService:
 
     async def _on_aggregate_updated(self, event: AggregateUpdated) -> None:
         changes: list[AlertChange] = self._detection_engine.detect(event.aggregate)
+        if self._suppress_alerts:
+            return
         for change in changes:
             alert = change.alert
             if change.kind == "fired":

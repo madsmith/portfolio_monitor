@@ -366,7 +366,7 @@ function WatchlistRow({
             title={isExpanded ? "Close" : "Edit"}
             className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer disabled:opacity-40 mr-3"
           >
-            {isExpanded ? "✕" : "✏"}
+            {isExpanded ? "✕" : "✎"}
           </button>
           <button
             onClick={onDelete}

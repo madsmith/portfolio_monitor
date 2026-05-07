@@ -129,8 +129,8 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
 
         WatchlistAdapter(detection_engine, alert_manager, monitor, detection_service, data_provider, alert_adapter=alert_adapter).wire(bus)
 
-    # Prime services
-    with logfire.span("service.startup.prime"):
+    # Prime services (suppress alerts during warmup — detectors aren't ready yet)
+    with logfire.span("service.startup.prime"), detection_service.suppressed():
         all_watchlist_symbols = list({e.symbol for wl in watchlist_service.get_all_watchlists() for e in wl.entries})
         await prime(config, bus, portfolio_service, data_provider, detection_service, extra_symbols=all_watchlist_symbols)
 
