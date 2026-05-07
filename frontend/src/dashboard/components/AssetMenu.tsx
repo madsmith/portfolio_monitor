@@ -175,8 +175,8 @@ function EditRuleRow({
         const raw = args[arg.name] ?? "";
         if (raw !== "") parsedArgs[arg.name] = parseArg(raw, arg.type);
       }
-      const updated = await api.updateAlertRule(rule.id, { args: parsedArgs });
-      onSaved(updated);
+      await api.updateAlertRule(rule.id, { args: parsedArgs });
+      onSaved({ ...rule, args: parsedArgs });
     } catch (e) {
       console.error("Update alert failed:", e);
       setError("Save failed");

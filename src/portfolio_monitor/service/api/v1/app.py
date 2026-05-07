@@ -7,6 +7,7 @@ from portfolio_monitor.service.api.auth import require_admin, require_auth
 from portfolio_monitor.service.context import PortfolioMonitorContext
 
 from .routes.accounts import accounts_handler
+from .routes.admin_channels import admin_channels_handler
 from .routes.detectors import list_detectors
 from .routes.health import health
 from .routes.login import login_handler
@@ -53,16 +54,23 @@ class APIv1ServiceApp(Router):
         (
             me,
             get_my_alerts,
+            list_available_channels,
             add_alert_rule,
             update_alert_rule,
             delete_alert_rule,
-            add_alert_channel,
-            update_alert_channel,
-            delete_alert_channel,
+            add_subscription,
+            update_subscription,
+            delete_subscription,
         ) = me_handler(
             account_store, session_store, config.dashboard_username, ctx.bus,
             alerts_module=ctx.db.alerts,
         )
+        (
+            list_channel_configs,
+            create_channel_config,
+            update_channel_config,
+            delete_channel_config,
+        ) = admin_channels_handler(ctx.db.alerts)
         (
             list_accounts,
             create_account,
@@ -100,12 +108,13 @@ class APIv1ServiceApp(Router):
                 # Authenticated — any valid session
                 Route("/me", require_auth(me), methods=["GET"]),
                 Route("/me/alert-config", require_auth(get_my_alerts), methods=["GET"]),
+                Route("/me/alert-config/available-channels", require_auth(list_available_channels), methods=["GET"]),
                 Route("/me/alert-config/rules", require_auth(add_alert_rule), methods=["POST"]),
                 Route("/me/alert-config/rules/{rule_id}", require_auth(update_alert_rule), methods=["PUT"]),
                 Route("/me/alert-config/rules/{rule_id}", require_auth(delete_alert_rule), methods=["DELETE"]),
-                Route("/me/alert-config/channels", require_auth(add_alert_channel), methods=["POST"]),
-                Route("/me/alert-config/channels/{channel_id}", require_auth(update_alert_channel), methods=["PUT"]),
-                Route("/me/alert-config/channels/{channel_id}", require_auth(delete_alert_channel), methods=["DELETE"]),
+                Route("/me/alert-config/subscriptions", require_auth(add_subscription), methods=["POST"]),
+                Route("/me/alert-config/subscriptions/{sub_id}", require_auth(update_subscription), methods=["PUT"]),
+                Route("/me/alert-config/subscriptions/{sub_id}", require_auth(delete_subscription), methods=["DELETE"]),
                 Route("/me/alerts/recent", require_auth(get_recent_alerts), methods=["GET"]),
                 Route("/me/alerts/recent", require_auth(clear_recent_alerts), methods=["DELETE"]),
                 Route("/accounts/{username}/password", require_auth(reset_password), methods=["PUT"]),
@@ -131,6 +140,10 @@ class APIv1ServiceApp(Router):
                 Route("/market_info/{type}/{ticker}/close", market_close_handler, methods=["GET"]),
                 Route("/market_info/{type}/{ticker}/open",  market_open_handler,  methods=["GET"]),
                 # Admin only
+                Route("/admin/alert-channel-configs", require_admin(list_channel_configs), methods=["GET"]),
+                Route("/admin/alert-channel-configs", require_admin(create_channel_config), methods=["POST"]),
+                Route("/admin/alert-channel-configs/{cfg_id}", require_admin(update_channel_config), methods=["PUT"]),
+                Route("/admin/alert-channel-configs/{cfg_id}", require_admin(delete_channel_config), methods=["DELETE"]),
                 Route("/accounts", require_admin(list_accounts), methods=["GET"]),
                 Route("/accounts", require_admin(create_account), methods=["POST"]),
                 Route("/accounts/{username}", require_admin(delete_account), methods=["DELETE"]),

@@ -18,12 +18,20 @@ class AlertRule:
 
 
 @dataclass
-class AlertChannel:
-    id: int
-    owner: str
+class AlertChannelConfig:
+    id: str
     type: str
+    name: str
     config: dict[str, Any]
-    enabled: bool
+
+
+@dataclass
+class AlertChannelSub:
+    id: str
+    owner: str
+    channel_config_id: str
+    target: str
+    mode: str  # "off" | "default" | "opt_in"
 
 
 @dataclass
@@ -49,6 +57,7 @@ class AlertsModule(DatabaseModule):
         return [
             MigrationStep(version=1, apply=self._migrate_v1),
             MigrationStep(version=2, apply=self._migrate_v2),
+            MigrationStep(version=3, apply=self._migrate_v3),
         ]
 
     def _migrate_v1(self, conn: sqlite3.Connection) -> None:
@@ -68,6 +77,34 @@ class AlertsModule(DatabaseModule):
                 type    TEXT NOT NULL,
                 config  TEXT NOT NULL DEFAULT '{}',
                 enabled INTEGER NOT NULL DEFAULT 1
+            );
+        """)
+
+    def _migrate_v3(self, conn: sqlite3.Connection) -> None:
+        conn.executescript("""
+            DROP TABLE IF EXISTS alert_channels;
+
+            CREATE TABLE IF NOT EXISTS alert_channel_configs (
+                id     TEXT PRIMARY KEY,
+                type   TEXT NOT NULL,
+                name   TEXT NOT NULL,
+                config TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS alert_channels (
+                id                TEXT PRIMARY KEY,
+                owner             TEXT NOT NULL,
+                channel_config_id TEXT NOT NULL,
+                target            TEXT NOT NULL DEFAULT '',
+                mode              TEXT NOT NULL DEFAULT 'default'
+            );
+            CREATE INDEX IF NOT EXISTS idx_alert_channels_owner
+                ON alert_channels(owner);
+
+            CREATE TABLE IF NOT EXISTS alert_rule_channel_overrides (
+                rule_id         TEXT NOT NULL,
+                subscription_id TEXT NOT NULL,
+                PRIMARY KEY (rule_id, subscription_id)
             );
         """)
 
@@ -156,50 +193,121 @@ class AlertsModule(DatabaseModule):
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
-    # alert_channels
+    # alert_channel_configs  (admin-managed, no owner filter)
     # ------------------------------------------------------------------
 
-    def get_channels(self, owner: str) -> list[AlertChannel]:
+    def get_all_channel_configs(self) -> list[AlertChannelConfig]:
         rows = self._conn.execute(
-            "SELECT id, owner, type, config, enabled FROM alert_channels WHERE owner = ?",
+            "SELECT id, type, name, config FROM alert_channel_configs"
+        ).fetchall()
+        return [self._row_to_channel_config(r) for r in rows]
+
+    def get_channel_config(self, id: str) -> AlertChannelConfig | None:
+        row = self._conn.execute(
+            "SELECT id, type, name, config FROM alert_channel_configs WHERE id = ?", (id,)
+        ).fetchone()
+        return self._row_to_channel_config(row) if row else None
+
+    def add_channel_config(self, type: str, name: str, config: dict[str, Any]) -> AlertChannelConfig:
+        cfg_id = secrets.token_hex(16)
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO alert_channel_configs (id, type, name, config) VALUES (?, ?, ?, ?)",
+                (cfg_id, type, name, json.dumps(config)),
+            )
+        return AlertChannelConfig(id=cfg_id, type=type, name=name, config=config)
+
+    def update_channel_config(self, id: str, name: str, config: dict[str, Any]) -> bool:
+        with self._conn:
+            cursor = self._conn.execute(
+                "UPDATE alert_channel_configs SET name = ?, config = ? WHERE id = ?",
+                (name, json.dumps(config), id),
+            )
+        return cursor.rowcount > 0
+
+    def delete_channel_config(self, id: str) -> bool:
+        with self._conn:
+            cursor = self._conn.execute(
+                "DELETE FROM alert_channel_configs WHERE id = ?", (id,)
+            )
+        return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # alert_channels  (user subscriptions)
+    # ------------------------------------------------------------------
+
+    def get_subscriptions(self, owner: str) -> list[AlertChannelSub]:
+        rows = self._conn.execute(
+            "SELECT id, owner, channel_config_id, target, mode FROM alert_channels WHERE owner = ?",
             (owner,),
         ).fetchall()
-        return [self._row_to_channel(r) for r in rows]
+        return [self._row_to_sub(r) for r in rows]
 
-    def upsert_channel(
+    def get_subscription(self, id: str) -> AlertChannelSub | None:
+        row = self._conn.execute(
+            "SELECT id, owner, channel_config_id, target, mode FROM alert_channels WHERE id = ?", (id,)
+        ).fetchone()
+        return self._row_to_sub(row) if row else None
+
+    def add_subscription(
         self,
         owner: str,
-        type: str,
-        config: dict[str, Any],
-        enabled: bool = True,
-    ) -> AlertChannel:
+        channel_config_id: str,
+        target: str,
+        mode: str = "default",
+    ) -> AlertChannelSub:
+        sub_id = secrets.token_hex(16)
         with self._conn:
-            cursor = self._conn.execute(
-                "INSERT INTO alert_channels (owner, type, config, enabled) VALUES (?, ?, ?, ?)",
-                (owner, type, json.dumps(config), int(enabled)),
+            self._conn.execute(
+                "INSERT INTO alert_channels (id, owner, channel_config_id, target, mode)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (sub_id, owner, channel_config_id, target, mode),
             )
-        return AlertChannel(
-            id=cursor.lastrowid,
-            owner=owner,
-            type=type,
-            config=config,
-            enabled=enabled,
+        return AlertChannelSub(
+            id=sub_id, owner=owner, channel_config_id=channel_config_id,
+            target=target, mode=mode,
         )
 
-    def update_channel(self, id: int, config: dict[str, Any], enabled: bool) -> bool:
+    def update_subscription(self, id: str, target: str, mode: str) -> bool:
         with self._conn:
             cursor = self._conn.execute(
-                "UPDATE alert_channels SET config = ?, enabled = ? WHERE id = ?",
-                (json.dumps(config), int(enabled), id),
+                "UPDATE alert_channels SET target = ?, mode = ? WHERE id = ?",
+                (target, mode, id),
             )
         return cursor.rowcount > 0
 
-    def delete_channel(self, id: int) -> bool:
+    def delete_subscription(self, id: str, owner: str) -> bool:
         with self._conn:
             cursor = self._conn.execute(
-                "DELETE FROM alert_channels WHERE id = ?", (id,)
+                "DELETE FROM alert_channels WHERE id = ? AND owner = ?", (id, owner)
             )
         return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # alert_rule_channel_overrides  (per-rule opt-in)
+    # ------------------------------------------------------------------
+
+    def add_rule_channel_override(self, rule_id: str, subscription_id: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO alert_rule_channel_overrides (rule_id, subscription_id)"
+                " VALUES (?, ?)",
+                (rule_id, subscription_id),
+            )
+
+    def remove_rule_channel_override(self, rule_id: str, subscription_id: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM alert_rule_channel_overrides WHERE rule_id = ? AND subscription_id = ?",
+                (rule_id, subscription_id),
+            )
+
+    def has_rule_channel_override(self, rule_id: str, subscription_id: str) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM alert_rule_channel_overrides WHERE rule_id = ? AND subscription_id = ?",
+            (rule_id, subscription_id),
+        ).fetchone()
+        return row is not None
 
     # ------------------------------------------------------------------
     # alert_records
@@ -324,11 +432,20 @@ class AlertsModule(DatabaseModule):
         )
 
     @staticmethod
-    def _row_to_channel(row: sqlite3.Row) -> AlertChannel:
-        return AlertChannel(
+    def _row_to_channel_config(row: sqlite3.Row) -> AlertChannelConfig:
+        return AlertChannelConfig(
+            id=row["id"],
+            type=row["type"],
+            name=row["name"],
+            config=json.loads(row["config"]),
+        )
+
+    @staticmethod
+    def _row_to_sub(row: sqlite3.Row) -> AlertChannelSub:
+        return AlertChannelSub(
             id=row["id"],
             owner=row["owner"],
-            type=row["type"],
-            config=json.loads(row["config"]),
-            enabled=bool(row["enabled"]),
+            channel_config_id=row["channel_config_id"],
+            target=row["target"],
+            mode=row["mode"],
         )

@@ -7,7 +7,7 @@ import {
   type WatchlistSummary,
 } from "../../api/client";
 import { AssetMenu } from "../AssetMenu";
-import { CancelButton, ConfirmButton } from "../buttons";
+import { Button, CancelButton, ConfirmButton } from "../buttons";
 import { DropdownSelector } from "../inputs";
 import { fmtChg, fmtPrice, fmtPct, plColor, prevCloseKey } from "../../lib/formatters";
 import { Chart } from "../Chart";
@@ -774,8 +774,6 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
   }
 
   const navigate = useNavigate();
-  const btnBase = "px-3 py-1 text-xs rounded border transition-colors cursor-pointer";
-
   return (
     <div>
       {/* Controls bar */}
@@ -806,49 +804,27 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
             {editing && (
               deleteConfirm ? (
                 <>
-                  <button onClick={handleDeleteWatchlist} disabled={deletingWl}
-                    className={`${btnBase} border-red-700 text-red-400 hover:bg-red-900/30 disabled:opacity-50`}>
+                  <Button variant="danger" onClick={handleDeleteWatchlist} disabled={deletingWl}>
                     {deletingWl ? "Deleting…" : "Confirm delete"}
-                  </button>
-                  <button onClick={() => setDeleteConfirm(false)}
-                    className="px-2 py-1 text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer">
-                    Cancel
-                  </button>
+                  </Button>
+                  <Button variant="ghost" onClick={() => setDeleteConfirm(false)}>Cancel</Button>
                 </>
               ) : (
-                <button onClick={() => setDeleteConfirm(true)}
-                  className={`${btnBase} border-[#2a2d3a] text-slate-500 hover:border-red-700 hover:text-red-400`}>
-                  Delete list
-                </button>
+                <Button variant="dangerGhost" onClick={() => setDeleteConfirm(true)}>Delete list</Button>
               )
             )}
-            <button
-              onClick={() => {
-                setEditing((e) => !e);
-                setDeleteConfirm(false);
-              }}
-              className={[
-                btnBase,
-                editing
-                  ? "bg-[#252a40] border-[#5060a0] text-slate-100 hover:bg-[#2e345a]"
-                  : "border-[#2a2d3a] text-slate-400 hover:border-[#404868] hover:text-slate-300",
-              ].join(" ")}
+            <Button
+              variant={editing ? "primary" : "ghost"}
+              onClick={() => { setEditing((e) => !e); setDeleteConfirm(false); }}
             >
               {editing ? "Done" : "Edit"}
-            </button>
+            </Button>
           </>
         )}
 
-        <button
-          onClick={() => {
-            setCreating(true);
-            setEditing(false);
-            setSelectedId("");
-          }}
-          className={`${btnBase} border-[#2a2d3a] text-slate-400 hover:border-[#404868] hover:text-slate-300`}
-        >
+        <Button variant="ghost" onClick={() => { setCreating(true); setEditing(false); setSelectedId(""); }}>
           + New
-        </button>
+        </Button>
       </div>
 
       {/* New watchlist inline form */}

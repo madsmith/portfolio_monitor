@@ -2,7 +2,7 @@ from pathlib import Path
 
 from .core import Database, DatabaseModule, MigrationStep
 from .accounts import AccountRecord, AccountRole, AccountsModule
-from .alerts import AlertChannel, AlertRule, AlertsModule
+from .alerts import AlertChannelConfig, AlertChannelSub, AlertRule, AlertsModule
 from .portfolios import PortfoliosModule
 from .sessions import SessionRecord, SessionsModule
 from .watchlists import WatchlistsModule
@@ -40,7 +40,8 @@ __all__ = [
     "AccountRecord",
     "AccountRole",
     "AccountsModule",
-    "AlertChannel",
+    "AlertChannelConfig",
+    "AlertChannelSub",
     "AlertRule",
     "AlertsModule",
     "PortfoliosModule",

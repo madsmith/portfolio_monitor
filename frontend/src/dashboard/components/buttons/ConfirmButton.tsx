@@ -1,3 +1,5 @@
+import { Button } from "./Button";
+
 export function ConfirmButton({
   onClick,
   disabled,
@@ -8,12 +10,8 @@ export function ConfirmButton({
   children?: React.ReactNode;
 }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="px-3 py-1.5 text-sm bg-[#252a40] border border-[#5060a0] text-slate-100 rounded hover:bg-[#2e345a] transition-colors cursor-pointer disabled:opacity-50"
-    >
+    <Button variant="primary" size="md" onClick={onClick} disabled={disabled}>
       {children}
-    </button>
+    </Button>
   );
 }

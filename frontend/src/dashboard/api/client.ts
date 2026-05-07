@@ -112,24 +112,28 @@ export type AlertRule = {
   args: Record<string, unknown>;
 };
 
-export type AlertChannel = {
-  name: string;
+export type AlertChannelConfig = {
+  id: string;
   type: string;
-  enabled: boolean;
-  default: boolean;
-  params: Record<string, unknown>;
+  name: string;
 };
 
-export type AlertChannelOverride = {
-  rule_id: string;
+export type AlertChannelConfigFull = AlertChannelConfig & {
+  config: Record<string, unknown>;
+};
+
+export type AlertSubscription = {
+  id: string;
+  channel_config_id: string;
   channel_name: string;
-  include: boolean;
+  channel_type: string;
+  target: string;
+  mode: "off" | "default" | "opt_in";
 };
 
 export type AlertConfig = {
-  channels: AlertChannel[];
   rules: AlertRule[];
-  overrides: AlertChannelOverride[];
+  subscriptions: AlertSubscription[];
 };
 
 export type PriceAggregate = {
@@ -290,17 +294,14 @@ export const api = {
   clearRecentAlerts: (): Promise<{ ok: boolean }> =>
     authDelete("/api/v1/me/alerts/recent"),
 
-  // Alert configs
+  // Alert config — rules
   getMyAlerts: (): Promise<AlertConfig> =>
     authGet("/api/v1/me/alert-config"),
-
-  updateMyAlerts: (config: AlertConfig): Promise<{ ok: boolean }> =>
-    authPut("/api/v1/me/alert-config", config),
 
   addAlertRule: (rule: { ticker: string; kind: string; args: Record<string, unknown> }): Promise<AlertRule> =>
     authPost("/api/v1/me/alert-config/rules", rule),
 
-  updateAlertRule: (id: string, patch: { ticker?: string; kind?: string; args?: Record<string, unknown> }): Promise<AlertRule> =>
+  updateAlertRule: (id: string, patch: { args?: Record<string, unknown> }): Promise<{ ok: boolean }> =>
     authPut(`/api/v1/me/alert-config/rules/${encodeURIComponent(id)}`, patch),
 
   deleteAlertRule: (id: string): Promise<{ ok: boolean }> =>
@@ -309,8 +310,31 @@ export const api = {
   getAccountAlerts: (username: string): Promise<AlertConfig> =>
     authGet(`/api/v1/accounts/${encodeURIComponent(username)}/alert-config`),
 
-  updateAccountAlerts: (username: string, config: AlertConfig): Promise<{ ok: boolean }> =>
-    authPut(`/api/v1/accounts/${encodeURIComponent(username)}/alert-config`, config),
+  // Alert config — channel subscriptions (user)
+  getAvailableChannels: (): Promise<AlertChannelConfig[]> =>
+    authGet("/api/v1/me/alert-config/available-channels"),
+
+  addSubscription: (sub: { channel_config_id: string; target: string; mode: string }): Promise<AlertSubscription> =>
+    authPost("/api/v1/me/alert-config/subscriptions", sub),
+
+  updateSubscription: (id: string, patch: { target?: string; mode?: string }): Promise<{ ok: boolean }> =>
+    authPut(`/api/v1/me/alert-config/subscriptions/${encodeURIComponent(id)}`, patch),
+
+  deleteSubscription: (id: string): Promise<{ ok: boolean }> =>
+    authDelete(`/api/v1/me/alert-config/subscriptions/${encodeURIComponent(id)}`),
+
+  // Alert channel configs (admin)
+  listAdminChannelConfigs: (): Promise<AlertChannelConfigFull[]> =>
+    authGet("/api/v1/admin/alert-channel-configs"),
+
+  createChannelConfig: (def: { type: string; name: string; config: Record<string, unknown> }): Promise<AlertChannelConfigFull> =>
+    authPost("/api/v1/admin/alert-channel-configs", def),
+
+  updateChannelConfig: (id: string, patch: { name?: string; config?: Record<string, unknown> }): Promise<{ ok: boolean }> =>
+    authPut(`/api/v1/admin/alert-channel-configs/${encodeURIComponent(id)}`, patch),
+
+  deleteChannelConfig: (id: string): Promise<{ ok: boolean }> =>
+    authDelete(`/api/v1/admin/alert-channel-configs/${encodeURIComponent(id)}`),
 
   getDetectors: (): Promise<DetectorInfo[]> =>
     authGet("/api/v1/detectors"),

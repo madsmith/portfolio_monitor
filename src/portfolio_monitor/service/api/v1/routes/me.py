@@ -33,18 +33,34 @@ def me_handler(
         username = request.user.username
         logfire_set_attribute("username", username)
         db_rules = alerts_module.get_rules(username)
-        channels = alerts_module.get_channels(username)
+        subs = alerts_module.get_subscriptions(username)
+        sub_list = []
+        for sub in subs:
+            cfg = alerts_module.get_channel_config(sub.channel_config_id)
+            sub_list.append({
+                "id": sub.id,
+                "channel_config_id": sub.channel_config_id,
+                "channel_name": cfg.name if cfg else "",
+                "channel_type": cfg.type if cfg else "",
+                "target": sub.target,
+                "mode": sub.mode,
+            })
         return JSONResponse({
             "rules": [
                 {"id": r.id, "ticker": r.ticker or "", "asset_type": r.asset_type,
                  "kind": r.kind, "args": r.args}
                 for r in db_rules
             ],
-            "channels": [
-                {"id": c.id, "type": c.type, "config": c.config, "enabled": c.enabled}
-                for c in channels
-            ],
+            "subscriptions": sub_list,
         })
+
+    @logfire.instrument("api.me.alert_config.available_channels")
+    async def list_available_channels(request: Request) -> JSONResponse:
+        configs = alerts_module.get_all_channel_configs()
+        return JSONResponse([
+            {"id": c.id, "type": c.type, "name": c.name}
+            for c in configs
+        ])
 
     @logfire.instrument("api.me.alert_config.add_rule")
     async def add_alert_rule(request: Request) -> JSONResponse:
@@ -104,54 +120,69 @@ def me_handler(
         await bus.publish(AlertRuleRemoved(username=username, rule=service_rule))
         return JSONResponse({"ok": True})
 
-    @logfire.instrument("api.me.alert_config.add_channel")
-    async def add_alert_channel(request: Request) -> JSONResponse:
+    @logfire.instrument("api.me.alert_config.add_subscription")
+    async def add_subscription(request: Request) -> JSONResponse:
         username = request.user.username
         try:
             body = await request.json()
         except Exception:
             return JSONResponse({"error": "invalid request body"}, status_code=400)
-        ch_type = str(body.get("type", "")).strip()
-        config = body.get("config") or {}
-        enabled = bool(body.get("enabled", True))
-        if not ch_type:
-            return JSONResponse({"error": "type is required"}, status_code=400)
-        ch = alerts_module.upsert_channel(username, ch_type, config, enabled)
-        return JSONResponse({"id": ch.id, "type": ch.type, "config": ch.config, "enabled": ch.enabled}, status_code=201)
+        channel_config_id = str(body.get("channel_config_id", "")).strip()
+        target = str(body.get("target", "")).strip()
+        mode = str(body.get("mode", "default")).strip()
+        if not channel_config_id:
+            return JSONResponse({"error": "channel_config_id is required"}, status_code=400)
+        if alerts_module.get_channel_config(channel_config_id) is None:
+            return JSONResponse({"error": "channel config not found"}, status_code=404)
+        if mode not in ("off", "default", "opt_in"):
+            return JSONResponse({"error": "mode must be off, default, or opt_in"}, status_code=400)
+        sub = alerts_module.add_subscription(username, channel_config_id, target, mode)
+        cfg = alerts_module.get_channel_config(channel_config_id)
+        return JSONResponse({
+            "id": sub.id,
+            "channel_config_id": sub.channel_config_id,
+            "channel_name": cfg.name if cfg else "",
+            "channel_type": cfg.type if cfg else "",
+            "target": sub.target,
+            "mode": sub.mode,
+        }, status_code=201)
 
-    @logfire.instrument("api.me.alert_config.update_channel")
-    async def update_alert_channel(request: Request) -> JSONResponse:
+    @logfire.instrument("api.me.alert_config.update_subscription")
+    async def update_subscription(request: Request) -> JSONResponse:
         username = request.user.username
-        channel_id = int(request.path_params["channel_id"])
-        owned = {c.id for c in alerts_module.get_channels(username)}
-        if channel_id not in owned:
+        sub_id = request.path_params["sub_id"]
+        existing = alerts_module.get_subscription(sub_id)
+        if existing is None or existing.owner != username:
             return JSONResponse({"error": "not found"}, status_code=404)
         try:
             body = await request.json()
         except Exception:
             return JSONResponse({"error": "invalid request body"}, status_code=400)
-        config = body.get("config", {})
-        enabled = bool(body.get("enabled", True))
-        alerts_module.update_channel(channel_id, config, enabled)
+        target = str(body.get("target", existing.target)).strip()
+        mode = str(body.get("mode", existing.mode)).strip()
+        if mode not in ("off", "default", "opt_in"):
+            return JSONResponse({"error": "mode must be off, default, or opt_in"}, status_code=400)
+        alerts_module.update_subscription(sub_id, target, mode)
         return JSONResponse({"ok": True})
 
-    @logfire.instrument("api.me.alert_config.delete_channel")
-    async def delete_alert_channel(request: Request) -> JSONResponse:
+    @logfire.instrument("api.me.alert_config.delete_subscription")
+    async def delete_subscription(request: Request) -> JSONResponse:
         username = request.user.username
-        channel_id = int(request.path_params["channel_id"])
-        owned = {c.id for c in alerts_module.get_channels(username)}
-        if channel_id not in owned:
+        sub_id = request.path_params["sub_id"]
+        existing = alerts_module.get_subscription(sub_id)
+        if existing is None or existing.owner != username:
             return JSONResponse({"error": "not found"}, status_code=404)
-        alerts_module.delete_channel(channel_id)
+        alerts_module.delete_subscription(sub_id, username)
         return JSONResponse({"ok": True})
 
     return (
         me,
         get_my_alerts,
+        list_available_channels,
         add_alert_rule,
         update_alert_rule,
         delete_alert_rule,
-        add_alert_channel,
-        update_alert_channel,
-        delete_alert_channel,
+        add_subscription,
+        update_subscription,
+        delete_subscription,
     )
