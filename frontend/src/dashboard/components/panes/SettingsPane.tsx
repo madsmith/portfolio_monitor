@@ -17,12 +17,8 @@ import { DropdownSelector } from "../inputs";
 // Shared primitives
 // ---------------------------------------------------------------------------
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">{children}</h2>;
-}
-
 function SectionSubheading({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{children}</h3>;
+  return <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wider mb-2">{children}</h3>;
 }
 
 function TextInput({
@@ -103,7 +99,6 @@ function GeneralSection({ isDefaultAdmin }: { isDefaultAdmin: boolean }) {
   const username = getUsername();
   return (
     <div>
-      <SectionHeading>General</SectionHeading>
       <div className="bg-[#161a27] border border-[#404868] rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -170,7 +165,7 @@ function AccountsSection() {
 
   return (
     <div>
-      <SectionHeading>Accounts</SectionHeading>
+      <div className="px-4">
       <table className="w-full text-sm mb-6">
         <thead>
           <tr className="text-left text-xs text-slate-500 border-b border-[#404868]">
@@ -213,6 +208,7 @@ function AccountsSection() {
           })}
         </tbody>
       </table>
+      </div>
 
       <div className="bg-[#161a27] border border-[#404868] rounded-lg p-4">
         <p className="text-xs text-slate-400 font-medium mb-3">New account</p>
@@ -371,8 +367,7 @@ function AdminAlertChannelsSection() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <SectionHeading>Alert Channels</SectionHeading>
+      <div className="flex justify-end mb-3">
         {!adding && <Button variant="ghost" onClick={() => { setAdding(true); setEditId(null); setFormError(""); }}>Add</Button>}
       </div>
 
@@ -479,6 +474,12 @@ const MODE_OPTIONS = [
   { value: "off", label: "Off" },
 ];
 
+const ASSET_TYPE_OPTIONS = [
+  { value: "STOCK", label: "Stock" },
+  { value: "CRYPTO", label: "Crypto" },
+  { value: "CURRENCY", label: "Currency" },
+];
+
 function targetPlaceholder(type: string): string {
   if (type === "matrix") return "@you:matrix.server.com";
   return "Target";
@@ -493,6 +494,13 @@ function AlertConfigsSection() {
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [editRuleArgs, setEditRuleArgs] = useState<Record<string, string>>({});
   const [editRuleSaving, setEditRuleSaving] = useState(false);
+  const [addingRuleMode, setAddingRuleMode] = useState<"global" | "asset" | null>(null);
+  const [addRuleKind, setAddRuleKind] = useState("");
+  const [addRuleArgs, setAddRuleArgs] = useState<Record<string, string>>({});
+  const [addRuleTicker, setAddRuleTicker] = useState("");
+  const [addRuleAssetType, setAddRuleAssetType] = useState("STOCK");
+  const [addRuleSaving, setAddRuleSaving] = useState(false);
+  const [addRuleError, setAddRuleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -603,6 +611,63 @@ function AlertConfigsSection() {
     finally { setEditRuleSaving(false); }
   }
 
+  function openAddRule(mode: "global" | "asset") {
+    const first = detectors[0];
+    const args: Record<string, string> = {};
+    if (first) for (const arg of first.args) {
+      if (arg.default !== undefined) args[arg.name] = String(arg.default);
+    }
+    setAddRuleKind(first?.name ?? "");
+    setAddRuleArgs(args);
+    setAddRuleTicker("");
+    setAddRuleError(null);
+    setEditingRuleId(null);
+    setAddingRuleMode(mode);
+  }
+
+  function handleAddRuleKindChange(kind: string) {
+    const det = detectors.find((d) => d.name === kind);
+    const args: Record<string, string> = {};
+    if (det) for (const arg of det.args) {
+      if (arg.default !== undefined) args[arg.name] = String(arg.default);
+    }
+    setAddRuleKind(kind);
+    setAddRuleArgs(args);
+  }
+
+  function parseRuleArgs(kind: string, raw: Record<string, string>): Record<string, unknown> {
+    const det = detectors.find((d) => d.name === kind);
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      const spec = det?.args.find((a) => a.name === k);
+      const t = spec?.type ?? "str";
+      if (t === "float") out[k] = parseFloat(v);
+      else if (t === "int") out[k] = parseInt(v, 10);
+      else out[k] = v;
+    }
+    return out;
+  }
+
+  async function handleAddRule() {
+    if (!addRuleKind) return;
+    if (addingRuleMode === "asset" && !addRuleTicker.trim()) {
+      setAddRuleError("Ticker is required"); return;
+    }
+    setAddRuleSaving(true); setAddRuleError(null);
+    try {
+      const args = parseRuleArgs(addRuleKind, addRuleArgs);
+      const rule = await api.addAlertRule({
+        ticker: addingRuleMode === "asset" ? addRuleTicker.trim().toUpperCase() : "",
+        asset_type: addingRuleMode === "asset" ? addRuleAssetType : undefined,
+        kind: addRuleKind,
+        args,
+      });
+      setRules((prev) => [...prev, rule]);
+      setAddingRuleMode(null);
+    } catch { setAddRuleError("Failed to add rule"); }
+    finally { setAddRuleSaving(false); }
+  }
+
   const channelOptions = available.map((ch) => ({ value: ch.id, label: `${ch.name} (${ch.type})` }));
 
   function ruleValueDisplay(rule: AlertRule) {
@@ -620,7 +685,7 @@ function AlertConfigsSection() {
 
   return (
     <div>
-      <SectionHeading>Alert Configurations</SectionHeading>
+
 
       <div className="flex items-center justify-between mb-2">
         <SectionSubheading>Delivery</SectionSubheading>
@@ -721,71 +786,118 @@ function AlertConfigsSection() {
         )}
       </div>
 
-      <div className="mt-6">
-        <SectionSubheading>Asset Alerts</SectionSubheading>
-        {rules.length === 0 ? (
-          <p className="text-sm text-slate-500">No alert rules configured.</p>
-        ) : (
-          <div className="space-y-1">
-            {[...rules].sort((a, b) => {
-              const ta = a.ticker || "\xff", tb = b.ticker || "\xff";
-              return ta !== tb ? ta.localeCompare(tb) : a.kind.localeCompare(b.kind);
-            }).map((rule) => {
-              const det = detectors.find((d) => d.name === rule.kind);
-              if (editingRuleId === rule.id) {
-                return (
-                  <div key={rule.id} className="bg-[#161a27] border border-[#404868] rounded-lg px-4 py-3">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-sm text-slate-200 font-bold">{rule.ticker || "all symbols"}</span>
-                      <span className="text-sm text-slate-200">{det?.display_name || rule.kind}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-3 mb-3">
-                      {(det?.args ?? []).map((arg) => (
-                        <div key={arg.name} className="flex-1 min-w-[80px]">
-                          <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1">{arg.name}</label>
-                          <input
-                            className="w-full bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-slate-400"
-                            value={editRuleArgs[arg.name] ?? ""}
-                            onChange={(e) => setEditRuleArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="primary" onClick={() => handleSaveRule(rule)} disabled={editRuleSaving}>{editRuleSaving ? "Saving…" : "Save"}</Button>
-                      <Button variant="ghost" onClick={() => setEditingRuleId(null)}>Cancel</Button>
-                    </div>
+      {(() => {
+        const assetRules = [...rules].filter((r) => r.ticker !== "").sort((a, b) =>
+          a.ticker !== b.ticker ? a.ticker.localeCompare(b.ticker) : a.kind.localeCompare(b.kind)
+        );
+        const globalRules = [...rules].filter((r) => r.ticker === "").sort((a, b) =>
+          a.kind.localeCompare(b.kind)
+        );
+
+        const addForm = (
+          <div className="bg-[#161a27] border border-[#404868] rounded-lg px-4 py-3 space-y-3 mb-1">
+            {addRuleError && <p className="text-red-400 text-xs">{addRuleError}</p>}
+            <div className="flex gap-3 flex-wrap items-end">
+              {addingRuleMode === "asset" && (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wide">Ticker</label>
+                    <TextInput value={addRuleTicker} onChange={setAddRuleTicker} placeholder="AAPL" className="w-24 uppercase" />
                   </div>
-                );
-              }
-              return (
-                <div key={rule.id} className="group flex items-center bg-[#161a27] border border-[#404868] rounded-lg px-4 py-2.5 hover:bg-[#1e2338] hover:border-[#555c7a] transition-colors">
-                  <span className="w-16 shrink-0 text-sm text-slate-200 font-bold truncate">{rule.ticker || "all"}</span>
-                  <span className="w-44 shrink-0 text-sm text-slate-200 truncate">{det?.display_name || rule.kind}</span>
-                  <span className="shrink-0">{ruleValueDisplay(rule)}</span>
-                  <span className="flex-1" />
-                  <div className="relative shrink-0 ml-3 w-16 flex justify-end">
-                    <span className="text-[10px] text-slate-600 font-mono group-hover:invisible">{rule.id.slice(0, 8)}</span>
-                    <div className="absolute inset-0 hidden group-hover:flex items-center justify-end gap-3">
-                      <button
-                        className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer text-sm leading-none"
-                        title="Edit"
-                        onClick={() => handleStartEditRule(rule)}
-                      >✎</button>
-                      <button
-                        className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer text-sm leading-none disabled:opacity-40"
-                        title="Delete"
-                        disabled={deletingRuleId === rule.id}
-                        onClick={() => handleDeleteRule(rule.id)}
-                      >✕</button>
-                    </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wide">Type</label>
+                    <DropdownSelector value={addRuleAssetType} onChange={setAddRuleAssetType} options={ASSET_TYPE_OPTIONS} className="w-28" />
                   </div>
+                </>
+              )}
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] text-slate-500 uppercase tracking-wide">Kind</label>
+                <DropdownSelector value={addRuleKind} onChange={handleAddRuleKindChange} options={detectors.map((d) => ({ value: d.name, label: d.display_name || d.name }))} className="w-44" />
+              </div>
+              {(detectors.find((d) => d.name === addRuleKind)?.args ?? []).map((arg) => (
+                <div key={arg.name} className="flex flex-col gap-1 flex-1 min-w-[80px]">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wide">{arg.name}</label>
+                  <TextInput value={addRuleArgs[arg.name] ?? ""} onChange={(v) => setAddRuleArgs((prev) => ({ ...prev, [arg.name]: v }))} className="w-full" />
                 </div>
-              );
-            })}
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="primary" onClick={handleAddRule} disabled={addRuleSaving}>{addRuleSaving ? "Adding…" : "Add"}</Button>
+              <Button variant="ghost" onClick={() => setAddingRuleMode(null)}>Cancel</Button>
+            </div>
           </div>
-        )}
-      </div>
+        );
+
+        function renderRuleRow(rule: AlertRule) {
+          const det = detectors.find((d) => d.name === rule.kind);
+          if (editingRuleId === rule.id) {
+            return (
+              <div key={rule.id} className="bg-[#161a27] border border-[#404868] rounded-lg px-4 py-3 mb-1">
+                <div className="flex items-center gap-2 mb-3">
+                  {rule.ticker && <span className="text-sm text-slate-200 font-bold">{rule.ticker}</span>}
+                  <span className="text-sm text-slate-200">{det?.display_name || rule.kind}</span>
+                </div>
+                <div className="flex flex-wrap gap-3 mb-3">
+                  {(det?.args ?? []).map((arg) => (
+                    <div key={arg.name} className="flex-1 min-w-[80px]">
+                      <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1">{arg.name}</label>
+                      <input
+                        className="w-full bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-slate-400"
+                        value={editRuleArgs[arg.name] ?? ""}
+                        onChange={(e) => setEditRuleArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="primary" onClick={() => handleSaveRule(rule)} disabled={editRuleSaving}>{editRuleSaving ? "Saving…" : "Save"}</Button>
+                  <Button variant="ghost" onClick={() => setEditingRuleId(null)}>Cancel</Button>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div key={rule.id} className="group flex items-center bg-[#161a27] border border-[#404868] rounded-lg px-4 py-2 hover:bg-[#1e2338] hover:border-[#555c7a] transition-colors">
+              {rule.ticker && <span className="w-16 shrink-0 text-sm text-slate-200 font-bold truncate">{rule.ticker}</span>}
+              <span className="w-44 shrink-0 text-sm text-slate-200 truncate">{det?.display_name || rule.kind}</span>
+              <span className="shrink-0">{ruleValueDisplay(rule)}</span>
+              <span className="flex-1" />
+              <div className="relative shrink-0 ml-3 w-16 flex justify-end">
+                <span className="text-[10px] text-slate-600 font-mono group-hover:invisible">{rule.id.slice(0, 8)}</span>
+                <div className="absolute inset-0 hidden group-hover:flex items-center justify-end gap-3">
+                  <button className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer text-sm leading-none" title="Edit" onClick={() => handleStartEditRule(rule)}>✎</button>
+                  <button className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer text-sm leading-none disabled:opacity-40" title="Delete" disabled={deletingRuleId === rule.id} onClick={() => handleDeleteRule(rule.id)}>✕</button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <>
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-2">
+                <SectionSubheading>Global Alerts</SectionSubheading>
+                {addingRuleMode !== "global" && <Button variant="ghost" onClick={() => openAddRule("global")}>Add</Button>}
+              </div>
+              {addingRuleMode === "global" && addForm}
+              {globalRules.length === 0 && addingRuleMode !== "global"
+                ? <p className="text-sm text-slate-500">No global alerts configured.</p>
+                : <div className="space-y-1">{globalRules.map(renderRuleRow)}</div>}
+            </div>
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-2">
+                <SectionSubheading>Asset Alerts</SectionSubheading>
+                {addingRuleMode !== "asset" && <Button variant="ghost" onClick={() => openAddRule("asset")}>Add</Button>}
+              </div>
+              {addingRuleMode === "asset" && addForm}
+              {assetRules.length === 0 && addingRuleMode !== "asset"
+                ? <p className="text-sm text-slate-500">No asset alerts configured.</p>
+                : <div className="space-y-1">{assetRules.map(renderRuleRow)}</div>}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

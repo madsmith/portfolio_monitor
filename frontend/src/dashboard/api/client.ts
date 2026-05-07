@@ -315,7 +315,7 @@ export const api = {
   getMyAlerts: (): Promise<AlertConfig> =>
     authGet("/api/v1/me/alert-config"),
 
-  addAlertRule: (rule: { ticker: string; kind: string; args: Record<string, unknown> }): Promise<AlertRule> =>
+  addAlertRule: (rule: { ticker?: string; asset_type?: string; kind: string; args: Record<string, unknown> }): Promise<AlertRule> =>
     authPost("/api/v1/me/alert-config/rules", rule),
 
   updateAlertRule: (id: string, patch: { args?: Record<string, unknown> }): Promise<{ ok: boolean }> =>
