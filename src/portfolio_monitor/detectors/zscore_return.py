@@ -1,3 +1,5 @@
+from typing import Annotated
+
 import numpy as np
 
 from portfolio_monitor.data import Aggregate
@@ -7,15 +9,20 @@ from portfolio_monitor.service.types import AssetSymbol
 
 @DetectorRegistry.register
 class ZScoreReturnDetector(TimeRangeDetectorBase[float]):
-    """
-    Detector for returns that deviate significantly from historical distribution.
-    """
+    """Alerts when the latest bar's return deviates from the rolling distribution of bar returns
+    by more than N standard deviations. Triggers on both upward and downward outliers,
+    making it well-suited for detecting sudden directional moves that are statistically unusual
+    relative to recent price behaviour."""
 
     @classmethod
     def name(cls) -> str:
         return "zscore_return"
 
-    def __init__(self, period: str = "2h", threshold: float = 2.0) -> None:
+    def __init__(
+        self,
+        period: Annotated[str, "Rolling window over which the return distribution is calculated (e.g. '2h', '4h')"] = "2h",
+        threshold: Annotated[float, "Minimum absolute Z-score (standard deviations from mean return) to trigger"] = 2.0,
+    ) -> None:
         super().__init__(period)
         self.threshold = threshold
 

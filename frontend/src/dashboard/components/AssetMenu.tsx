@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type AlertRule, type DetectorInfo } from "../api/client";
 import { CancelButton, ConfirmButton } from "./buttons";
@@ -66,6 +66,7 @@ function AddAlertForm({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
 
   function handleKindChange(name: string) {
     const det = detectors.find((d) => d.name === name);
@@ -99,8 +100,13 @@ function AddAlertForm({
   function argField(arg: DetectorInfo["args"][number]) {
     return (
       <div key={arg.name} className="flex-1 min-w-0">
-        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1 block">
+        <label className="relative group inline-flex items-center gap-1 text-xs text-slate-500 uppercase tracking-wide mb-1 cursor-default select-none">
           {arg.name}
+          {arg.description && (
+            <span className="absolute bottom-full left-0 mb-1.5 w-64 bg-[#0e1018] border border-[#404868] rounded px-2.5 py-2 text-xs text-slate-300 normal-case tracking-normal z-20 shadow-lg hidden group-hover:block pointer-events-none">
+              {arg.description}
+            </span>
+          )}
         </label>
         <Input
           value={args[arg.name] ?? ""}
@@ -114,14 +120,34 @@ function AddAlertForm({
 
   return (
     <div className="bg-[#151720] border border-[#404868] rounded p-3 mb-2">
-      <div className="mb-3">
-        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1 block">Kind</label>
+      <div className="flex items-center gap-3 mb-3">
+        <label className="relative group text-xs text-slate-500 uppercase tracking-wide shrink-0 cursor-default select-none">
+          Kind
+          {kindDef?.description && (
+            <span className="absolute bottom-full left-0 mb-1.5 w-72 bg-[#0e1018] border border-[#404868] rounded px-2.5 py-2 text-xs text-slate-300 normal-case tracking-normal z-20 shadow-lg hidden group-hover:block pointer-events-none">
+              {kindDef.description}
+            </span>
+          )}
+        </label>
         <DropdownSelector
           value={kindName}
           onChange={handleKindChange}
           options={detectors.map((d) => ({ value: d.name, label: KIND_LABELS[d.name] ?? d.name }))}
         />
+        <button
+          type="button"
+          onClick={() => setShowInfo((v) => !v)}
+          className={`ml-auto shrink-0 w-5 h-5 rounded-full border text-xs font-semibold transition-colors cursor-pointer ${
+            showInfo
+              ? "border-slate-400 text-slate-200 bg-slate-700"
+              : "border-slate-600 text-slate-500 hover:border-slate-400 hover:text-slate-300"
+          }`}
+          title="Toggle description"
+        >
+          i
+        </button>
       </div>
+
       {ordered.length > 0 && (
         <div className="flex gap-3 mb-3">
           {ordered.slice(0, 2).map(argField)}
@@ -130,6 +156,23 @@ function AddAlertForm({
       {ordered.slice(2).map((arg) => (
         <div key={arg.name} className="mb-3">{argField(arg)}</div>
       ))}
+
+      {showInfo && kindDef && (
+        <div className="border-t border-[#2a2f45] mt-1 pt-3 mb-3 space-y-2.5">
+          {kindDef.description && (
+            <p className="text-xs text-slate-300 leading-relaxed">{kindDef.description}</p>
+          )}
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+            {sortedArgs(kindDef.args).filter((a) => a.description).map((arg) => (
+              <Fragment key={arg.name}>
+                <div className="text-xs text-slate-400 uppercase tracking-wide pt-px">{arg.name}</div>
+                <div className="text-xs text-slate-300 leading-relaxed">{arg.description}</div>
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+
       {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
       <div className="flex gap-2 justify-end mt-2">
         <CancelButton onClick={onCancel} disabled={saving} />
@@ -193,7 +236,14 @@ function EditRuleRow({
       <div className="flex flex-wrap gap-2 mb-2">
         {ordered.map((arg) => (
           <div key={arg.name} className="flex-1 min-w-0">
-            <label className="text-xs text-slate-500 uppercase tracking-wide mb-1 block">{arg.name}</label>
+            <label className="relative group inline-flex items-center gap-1 text-xs text-slate-500 uppercase tracking-wide mb-1 cursor-default select-none">
+              {arg.name}
+              {arg.description && (
+                <span className="absolute bottom-full left-0 mb-1.5 w-64 bg-[#0e1018] border border-[#404868] rounded px-2.5 py-2 text-xs text-slate-300 normal-case tracking-normal z-20 shadow-lg hidden group-hover:block pointer-events-none">
+                  {arg.description}
+                </span>
+              )}
+            </label>
             <Input
               value={args[arg.name] ?? ""}
               placeholder={arg.default !== undefined ? String(arg.default) : ""}
@@ -401,7 +451,7 @@ function AddAlertModal({
       onMouseDown={onClose}
     >
       <div
-        className="bg-[#1e2130] border border-[#404868] rounded-lg p-5 w-full max-w-sm mx-4 shadow-xl"
+        className="bg-[#1e2130] border border-[#404868] rounded-lg p-5 w-full max-w-lg mx-4 shadow-xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-4">

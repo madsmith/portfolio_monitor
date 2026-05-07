@@ -1,6 +1,7 @@
 from collections import deque
 from datetime import timedelta
 import logging
+from typing import Annotated
 
 from portfolio_monitor.data import Aggregate
 from portfolio_monitor.detectors import DetectorRegistry
@@ -11,13 +12,19 @@ logger = logging.getLogger(__name__)
 
 @DetectorRegistry.register
 class AverageTrueRangeMoveDetector(DetectorBase):
-    """Detector for price moves that exceed a multiple of Average True Range"""
+    """Alerts when the current bar's high-low range exceeds a multiple of the Average True Range (ATR).
+    ATR is the mean true range over recent samples, where true range accounts for gaps by including
+    the previous close. Useful for detecting abnormally large price swings relative to recent volatility."""
 
     @classmethod
     def name(cls) -> str:
         return "average_true_range_move"
 
-    def __init__(self, samples: int = 30, threshold: float = 2.0) -> None:
+    def __init__(
+        self,
+        samples: Annotated[int, "Number of recent bars used to compute the ATR baseline"] = 30,
+        threshold: Annotated[float, "Minimum multiple of ATR the current bar's range must exceed to trigger (e.g. 2.0 = 2× ATR)"] = 2.0,
+    ) -> None:
         super().__init__()
         self.samples = samples
         self.threshold_multiple = threshold

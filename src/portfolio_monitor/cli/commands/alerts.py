@@ -8,7 +8,9 @@ Subcommands:
 """
 import argparse
 import json
+import shutil
 import sys
+import textwrap
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -33,11 +35,6 @@ class AlertRow(BaseModel):
     args:   Annotated[str, ColumnMeta("Args")]
 
 
-class DetectorArgRow(BaseModel):
-    kind: Annotated[str, ColumnMeta("Kind")]
-    arg:  Annotated[str, ColumnMeta("Arg")]
-
-
 # ---------------------------------------------------------------------------
 # Display helpers
 # ---------------------------------------------------------------------------
@@ -58,22 +55,43 @@ def _alert_rows(config: dict[str, Any]) -> list[AlertRow]:
     return rows
 
 
-def _detector_rows(detectors: list[dict]) -> list[DetectorArgRow]:
-    rows: list[DetectorArgRow] = []
-    for d in detectors:
-        kind = d["name"]
-        args = d.get("args", [])
-        if not args:
-            rows.append(DetectorArgRow(kind=kind, arg="(no args)"))
-        else:
-            for idx, arg in enumerate(args):
-                default = arg.get("default")
-                default_str = "required" if "default" not in arg else f"default={default}"
-                rows.append(DetectorArgRow(
-                    kind="" if idx > 0 else kind,
-                    arg=f"{arg['name']} ({arg['type']}, {default_str})",
-                ))
-    return rows
+def _arg_spec(arg: dict) -> str:
+    default_str = "required)" if "default" not in arg else f"default={arg['default']})"
+    return f"    {arg['name']} ({arg['type']}, {default_str}"
+
+
+def _print_detectors(detectors: list[dict]) -> None:
+    term_width = shutil.get_terminal_size((100, 24)).columns
+
+    # Single left column width covering detector names and all arg specs
+    left_col = max(
+        max(len(d["name"]) for d in detectors),
+        max(
+            (len(_arg_spec(arg)) for d in detectors for arg in d.get("args", [])),
+            default=0,
+        ),
+    ) + 2
+
+    desc_width = max(term_width - left_col, 20)
+    cont_pad = " " * left_col
+
+    for idx, d in enumerate(detectors):
+        if idx:
+            print()
+
+        # Detector name + description
+        desc_lines = textwrap.wrap(d.get("description", ""), desc_width)
+        print(f"{d['name']:<{left_col}}{desc_lines[0] if desc_lines else ''}")
+        for line in desc_lines[1:]:
+            print(f"{cont_pad}{line}")
+
+        # Args
+        for arg in d.get("args", []):
+            spec = _arg_spec(arg)
+            adesc_lines = textwrap.wrap(arg.get("description", ""), desc_width)
+            print(f"{spec:<{left_col}}{adesc_lines[0] if adesc_lines else ''}")
+            for line in adesc_lines[1:]:
+                print(f"{cont_pad}{line}")
 
 
 # ---------------------------------------------------------------------------
@@ -206,8 +224,7 @@ def _run_detectors(args: argparse.Namespace) -> None:
         print(json.dumps(detectors, indent=2))
         return
 
-    rows = _detector_rows(detectors)
-    if not rows:
+    if not detectors:
         print("(no detectors registered)")
     else:
-        render_table(rows)
+        _print_detectors(detectors)

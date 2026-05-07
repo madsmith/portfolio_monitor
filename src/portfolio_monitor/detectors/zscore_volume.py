@@ -1,3 +1,5 @@
+from typing import Annotated
+
 import numpy as np
 
 from portfolio_monitor.data import Aggregate
@@ -7,15 +9,19 @@ from portfolio_monitor.service.types import AssetSymbol
 
 @DetectorRegistry.register
 class ZScoreVolumeDetector(TimeRangeDetectorBase[float]):
-    """
-    Detector for unusual volume spikes based on standard deviation (Z-score).
-    """
+    """Alerts when volume deviates from the rolling mean by more than N standard deviations.
+    More statistically precise than a raw multiple — adapts to the actual spread of volume
+    over the window, making it less prone to false positives during naturally high-volume periods."""
 
     @classmethod
     def name(cls) -> str:
         return "zscore_volume"
 
-    def __init__(self, period: str = "2h", threshold: float = 1.0) -> None:
+    def __init__(
+        self,
+        period: Annotated[str, "Rolling window for computing mean and standard deviation of volume (e.g. '2h', '1h')"] = "2h",
+        threshold: Annotated[float, "Minimum Z-score (standard deviations above mean) required to trigger"] = 1.0,
+    ) -> None:
         super().__init__(period)
         self.threshold = threshold
 

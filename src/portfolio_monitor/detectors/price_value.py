@@ -1,5 +1,6 @@
 from datetime import timedelta
 from enum import Enum
+from typing import Annotated
 
 from portfolio_monitor.core.currency import Currency
 from portfolio_monitor.data import Aggregate
@@ -12,12 +13,20 @@ class AlertDirections(str, Enum):
 
 @DetectorRegistry.register
 class PriceValueDetector(DetectorBase):
+    """Alerts when the current price crosses a fixed absolute level.
+    Fires immediately with no warmup period — the first bar that crosses
+    the limit in the specified direction will trigger. Useful for price targets,
+    stop-loss levels, or watching a specific breakout point."""
 
     @classmethod
     def name(cls) -> str:
         return "price_value"
-    
-    def __init__(self, limit: float, direction: AlertDirections = AlertDirections.ABOVE) -> None:
+
+    def __init__(
+        self,
+        limit: Annotated[float, "Price level to monitor"],
+        direction: Annotated[AlertDirections, "Trigger when price is 'above' or 'below' the limit"] = AlertDirections.ABOVE,
+    ) -> None:
         super().__init__()
         self.limit = limit
         self.direction = direction

@@ -216,11 +216,13 @@ export type DetectorArgSpec = {
   name: string;
   type: string;        // "float", "str", "int", etc.
   default?: number | string;  // absent means the arg is required
+  description?: string;
 };
 
 export type DetectorInfo = {
   name: string;
   args: DetectorArgSpec[];
+  description?: string;
 };
 
 export const api = {

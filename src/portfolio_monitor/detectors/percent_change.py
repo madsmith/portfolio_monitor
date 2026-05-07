@@ -2,6 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
+from typing import Annotated
 
 from portfolio_monitor.core import parse_period
 from portfolio_monitor.data import Aggregate, MarketInfo
@@ -19,12 +20,20 @@ class PreviousClose:
 
 @DetectorRegistry.register
 class PercentChangeDetector(DetectorBase):
+    """Alerts when price has moved by more than a threshold fraction versus a reference close.
+    For period='1d' the reference is the previous market session close; for shorter periods
+    (e.g. '4h') it is the price from that far back in the rolling window. Triggers on both
+    up and down moves, and resets cleanly if the direction reverses."""
+
     @classmethod
     def name(cls) -> str:
         return "percent_change"
 
-
-    def __init__(self, threshold: float = 0.03, period: str = "1d") -> None:
+    def __init__(
+        self,
+        threshold: Annotated[float, "Minimum fractional price change to trigger (e.g. 0.03 = 3%)"] = 0.03,
+        period: Annotated[str, "Reference window. Use '1d' to compare against the previous session close, or a duration like '4h' for an intraday lookback"] = "1d",
+    ) -> None:
         super().__init__()
         self.threshold = threshold
         self.period = period

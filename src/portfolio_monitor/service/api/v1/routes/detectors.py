@@ -15,9 +15,9 @@ async def list_detectors(request: Request) -> JSONResponse:
     for info in infos:
         args = []
         for arg in info.args:
-            entry: dict = {"name": arg.name, "type": arg.type}
+            entry: dict = {"name": arg.name, "type": arg.type, "description": arg.description}
             if not arg.required:
                 entry["default"] = arg.default
             args.append(entry)
-        result.append({"name": info.name, "args": args})
+        result.append({"name": info.name, "description": info.description, "args": args})
     return JSONResponse(result)

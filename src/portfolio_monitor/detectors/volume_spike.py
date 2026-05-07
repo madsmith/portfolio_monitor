@@ -1,3 +1,5 @@
+from typing import Annotated
+
 import numpy as np
 
 from portfolio_monitor.data import Aggregate
@@ -7,15 +9,19 @@ from portfolio_monitor.service.types import AssetSymbol
 
 @DetectorRegistry.register
 class VolumeSpikeDetector(TimeRangeDetectorBase[float]):
-    """
-    Detector for unusual spikes in trading volume based on multiples of average volume.
-    """
+    """Alerts when current bar volume exceeds the rolling mean volume by a set multiple.
+    Uses a simple average over the trailing window — good for catching obvious bursts
+    of activity without requiring statistical warmup."""
 
     @classmethod
     def name(cls) -> str:
         return "volume_spike"
 
-    def __init__(self, period: str = "2h", threshold: float = 2.0) -> None:
+    def __init__(
+        self,
+        period: Annotated[str, "Rolling window over which average volume is calculated (e.g. '2h', '30m')"] = "2h",
+        threshold: Annotated[float, "Minimum multiple of average volume to trigger (e.g. 2.0 = current bar ≥ 2× average)"] = 2.0,
+    ) -> None:
         super().__init__(period)
         self.threshold = threshold
 

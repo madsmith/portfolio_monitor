@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Generic, NamedTuple, Protocol, Type, TypeVar, runtime_checkable
+from typing import Annotated, Any, Generic, NamedTuple, Protocol, TypeVar, get_args, get_origin, runtime_checkable
 from uuid import uuid4
 
 from portfolio_monitor.core import parse_period
@@ -48,6 +48,7 @@ class DetectorArgSpec:
     name: str
     type: str   # human-readable, e.g. "float", "str", "int"
     default: Any  # inspect.Parameter.empty when the arg is required
+    description: str = ""
 
     @property
     def required(self) -> bool:
@@ -60,6 +61,7 @@ class DetectorInfo:
 
     name: str
     args: list[DetectorArgSpec]
+    description: str = ""
 
 
 def _round_floats(obj: Any, precision: int = 4) -> Any:
@@ -136,14 +138,21 @@ class DetectorBase(ABC, Detector):
             if param_name == "self":
                 continue
             annotation = param.annotation
+            description = ""
+            if get_origin(annotation) is Annotated:
+                inner_args = get_args(annotation)
+                annotation = inner_args[0]
+                description = next((a for a in inner_args[1:] if isinstance(a, str)), "")
             if annotation is inspect.Parameter.empty:
                 type_str = "any"
             elif hasattr(annotation, "__name__"):
                 type_str = annotation.__name__
             else:
                 type_str = str(annotation)
-            args.append(DetectorArgSpec(name=param_name, type=type_str, default=param.default))
-        return DetectorInfo(name=cls.name(), args=args)
+            args.append(DetectorArgSpec(name=param_name, type=type_str, default=param.default, description=description))
+        doc = inspect.getdoc(cls) or ""
+        description = doc.splitlines()[0] if doc else ""
+        return DetectorInfo(name=cls.name(), args=args, description=description)
 
     @abstractmethod
     def update(self, aggregate: Aggregate) -> None:

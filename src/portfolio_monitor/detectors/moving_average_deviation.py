@@ -1,3 +1,5 @@
+from typing import Annotated
+
 import numpy as np
 
 from portfolio_monitor.data import Aggregate
@@ -7,15 +9,19 @@ from portfolio_monitor.service.types import AssetSymbol
 
 @DetectorRegistry.register
 class SMADeviationDetector(TimeRangeDetectorBase[float]):
-    """
-    Detector for price deviations from a Simple Moving Average (SMA).
-    """
+    """Alerts when the current price deviates from the Simple Moving Average by more than a
+    fractional threshold. Triggers on both sides (above and below the SMA), making it useful
+    for detecting sustained mean-reversion setups or breakouts away from a recent price anchor."""
 
     @classmethod
     def name(cls) -> str:
         return "SMA_deviation"
 
-    def __init__(self, period: str = "2h", threshold: float = 0.05) -> None:
+    def __init__(
+        self,
+        period: Annotated[str, "Rolling window used to compute the SMA (e.g. '2h', '1d')"] = "2h",
+        threshold: Annotated[float, "Minimum fractional deviation from the SMA to trigger (e.g. 0.05 = 5%)"] = 0.05,
+    ) -> None:
         super().__init__(period)
         self.threshold = threshold
 
