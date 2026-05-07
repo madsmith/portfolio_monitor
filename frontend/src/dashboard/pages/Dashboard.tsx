@@ -209,7 +209,7 @@ export default function Dashboard() {
         <div className="flex items-baseline justify-between mb-4 px-1">
           <span className="text-xl font-semibold text-slate-100 tracking-wide">Portfolio Monitor</span>
           <div className="flex items-center gap-3">
-            <AlertBell alertWsEvent={alertWsEvent} markAlertRead={(id) => wsRef.current?.markAlertRead(id)} markAllAlertsRead={() => wsRef.current?.markAllAlertsRead()} onViewAll={() => navigate("/alerts")} />
+            <AlertBell alertWsEvent={alertWsEvent} markAlertRead={(id) => wsRef.current?.markAlertRead(id)} markAllAlertsRead={() => wsRef.current?.markAllAlertsRead()} deleteAlert={(id) => wsRef.current?.deleteAlert(id)} onViewAll={() => navigate("/alerts")} />
             {currentUsername && (
               <span className="text-xs text-slate-500">{currentUsername}</span>
             )}

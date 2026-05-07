@@ -275,11 +275,11 @@ function ManageAlertsModal({
   return createPortal(
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-      onClick={onClose}
+      onMouseDown={onClose}
     >
       <div
         className="bg-[#1e2130] border border-[#404868] rounded-lg p-5 w-full max-w-md mx-4 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-sm font-semibold text-slate-100">Manage alerts</h3>
@@ -398,11 +398,11 @@ function AddAlertModal({
   return createPortal(
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-      onClick={onClose}
+      onMouseDown={onClose}
     >
       <div
         className="bg-[#1e2130] border border-[#404868] rounded-lg p-5 w-full max-w-sm mx-4 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-sm font-semibold text-slate-100">Add alert</h3>

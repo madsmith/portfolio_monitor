@@ -66,7 +66,7 @@ function AlertRow({
       onClick={handleClick}
     >
       <div className="flex items-center gap-1.5 min-w-0">
-        <span className={["shrink-0 w-1.5 h-1.5 rounded-full", alert.read ? "invisible" : "bg-[#9c4040]"].join(" ")} />
+        <span className={["shrink-0 w-1 h-1 rounded-full", alert.read ? "bg-[#604040]" : "bg-[#9c4040]"].join(" ")} />
         <span
           className={["text-xs truncate flex-1 group-hover:text-slate-100", alert.read ? "text-slate-400" : "text-slate-200"].join(" ")}
           title={formatAlert(alert)}
