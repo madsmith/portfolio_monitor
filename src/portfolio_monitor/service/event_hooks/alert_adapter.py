@@ -1,7 +1,10 @@
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.database.alerts import AlertsModule
+from portfolio_monitor.detectors.base import Detector
 from portfolio_monitor.detectors.engine import DeviationEngine
 from portfolio_monitor.detectors.registry import DetectorRegistry
 from portfolio_monitor.detectors.service import DetectionService
@@ -40,8 +43,8 @@ class AlertConfigAdapter:
         self._watchlist_service: WatchlistService = watchlist_service
         self._alerts_module: AlertsModule = alerts_module
         self._monitor: MonitorService = monitor
-        # rule id → [(symbol, detector_id)] for cleanup on remove/update
-        self._rule_detectors: dict[str, list[tuple[AssetSymbol, str]]] = {}
+        # rule id → [(symbol, detector_id, detector)] for cleanup on remove/update
+        self._rule_detectors: dict[str, list[tuple[AssetSymbol, str, Detector]]] = {}
 
     def wire(self, bus: EventBus) -> None:
         bus.subscribe(AlertRuleAdded, self._on_rule_added)
@@ -67,6 +70,9 @@ class AlertConfigAdapter:
 
     async def _on_rule_added(self, event: AlertRuleAdded) -> None:
         self._register_rule(event.username, event.rule)
+        now = datetime.now(ZoneInfo("UTC"))
+        for symbol, _, detector in self._rule_detectors.get(event.rule.id, []):
+            await self._detection_service.prime_detectors(symbol, [detector], now)
 
     async def _on_rule_removed(self, event: AlertRuleRemoved) -> None:
         self._unregister_rule(event.rule.id)
@@ -86,7 +92,7 @@ class AlertConfigAdapter:
                 "Rule %s (ticker=%r) matched no known symbols — skipping",
                 rule.id, rule.ticker,
             )
-        registered: list[tuple[AssetSymbol, str]] = []
+        registered: list[tuple[AssetSymbol, str, Detector]] = []
         for symbol in symbols:
             detector = DetectorRegistry.create_detector(rule.kind, rule.args)
             if detector is None:
@@ -97,13 +103,13 @@ class AlertConfigAdapter:
                 continue
             self._engine.add_detector(symbol, detector)
             self._alert_manager.register_detector_account(detector.detector_id, username)
-            registered.append((symbol, detector.detector_id))
+            registered.append((symbol, detector.detector_id, detector))
             logger.debug(
                 "Registered detector %r for symbol %s (rule=%s, user=%s)",
                 rule.kind, symbol, rule.id, username,
             )
         self._rule_detectors[rule.id] = registered
-        for symbol, _ in registered:
+        for symbol, _, _ in registered:
             self._monitor.register_symbol(symbol)
 
     def apply_rules_to_symbol(self, symbol: AssetSymbol, owner: str) -> None:
@@ -122,7 +128,7 @@ class AlertConfigAdapter:
                 continue
             self._engine.add_detector(symbol, detector)
             self._alert_manager.register_detector_account(detector.detector_id, owner)
-            self._rule_detectors.setdefault(db_rule.id, []).append((symbol, detector.detector_id))
+            self._rule_detectors.setdefault(db_rule.id, []).append((symbol, detector.detector_id, detector))
             logger.debug("Applied rule %s to new symbol %s (user=%s)", db_rule.id, symbol, owner)
 
     def remove_rules_from_symbol(self, symbol: AssetSymbol, owner: str) -> None:
@@ -131,16 +137,16 @@ class AlertConfigAdapter:
         Called by WatchlistAdapter when an entry is deleted.
         """
         for rule_id, registrations in self._rule_detectors.items():
-            to_remove = [(s, did) for s, did in registrations if s == symbol]
-            for s, detector_id in to_remove:
+            to_remove = [(s, did, d) for s, did, d in registrations if s == symbol]
+            for s, detector_id, d in to_remove:
                 self._engine.remove_detector(s, detector_id)
                 self._alert_manager.unregister_detector_account(detector_id)
-                registrations.remove((s, detector_id))
+                registrations.remove((s, detector_id, d))
             logger.debug("Removed detectors for symbol %s (user=%s)", symbol, owner)
 
     def _unregister_rule(self, rule_id: str) -> None:
         registrations = self._rule_detectors.pop(rule_id, [])
-        for symbol, detector_id in registrations:
+        for symbol, detector_id, _ in registrations:
             self._engine.remove_detector(symbol, detector_id)
             self._alert_manager.unregister_detector_account(detector_id)
             if self._is_alert_only_symbol(symbol):
@@ -149,7 +155,7 @@ class AlertConfigAdapter:
     def _is_alert_only_symbol(self, symbol: AssetSymbol) -> bool:
         """True if this symbol has no remaining alert detectors and is not in any portfolio or watchlist."""
         for registrations in self._rule_detectors.values():
-            if any(s == symbol for s, _ in registrations):
+            if any(s == symbol for s, _, _ in registrations):
                 return False
         for portfolio in self._portfolio_service.get_all_portfolios():
             if any(a.symbol == symbol for a in portfolio.assets()):

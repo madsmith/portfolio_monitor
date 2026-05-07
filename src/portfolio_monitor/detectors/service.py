@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data import AggregateUpdated, DataProvider
-from portfolio_monitor.detectors.base import Alert
+from portfolio_monitor.detectors.base import Alert, Detector
 from portfolio_monitor.detectors.engine import AlertChange, DeviationEngine
 from portfolio_monitor.detectors.events import AlertCleared, AlertFired, AlertUpdated
 from portfolio_monitor.service.types import AssetSymbol
@@ -49,6 +49,40 @@ class DetectionService:
             symbols, self._data_provider, current_time, sample_interval
         )
         logger.info("Detection engine primed")
+
+    async def prime_detectors(
+        self,
+        symbol: AssetSymbol,
+        detectors: list[Detector],
+        current_time: datetime,
+        sample_interval: timedelta = timedelta(minutes=1),
+    ) -> None:
+        """Feed historical data through specific detectors for a symbol, then reset their alert state.
+
+        Used when a rule is added at runtime. Warms up the detector's internal
+        history buffers without propagating any alerts accumulated during replay.
+        """
+        if self._data_provider is None or not detectors:
+            return
+
+        def to_timedelta(age: timedelta | int) -> timedelta:
+            return age if isinstance(age, timedelta) else age * sample_interval
+
+        max_age = max(to_timedelta(d.prime_age()) for d in detectors)
+        from_ = current_time - max_age
+        logger.info(
+            "Priming %d detector(s) for %s: fetching %d minutes of history",
+            len(detectors), symbol, int(max_age.total_seconds() / 60),
+        )
+        aggs = await self._data_provider.get_range(
+            symbol, from_, current_time, cache_write=True, cache_read=False
+        )
+        for agg in aggs:
+            for detector in detectors:
+                detector.update(agg)
+
+        for detector in detectors:
+            detector.reset()
 
     def get_recent_alerts(self, n: int = 50) -> list[Alert]:
         """Return the most recent n alerts (fired or updated)."""
