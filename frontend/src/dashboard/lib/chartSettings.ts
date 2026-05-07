@@ -1,4 +1,4 @@
-export type MomentumWindow = 3 | 5 | 7;
+export type MomentumWindow = 1 | 3 | 5 | 7;
 
 export type ChartSettings = {
   chartType: "return" | "momentum" | "volume";

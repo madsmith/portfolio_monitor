@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { type ChartSettings, type MomentumWindow } from "../lib/chartSettings";
 
 const RANGES = [
+  { label: "1W", days:   7 },
   { label: "1M", days:  30 },
   { label: "3M", days:  90 },
   { label: "6M", days: 180 },
   { label: "1Y", days: 365 },
 ];
 
-const MOMENTUM_WINDOWS: MomentumWindow[] = [3, 5, 7];
+const MOMENTUM_WINDOWS: MomentumWindow[] = [1, 3, 5, 7];
 
 const pill = (active: boolean) =>
   `px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer ${
@@ -80,7 +81,7 @@ export function ChartControlsButton({
 
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 bg-[#1e2130] border border-[#404868] rounded-md shadow-lg z-20 p-3 w-52"
+          className="absolute right-0 top-full mt-1 bg-[#1e2130] border border-[#404868] rounded-md shadow-lg z-20 p-3 w-64"
           onMouseEnter={clearCloseTimer}
           onMouseLeave={scheduleClose}
         >
