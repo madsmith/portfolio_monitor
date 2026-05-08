@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -11,7 +12,7 @@ from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 if TYPE_CHECKING:
     from portfolio_monitor.service.context import AuthContext
 
-from .events import PortfolioUpdated, PriceUpdated
+from .events import AssetAdded, AssetRemoved, PortfolioUpdated, PriceUpdated
 from .models import Asset, Lot, Portfolio
 
 logger = logging.getLogger(__name__)
@@ -87,13 +88,16 @@ class PortfolioService:
         if asset_list is None:
             return None
         asset = next((a for a in asset_list if a.symbol.ticker == ticker), None)
-        if asset is None:
+        is_new_asset = asset is None
+        if is_new_asset:
             symbol = AssetSymbol(ticker, AssetTypes(asset_type))
             asset = Asset(symbol=symbol, lots=[], asset_type=asset_type)
             asset_list.append(asset)
             self._tracked_symbols.add(symbol)
         asset.lots.append(Lot.from_dict(lot_data))
         self._save_portfolio(portfolio)
+        if is_new_asset:
+            asyncio.create_task(self._bus.publish(AssetAdded(symbol=asset.symbol)))
         return portfolio, asset
 
     def update_lot(self, portfolio_id: str, asset_type: str, ticker: str, lot_idx: int, lot_data: dict[str, Any], auth: "AuthContext") -> tuple[Portfolio, Asset] | None:
@@ -124,6 +128,7 @@ class PortfolioService:
         if not asset.lots:
             asset_list.remove(asset)
             self._tracked_symbols.discard(asset.symbol)
+            asyncio.create_task(self._bus.publish(AssetRemoved(symbol=asset.symbol)))
         self._save_portfolio(portfolio)
         return portfolio
 
@@ -154,6 +159,7 @@ class PortfolioService:
             return None
         asset_list.remove(asset)
         self._tracked_symbols.discard(asset.symbol)
+        asyncio.create_task(self._bus.publish(AssetRemoved(symbol=asset.symbol)))
         self._save_portfolio(portfolio)
         return portfolio
 

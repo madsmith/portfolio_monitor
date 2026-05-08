@@ -17,3 +17,17 @@ class PortfolioUpdated:
     """A portfolio's valuations were recalculated."""
 
     portfolio_name: str
+
+
+@dataclass
+class AssetAdded:
+    """A new asset (ticker) was added to a portfolio."""
+
+    symbol: AssetSymbol
+
+
+@dataclass
+class AssetRemoved:
+    """An asset was fully removed from a portfolio (no lots remaining)."""
+
+    symbol: AssetSymbol

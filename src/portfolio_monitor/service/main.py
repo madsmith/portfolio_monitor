@@ -25,6 +25,7 @@ from portfolio_monitor.data import Aggregate, AggregateCache, AggregateUpdated, 
 from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
+from portfolio_monitor.portfolio.events import AssetAdded, AssetRemoved
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts import (
     ChannelPool,
@@ -106,6 +107,15 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         for wl in watchlist_service.get_all_watchlists():
             for entry in wl.entries:
                 monitor.register_symbol(entry.symbol)
+
+        async def _on_asset_added(event: AssetAdded) -> None:
+            monitor.register_symbol(event.symbol)
+
+        async def _on_asset_removed(event: AssetRemoved) -> None:
+            monitor.unregister_symbol(event.symbol)
+
+        bus.subscribe(AssetAdded, _on_asset_added)
+        bus.subscribe(AssetRemoved, _on_asset_removed)
 
         alert_adapter = AlertConfigAdapter(
             engine=detection_engine,

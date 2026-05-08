@@ -25,3 +25,4 @@ portfolio_monitor:
 
 polygon:
   api_key: "${private.polygon.api_key}"
+  request_timeout: 5.0  # seconds per HTTP request (connect + read); lower = faster failure on degraded feeds

@@ -23,6 +23,7 @@ class PortfolioMonitorConfig(AppConfig):
     polygon_delay = BindDefault[int]("polygon.delay", default=15 * 60)
     polygon_prime_limit = BindDefault[int]("polygon.prime_limit", default=120)
     polygon_max_concurrent = BindDefault[int]("polygon.max_concurrent", default=10)
+    polygon_request_timeout = BindDefault[float]("polygon.request_timeout", default=10.0)
 
     # Control interface settings
     host = BindDefault[str]("portfolio_monitor.host", default="127.0.0.1")

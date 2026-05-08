@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from polygon import RESTClient as PolygonRESTClient, BadResponse
 from polygon.rest.aggs import Agg, DailyOpenCloseAgg
 from urllib3 import HTTPResponse
-from urllib3.exceptions import MaxRetryError, NameResolutionError, NewConnectionError, RequestError
+from urllib3.exceptions import MaxRetryError, NameResolutionError, NewConnectionError, RequestError, ResponseError
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core import eastern_midnight
@@ -46,7 +46,9 @@ class PolygonDataProvider(DataProvider):
         base_delay = timedelta(seconds=config.polygon_delay)
         self._delay: timedelta = base_delay
         self._polygon_client: PolygonRESTClient = PolygonRESTClient(
-            config.polygon_api_key
+            config.polygon_api_key,
+            connect_timeout=config.polygon_request_timeout,
+            read_timeout=config.polygon_request_timeout,
         )
         # urllib3 PoolManager defaults maxsize=1 per pool; increase to match concurrency limit
         self._polygon_client.client.connection_pool_kw["maxsize"] = config.polygon_max_concurrent
@@ -59,6 +61,10 @@ class PolygonDataProvider(DataProvider):
 
     def _is_connectivity_error(self, exc: RequestError) -> bool:
         return isinstance(exc, MaxRetryError) and isinstance(exc.reason, (NameResolutionError, NewConnectionError))
+
+    def _is_server_error(self, exc: RequestError) -> bool:
+        """True when urllib3 exhausted retries on repeated 5xx responses."""
+        return isinstance(exc, MaxRetryError) and isinstance(exc.reason, ResponseError)
 
     async def _on_request_error(self, exc: RequestError, attempt: int) -> None:
         """Sleep and optionally mark the API unavailable after a request failure."""
@@ -139,6 +145,9 @@ class PolygonDataProvider(DataProvider):
                     self._record_api_success()
                     break
                 except RequestError as e:
+                    if self._is_server_error(e):
+                        logger.warning("Polygon 5xx for %s — skipping retries, falling back to cache", symbol)
+                        break
                     if attempt < self._max_retries - 1:
                         await self._on_request_error(e, attempt)
                     else:
@@ -560,6 +569,9 @@ class PolygonDataProvider(DataProvider):
                     self._record_api_success()
                     break
                 except RequestError as e:
+                    if self._is_server_error(e):
+                        logger.warning("Polygon 5xx for %s — skipping retries, falling back to cache", symbol)
+                        break
                     if attempt < self._max_retries - 1:
                         await self._on_request_error(e, attempt)
                     else:
