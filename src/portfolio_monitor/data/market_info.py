@@ -10,6 +10,8 @@ _MARKET_PRE_OPEN_TIME = time(4, 0)
 _MARKET_OPEN_TIME = time(9, 30)
 _MARKET_CLOSE_TIME = time(16, 0)
 _MARKET_AFTER_CLOSE_TIME = time(20, 0)
+# Forex sessions run Sunday 17:00 ET → Friday 17:00 ET
+_FOREX_SESSION_BOUNDARY = time(17, 0)
 
 class MarketStatus(enum.Enum):
     PRE_TRADING = "pre_trading"
@@ -18,6 +20,20 @@ class MarketStatus(enum.Enum):
     CLOSE = "close"
 
 class MarketInfo:
+    @classmethod
+    def _is_forex_closed(cls, at_time: datetime) -> bool:
+        """True during the forex weekend gap: Friday 17:00 ET → Sunday 17:00 ET."""
+        local = at_time.astimezone(_EASTERN)
+        weekday = local.weekday()  # 0=Mon … 4=Fri, 5=Sat, 6=Sun
+        t = local.time()
+        if weekday == 5:  # Saturday always closed
+            return True
+        if weekday == 4 and t >= _FOREX_SESSION_BOUNDARY:  # Friday after 5pm
+            return True
+        if weekday == 6 and t < _FOREX_SESSION_BOUNDARY:   # Sunday before 5pm
+            return True
+        return False
+
     @classmethod
     def is_market_open(cls, symbol: AssetSymbol, at_time: datetime | None = None) -> bool:
         """Return True if the market for *symbol* is open at *at_time*."""
@@ -50,6 +66,12 @@ class MarketInfo:
 
         if symbol.asset_type == AssetTypes.Crypto:
             return MarketStatus.OPEN
+
+        if symbol.is_base_currency:
+            return MarketStatus.CLOSE
+
+        if symbol.asset_type == AssetTypes.Currency:
+            return MarketStatus.CLOSE if cls._is_forex_closed(at_time) else MarketStatus.OPEN
 
         market_local_time = at_time.astimezone(_EASTERN)
         if market_local_time.weekday() >= 5:  # Saturday or Sunday

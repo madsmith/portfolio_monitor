@@ -107,6 +107,10 @@ class PolygonDataProvider(DataProvider):
         Returns:
             Most recent Aggregate or None if not available
         """
+        if symbol.is_base_currency:
+            now = datetime.now(ZoneInfo("UTC"))
+            return Aggregate(symbol, now, 1.0, 1.0, 1.0, 1.0, 0.0, timedelta(minutes=1))
+
         # Try to get from cache first
         current: Aggregate | None = await self._aggregate_cache.get_current(symbol)
         now: datetime = datetime.now(ZoneInfo("UTC"))
@@ -196,6 +200,10 @@ class PolygonDataProvider(DataProvider):
         Returns:
             Aggregate with timespan of one trading session, or None on error.
         """
+        if symbol.is_base_currency:
+            now = datetime.now(ZoneInfo("UTC"))
+            return Aggregate(symbol, now, 1.0, 1.0, 1.0, 1.0, 0.0, timedelta(hours=24))
+
         now = datetime.now(ZoneInfo("UTC"))
         prev_close_dt = MarketInfo.get_previous_market_close(symbol, now)
         cached = await self._aggregate_cache.get_close(symbol, prev_close_dt)
@@ -263,6 +271,14 @@ class PolygonDataProvider(DataProvider):
         Returns:
             DailyOpenCloseAggregate or None on error / no data.
         """
+        if symbol.is_base_currency:
+            target_dt = date or datetime.now(ZoneInfo("UTC"))
+            return DailyOpenCloseAggregate(
+                symbol=symbol, date_open=target_dt,
+                open=1.0, high=1.0, low=1.0, close=1.0,
+                volume=0.0, pre_market=None, after_hours=None,
+            )
+
         cached = await self._aggregate_cache.get_open_close(symbol, date)
         if cached is not None:
             logger.debug("Fetching open/close for %s from cache", symbol)
@@ -332,6 +348,9 @@ class PolygonDataProvider(DataProvider):
         when fewer than 50 cached entries are found (indicating the bulk fetch hasn't
         run yet). Writes to cache when cache_write=True.
         """
+        if symbol.is_base_currency:
+            return []
+
         cached = await self._aggregate_cache.get_open_close_range(symbol, from_, to)
         if len(cached) >= 50:
             logfire_set_attribute("source", "cache")
@@ -543,6 +562,9 @@ class PolygonDataProvider(DataProvider):
         Returns:
             List of fetched aggregates
         """
+        if symbol.is_base_currency:
+            return []
+
         effective_span = span or AggregateTimespan.default()
         result = []
 

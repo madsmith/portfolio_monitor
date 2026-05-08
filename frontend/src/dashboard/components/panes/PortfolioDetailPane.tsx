@@ -125,6 +125,11 @@ function PortfolioUsersSection({ portfolioId }: { portfolioId: string }) {
 // Edit-mode helpers
 // ---------------------------------------------------------------------------
 
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+
 type LotDraft = { quantity: string; price: string; date: string; fees: string };
 const BLANK_LOT: LotDraft = { quantity: "", price: "", date: "", fees: "" };
 
@@ -157,24 +162,28 @@ function LotForm({ draft, onChange, onSave, onCancel, saving, colSpan }: {
   saving: boolean;
   colSpan: number;
 }) {
+  const [dateTouched, setDateTouched] = useState(false);
+  const today = todayStr();
   const ic = "bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400";
   const canSave = draft.quantity.trim() !== "" && draft.price.trim() !== "" && !isNaN(parseFloat(draft.price));
-  const fields: { key: keyof LotDraft; label: string; ph: string; w: string }[] = [
-    { key: "quantity", label: "Qty *",   ph: "10.5",       w: "w-24" },
-    { key: "price",    label: "Price *", ph: "150.00",     w: "w-28" },
-    { key: "date",     label: "Date",    ph: "2024/01/15", w: "w-28" },
-    { key: "fees",     label: "Fees",    ph: "0.00",       w: "w-20" },
+  const fields: { key: keyof LotDraft; label: string; ph: string; w: string; onFocus?: () => void }[] = [
+    { key: "quantity", label: "Qty *",   ph: "10.5",   w: "w-24" },
+    { key: "price",    label: "Price *", ph: "150.00", w: "w-28" },
+    { key: "date",     label: "Date",    ph: today,    w: "w-28",
+      onFocus: () => { if (!dateTouched) { setDateTouched(true); if (!draft.date) onChange({ ...draft, date: today }); } } },
+    { key: "fees",     label: "Fees",    ph: "0.00",   w: "w-20" },
   ];
   return (
     <tr className="bg-[#0a0c14] border-b border-[#222536]">
       <td colSpan={colSpan} className="pl-4 sm:pl-8 pr-3 py-2">
         <div className="flex flex-wrap gap-2 items-end">
-          {fields.map(({ key, label, ph, w }) => (
+          {fields.map(({ key, label, ph, w, onFocus }) => (
             <div key={key} className="flex flex-col gap-1">
               <label className="text-[0.6rem] uppercase tracking-wide text-slate-500">{label}</label>
               <input
                 value={draft[key]}
                 onChange={(e) => onChange({ ...draft, [key]: e.target.value })}
+                onFocus={onFocus}
                 className={`${ic} ${w}`}
                 placeholder={ph}
               />
@@ -373,6 +382,8 @@ function AddAssetForm({ assetType, portfolioId, onMutated, onCancel }: {
   const [draft, setDraft] = useState<LotDraft>(BLANK_LOT);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dateTouched, setDateTouched] = useState(false);
+  const today = todayStr();
 
   const ic = "bg-[#0a0c14] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400";
   const canSave = ticker.trim() !== "" && draft.quantity.trim() !== "" && draft.price.trim() !== "" && !isNaN(parseFloat(draft.price));
@@ -386,11 +397,12 @@ function AddAssetForm({ assetType, portfolioId, onMutated, onCancel }: {
     finally { setSaving(false); }
   }
 
-  const fields: { key: keyof LotDraft; label: string; ph: string; w: string }[] = [
-    { key: "quantity", label: "Qty *",   ph: "10.5",       w: "w-24" },
-    { key: "price",    label: "Price *", ph: "150.00",     w: "w-28" },
-    { key: "date",     label: "Date",    ph: "2024/01/15", w: "w-28" },
-    { key: "fees",     label: "Fees",    ph: "0.00",       w: "w-20" },
+  const fields: { key: keyof LotDraft; label: string; ph: string; w: string; onFocus?: () => void }[] = [
+    { key: "quantity", label: "Qty *",   ph: "10.5",   w: "w-24" },
+    { key: "price",    label: "Price *", ph: "150.00", w: "w-28" },
+    { key: "date",     label: "Date",    ph: today,    w: "w-28",
+      onFocus: () => { if (!dateTouched) { setDateTouched(true); if (!draft.date) setDraft((d) => ({ ...d, date: today })); } } },
+    { key: "fees",     label: "Fees",    ph: "0.00",   w: "w-20" },
   ];
 
   return (
@@ -407,12 +419,13 @@ function AddAssetForm({ assetType, portfolioId, onMutated, onCancel }: {
             autoFocus
           />
         </div>
-        {fields.map(({ key, label, ph, w }) => (
+        {fields.map(({ key, label, ph, w, onFocus }) => (
           <div key={key} className="flex flex-col gap-1">
             <label className="text-[0.6rem] uppercase tracking-wide text-slate-500">{label}</label>
             <input
               value={draft[key]}
               onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+              onFocus={onFocus}
               className={`${ic} ${w}`}
               placeholder={ph}
             />
