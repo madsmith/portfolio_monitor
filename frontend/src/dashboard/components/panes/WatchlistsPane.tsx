@@ -648,21 +648,28 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
     return () => { active = false; };
   }, [selectedId]);
 
-  // Subscribe to live price updates for the loaded entries; re-runs when entry set changes
+  // Subscribe to live price updates and fetch initial snapshot; re-runs when entry set changes
   const entryKey = detail?.entries.map((e) => `${e.asset_type}:${e.ticker}`).sort().join(",") ?? "";
   useEffect(() => {
     const wsInstance = ws.current;
     if (!detail || !wsInstance || detail.entries.length === 0) return;
     const symbols = detail.entries.map((e) => ({ ticker: e.ticker, type: e.asset_type }));
     wsInstance.subscribe(symbols);
-    // Request current price immediately — subscribe only delivers the *next* trade tick
-    for (const symbol of symbols) wsInstance.requestPrice(symbol);
+    // Single round-trip: fetches current price + prev close for all symbols concurrently
+    wsInstance.requestWatchlistSnapshot(symbols);
 
-    const updateLivePrices = (ticker: string, type: string, price: number) =>
-      setLivePrices((prev) => ({ ...prev, [`${ticker}:${type}`]: price }));
-
-    const unsubPrice = wsInstance.onPrice((msg) =>
-      updateLivePrices(msg.symbol.ticker, msg.symbol.type, msg.price));
+    const unsubSnapshot = wsInstance.onWatchlistSnapshot((msg) => {
+      const prices: Record<string, number> = {};
+      const closes: Record<string, number> = {};
+      for (const entry of msg.entries) {
+        const key = `${entry.symbol.ticker}:${entry.symbol.type}`;
+        if (entry.price !== null) prices[key] = entry.price;
+        const de = detail.entries.find((e) => e.ticker === entry.symbol.ticker && e.asset_type === entry.symbol.type);
+        if (de && entry.prev_close !== null) closes[prevCloseKey(de)] = entry.prev_close;
+      }
+      setLivePrices((prev) => ({ ...prev, ...prices }));
+      setPrevClose(closes);
+    });
     const unsubUpdate = wsInstance.onPriceUpdate((msgs) => {
       setLivePrices((prev) => {
         const next = { ...prev };
@@ -670,19 +677,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
         return next;
       });
     });
-    return () => { unsubPrice(); unsubUpdate(); wsInstance.unsubscribe(symbols); };
-  }, [entryKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fetch previous-close prices; re-runs when the set of entry tickers changes
-  useEffect(() => {
-    if (!detail) { setPrevClose({}); return; }
-    let active = true;
-    for (const e of detail.entries) {
-      api.getPreviousClose(e.asset_type, e.ticker)
-        .then((data) => { if (!active) return; setPrevClose((prev) => ({ ...prev, [prevCloseKey(e)]: data.close })); })
-        .catch(() => {});
-    }
-    return () => { active = false; };
+    return () => { unsubSnapshot(); unsubUpdate(); wsInstance.unsubscribe(symbols); };
   }, [entryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- handlers ----

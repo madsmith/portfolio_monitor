@@ -7,7 +7,7 @@ from pydantic import TypeAdapter, ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import DataProvider
+from portfolio_monitor.data import Aggregate, DataProvider
 from portfolio_monitor.data.database.alerts import AlertsModule
 from portfolio_monitor.portfolio.events import PriceUpdated
 from portfolio_monitor.service.alerts.events import AlertStatusEvent, UserAlertDeletedEvent
@@ -28,6 +28,7 @@ from .messages import (
     DeleteAlertMessage,
     GetPreviousCloseMessage,
     GetPriceMessage,
+    GetWatchlistSnapshotMessage,
     MarkAlertReadMessage,
     MarkAllAlertsReadMessage,
     PreviousCloseMessage,
@@ -36,6 +37,8 @@ from .messages import (
     SubscribeAssetSymbolMessage,
     UnsubscribeAssetSymbolMessage,
     UnreadCountMessage,
+    WatchlistSnapshotEntry,
+    WatchlistSnapshotMessage,
     to_socket,
 )
 
@@ -155,6 +158,9 @@ class WebSocketManager:
                         price=aggregate.close,
                         timestamp=aggregate.date_open,
                     )))
+            case GetWatchlistSnapshotMessage():
+                entries = await self._fetch_watchlist_snapshot(msg.symbols)
+                await ws.send_text(to_socket(WatchlistSnapshotMessage(entries=entries)))
             case MarkAlertReadMessage():
                 count = self._alerts_module.mark_record_read(username, msg.alert_id)
                 await self._bus.publish(AlertStatusEvent(
@@ -174,6 +180,23 @@ class WebSocketManager:
                     payload={"event": "deleted", "alert_id": msg.alert_id, "unread_count": count},
                 ))
                 await self._bus.publish(UserAlertDeletedEvent(username=username, alert_id=msg.alert_id))
+
+    async def _fetch_watchlist_snapshot(self, symbols: list[AssetSymbolParam]) -> list[WatchlistSnapshotEntry]:
+        async def _one(param: AssetSymbolParam) -> WatchlistSnapshotEntry:
+            symbol = param.to_asset_symbol()
+            current, prev = await asyncio.gather(
+                self._data_provider.get_aggregate(symbol),
+                self._data_provider.get_previous_close(symbol),
+                return_exceptions=True,
+            )
+            return WatchlistSnapshotEntry(
+                symbol=param,
+                price=current.close if isinstance(current, Aggregate) else None,
+                prev_close=prev.close if isinstance(prev, Aggregate) else None,
+            )
+
+        results = await asyncio.gather(*[_one(s) for s in symbols], return_exceptions=True)
+        return [r for r in results if isinstance(r, WatchlistSnapshotEntry)]
 
     async def _on_alert_status_event(self, event: AlertStatusEvent) -> None:
         sockets = self._user_sockets.get(event.username)

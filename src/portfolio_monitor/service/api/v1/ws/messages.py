@@ -65,6 +65,11 @@ class DeleteAlertMessage(BaseModel):
     alert_id: str
 
 
+class GetWatchlistSnapshotMessage(BaseModel):
+    type: Literal["get_watchlist_snapshot"]
+    symbols: list[AssetSymbolParam]
+
+
 ClientMessage = Annotated[
     Union[
         AuthenticateMessage,
@@ -72,6 +77,7 @@ ClientMessage = Annotated[
         UnsubscribeAssetSymbolMessage,
         GetPriceMessage,
         GetPreviousCloseMessage,
+        GetWatchlistSnapshotMessage,
         MarkAlertReadMessage,
         MarkAllAlertsReadMessage,
         DeleteAlertMessage,
@@ -148,6 +154,18 @@ class UnreadCountMessage(BaseModel):
     unread_count: int
 
 
+class WatchlistSnapshotEntry(BaseModel):
+    symbol: AssetSymbolParam
+    price: float | None
+    prev_close: float | None
+
+
+class WatchlistSnapshotMessage(BaseModel):
+    """Response to get_watchlist_snapshot — current price + prev close for each requested symbol."""
+    type: Literal["watchlist_snapshot"] = "watchlist_snapshot"
+    entries: list[WatchlistSnapshotEntry]
+
+
 ServerMessage = (
     AuthenticatedMessage
     | PriceUpdateMessage
@@ -159,6 +177,7 @@ ServerMessage = (
     | AlertDeletedMessage
     | AlertsClearedMessage
     | UnreadCountMessage
+    | WatchlistSnapshotMessage
 )
 
 

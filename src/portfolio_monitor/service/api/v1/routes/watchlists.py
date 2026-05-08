@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import logfire
@@ -74,10 +75,10 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
         # feed; it only updates while a client has that ticker subscribed, so it can
         # be arbitrarily stale.  get_aggregate returns the most recent bar from the
         # REST-backed aggregate cache (or falls back to entry.current_price if None).
-        prices: dict[str, float] = {}
         with logfire.span("watchlist.get.prices", entry_count=len(wl.entries)):
-            for entry in wl.entries:
-                agg = await data_provider.get_aggregate(entry.symbol)
+            aggs = await asyncio.gather(*[data_provider.get_aggregate(e.symbol) for e in wl.entries])
+            prices: dict[str, float] = {}
+            for entry, agg in zip(wl.entries, aggs):
                 if agg is not None:
                     prices[entry.symbol.ticker] = agg.close
                 elif entry.current_price is not None:
