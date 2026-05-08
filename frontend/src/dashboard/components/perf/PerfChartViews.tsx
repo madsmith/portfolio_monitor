@@ -71,6 +71,7 @@ export function SparklineView({ rows, chartDays }: { rows: PerfRow[]; chartDays:
                     hoverFraction={hoverFraction}
                     onHoverFraction={(f) => handleHover(row.id, f)}
                     showTooltip={hoveredId === row.id}
+                    tooltipStyle="html"
                   />
                 )}
               </div>
@@ -132,6 +133,7 @@ export function MomentumView({ rows, windowSize, chartDays }: {
                     hoverFraction={hoverFraction}
                     onHoverFraction={(f) => handleHover(row.id, f)}
                     showTooltip={hoveredId === row.id}
+                    tooltipStyle="html"
                   />
                 )}
               </div>
@@ -172,7 +174,6 @@ export function VolumeView({ rows, chartDays }: { rows: PerfRow[]; chartDays: nu
           ? visible![nearestIdx]
           : visible && visible.length > 0 ? visible[visible.length - 1] : null;
         const up = displayDay ? displayDay.close >= displayDay.open : null;
-        const volBg  = up === null ? "bg-[#1e2130]" : up ? "bg-[#152618]" : "bg-[#2c1414]";
         const volTxt = up === null ? "text-slate-400"  : up ? "text-[#3fb950]" : "text-[#f85149]";
 
         return (
@@ -187,6 +188,7 @@ export function VolumeView({ rows, chartDays }: { rows: PerfRow[]; chartDays: nu
                     hoverFraction={hoverFraction}
                     onHoverFraction={(f) => handleHover(row.id, f)}
                     showTooltip={hoveredId === row.id}
+                    tooltipStyle="html"
                   />
                 )}
               </div>
@@ -196,7 +198,7 @@ export function VolumeView({ rows, chartDays }: { rows: PerfRow[]; chartDays: nu
                 ) : row.days === null ? (
                   <span className="text-slate-600 text-xs">loading…</span>
                 ) : (
-                  <span className={`inline-block ${volBg} ${volTxt} rounded px-1.5 py-0.5 text-xs tabular-nums font-medium`}>
+                  <span className={`inline-block ${volTxt} rounded px-1.5 py-0.5 text-xs tabular-nums font-medium`}>
                     {fmtVol(displayDay?.volume ?? null)}
                   </span>
                 )}

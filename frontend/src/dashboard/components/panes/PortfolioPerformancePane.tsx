@@ -129,6 +129,7 @@ export function PortfolioPerformancePane({
   function handleSettings(s: ChartSettings) {
     setSettings(s);
     saveChartSettings(s);
+    setIsChart(true);
   }
 
   useEffect(() => {
@@ -188,7 +189,7 @@ export function PortfolioPerformancePane({
             </button>
             <ChartControlsButton
               isChart={isChart}
-              onToggle={() => setIsChart((v) => !v)}
+              onToggle={() => setIsChart(true)}
               settings={settings}
               onSettings={handleSettings}
             />

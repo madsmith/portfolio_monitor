@@ -119,6 +119,7 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
   function handleSettings(s: ChartSettings) {
     setSettings(s);
     saveChartSettings(s);
+    setIsChart(true);
   }
 
   useEffect(() => {
@@ -192,7 +193,7 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
             <button onClick={() => setIsChart(false)} className={btnClass(!isChart)}>Table</button>
             <ChartControlsButton
               isChart={isChart}
-              onToggle={() => setIsChart((v) => !v)}
+              onToggle={() => setIsChart(true)}
               settings={settings}
               onSettings={handleSettings}
             />

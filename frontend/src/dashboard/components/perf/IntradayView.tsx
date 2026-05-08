@@ -19,16 +19,6 @@ type IntradayEntry = {
   error: boolean;
 };
 
-function fmtTimestamp(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    day: "numeric",
-    timeZone: "America/New_York",
-  });
-}
 
 export function IntradayView({
   rows,
@@ -95,11 +85,12 @@ export function IntradayView({
                 <Sparkline
                   id={`${row.id}-intraday`}
                   values={aggs.map((a) => a.close)}
-                  labels={aggs.map((a) => fmtTimestamp(a.timestamp))}
+                  labels={aggs.map((a) => a.timestamp)}
                   height={40}
                   hoverFraction={hoverFraction}
                   onHoverFraction={(f) => handleHover(row.id, f)}
                   showTooltip={hoveredId === row.id}
+                  tooltipStyle="html"
                 />
               )}
             </div>

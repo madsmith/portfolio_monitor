@@ -1,5 +1,7 @@
 export const SPARK_GREEN = "#4d9060";
 export const SPARK_RED   = "#9c4040";
+export const SPARK_TEXT_GREEN = "#2cb152";
+export const SPARK_TEXT_RED = "#d92a2a";
 
 type SparkSegment = { points: { x: number; y: number }[]; positive: boolean };
 
@@ -36,8 +38,16 @@ function splitAtZero(
   return segments;
 }
 
-// Format a "YYYY-MM-DD" date string to a short "Jan 5" label for hover display.
+// Format an ISO date ("YYYY-MM-DD") or datetime ("YYYY-MM-DDThh:mm:ssZ") label for hover display.
 function fmtShortDate(iso: string): string {
+  if (iso.includes("T")) {
+    const d = new Date(iso);
+    return d.toLocaleString("en-US", {
+      month: "short", day: "numeric",
+      hour: "numeric", minute: "2-digit",
+      timeZone: "America/New_York",
+    });
+  }
   const d = new Date(iso + "T00:00:00Z");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
@@ -85,6 +95,9 @@ export function Sparkline({
   hoverFraction = null,
   onHoverFraction,
   showTooltip = false,
+  tooltipStyle = "svg",
+  textPositiveColor = SPARK_TEXT_GREEN,
+  textNegativeColor = SPARK_TEXT_RED
 }: {
   id: string;
   values: number[];
@@ -92,6 +105,8 @@ export function Sparkline({
   height: number;
   positiveColor?: string;
   negativeColor?: string;
+  textPositiveColor?: string;
+  textNegativeColor?: string;
   /**
    * When true (default), values are raw prices — normalized to % change from the
    * first value before rendering. When false, values are already in % units
@@ -104,6 +119,9 @@ export function Sparkline({
   onHoverFraction?: (fraction: number | null) => void;
   /** When true, renders the % value + date label next to the intercept. */
   showTooltip?: boolean;
+  /** "svg" (default) renders tooltip text inside the SVG; "html" renders it as an
+   *  absolutely-positioned div above the chart so it isn't subject to viewBox scaling. */
+  tooltipStyle?: "svg" | "html";
 }) {
   const W = 400; // internal viewBox width; CSS scales to container
 
@@ -167,6 +185,7 @@ export function Sparkline({
     const pct = pcts[nearestIdx];
     const iy = yScale(pct);
     const color = pct >= 0 ? positiveColor : negativeColor;
+    const textColor = pct >= 0 ? textPositiveColor : textNegativeColor;
     const label = labels?.[nearestIdx];
     // Keep the tooltip text anchor within the horizontal chart bounds
     const tipX = Math.max(PAD.left + 22, Math.min(ix, PAD.left + plotW - 22));
@@ -174,7 +193,7 @@ export function Sparkline({
     const tipText = label
       ? `${tipSign}${pct.toFixed(1)}% · ${fmtShortDate(label)}`
       : `${tipSign}${pct.toFixed(1)}%`;
-    return { ix, iy, color, tipX, tipText };
+    return { ix, iy, color, tipX, tipText, textColor };
   })() : null;
 
   // Report the cursor's x fraction whenever the mouse moves over this SVG.
@@ -196,7 +215,11 @@ export function Sparkline({
     onHoverFraction(fractionFromClientX(e.currentTarget, e.touches[0].clientX));
   }
 
-  return (
+  const tipPct = hoverFraction !== null
+    ? Math.max(4, Math.min(96, hoverFraction * 100))
+    : 50;
+
+  const svg = (
     <svg
       viewBox={`0 0 ${W} ${height}`}
       width="100%"
@@ -209,53 +232,42 @@ export function Sparkline({
       onTouchEnd={onHoverFraction ? () => onHoverFraction(null) : undefined}
     >
       <defs>
-        {/* Positive gradient: opaque at the top (where the line is), fades down to the baseline */}
         <linearGradient id={posId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={positiveColor} stopOpacity="0.25" />
           <stop offset="100%" stopColor={positiveColor} stopOpacity="0.02" />
         </linearGradient>
-        {/* Negative gradient: fades from the baseline down to the line (inverted direction) */}
         <linearGradient id={negId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={negativeColor} stopOpacity="0.02" />
           <stop offset="100%" stopColor={negativeColor} stopOpacity="0.25" />
         </linearGradient>
       </defs>
 
-      {/* Dashed horizontal rule at y=0 (the starting price) */}
       <line x1={PAD.left} y1={zeroY} x2={PAD.left + plotW} y2={zeroY}
         stroke="#404868" strokeWidth={1} strokeDasharray="3 2" opacity={0.6} />
 
-      {/* Filled area between the line and the zero baseline, one path per segment */}
       {segments.map((seg, i) => (
         <path key={i} d={mkArea(seg.points)}
           fill={`url(#${seg.positive ? posId : negId})`} />
       ))}
 
-      {/* The price line itself, drawn on top of the fill */}
       {segments.map((seg, i) => (
         <path key={i} d={mkLine(seg.points)} fill="none"
           stroke={seg.positive ? positiveColor : negativeColor} strokeWidth={1.5}
           strokeLinejoin="round" strokeLinecap="round" />
       ))}
 
-      {/* Hover intercept — rendered on all group members whenever hoverFraction is set */}
       {intercept !== null && (
         <g>
-          {/* Vertical crosshair line spanning the full plot height */}
           <line
             x1={intercept.ix} y1={PAD.top}
             x2={intercept.ix} y2={PAD.top + plotH}
             stroke="#94a3b8" strokeWidth={0.75} strokeDasharray="2 2" opacity={0.7}
           />
-          {/* Dot snapped to the nearest price point on the line */}
           <circle
             cx={intercept.ix} cy={intercept.iy} r={2.5}
             fill={intercept.color} stroke="#0f1117" strokeWidth={1}
           />
-          {/* Tooltip text — only on the sparkline actually under the cursor.
-              Rendered above the viewBox (negative y) and made visible by overflow-visible;
-              the row's padding provides the vertical clearance. */}
-          {showTooltip && (
+          {showTooltip && tooltipStyle === "svg" && (
             <text
               x={intercept.tipX} y={-3}
               textAnchor="middle"
@@ -270,4 +282,22 @@ export function Sparkline({
       )}
     </svg>
   );
+
+  if (tooltipStyle === "html") {
+    return (
+      <div className="relative">
+        {svg}
+        {showTooltip && intercept !== null && (
+          <div
+            className="absolute pointer-events-none text-sm whitespace-nowrap -translate-x-1/2"
+            style={{ left: `${tipPct}%`, bottom: "100%", color: intercept.textColor }}
+          >
+            {intercept.tipText}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return svg;
 }

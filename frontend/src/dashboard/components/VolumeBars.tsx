@@ -20,6 +20,7 @@ function fmtShortDate(iso: string): string {
  *   hoverFraction    — incoming shared x position (0–1)
  *   onHoverFraction  — reports this chart's cursor x fraction to the group coordinator
  *   showTooltip      — when true, renders volume + date label above the chart
+ *   tooltipStyle     — "svg" (default) renders inside SVG; "html" renders as a positioned div
  */
 export function VolumeBars({
   id,
@@ -28,6 +29,7 @@ export function VolumeBars({
   hoverFraction = null,
   onHoverFraction,
   showTooltip = false,
+  tooltipStyle = "svg",
 }: {
   id: string;
   days: { date: string; open: number; close: number; volume: number }[];
@@ -35,6 +37,7 @@ export function VolumeBars({
   hoverFraction?: number | null;
   onHoverFraction?: (fraction: number | null) => void;
   showTooltip?: boolean;
+  tooltipStyle?: "svg" | "html";
 }) {
   void id; // reserved for future gradient/clip-path IDs
 
@@ -56,19 +59,19 @@ export function VolumeBars({
   const N = days.length;
   const maxVol = Math.max(...days.map((d) => d.volume));
 
-  // Same x-scale as Sparkline so hover fractions are interchangeable
   const xScale = (i: number) => PAD.left + (i / (N - 1)) * plotW;
   const barW = Math.max(1, (plotW / (N - 1)) * 0.8);
   const yBar = (v: number) => PAD.top + plotH - (v / maxVol) * plotH;
 
-  const nearestIdx = hoverFraction !== null
-    ? Math.round(hoverFraction * (N - 1))
-    : null;
+  const nearestIdx = hoverFraction !== null ? Math.round(hoverFraction * (N - 1)) : null;
   const ix = hoverFraction !== null ? PAD.left + hoverFraction * plotW : null;
   const hoveredDay = nearestIdx !== null ? days[nearestIdx] : null;
   const tipX = ix !== null
     ? Math.max(PAD.left + 30, Math.min(ix, PAD.left + plotW - 30))
     : null;
+  const tipPct = hoverFraction !== null
+    ? Math.max(4, Math.min(96, hoverFraction * 100))
+    : 50;
 
   function fractionFromClientX(el: SVGSVGElement, clientX: number): number {
     const rect = el.getBoundingClientRect();
@@ -86,7 +89,7 @@ export function VolumeBars({
     onHoverFraction(fractionFromClientX(e.currentTarget, e.touches[0].clientX));
   }
 
-  return (
+  const svg = (
     <svg
       viewBox={`0 0 ${W} ${height}`}
       width="100%"
@@ -124,7 +127,7 @@ export function VolumeBars({
             x2={ix} y2={PAD.top + plotH}
             stroke="#94a3b8" strokeWidth={0.75} strokeDasharray="2 2" opacity={0.7}
           />
-          {showTooltip && hoveredDay && tipX !== null && (
+          {showTooltip && tooltipStyle === "svg" && hoveredDay && tipX !== null && (
             <text
               x={tipX} y={-3}
               textAnchor="middle"
@@ -139,4 +142,22 @@ export function VolumeBars({
       )}
     </svg>
   );
+
+  if (tooltipStyle === "html") {
+    return (
+      <div className="relative">
+        {svg}
+        {showTooltip && hoveredDay && (
+          <div
+            className="absolute pointer-events-none text-sm whitespace-nowrap -translate-x-1/2 text-slate-400"
+            style={{ left: `${tipPct}%`, bottom: "100%" }}
+          >
+            {`${fmtVol(hoveredDay.volume)} · ${fmtShortDate(hoveredDay.date)}`}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return svg;
 }
