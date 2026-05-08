@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Dark navy rounded background -->
+  <rect width="32" height="32" rx="6" fill="#0f1117"/>
+  
+  <!-- Upward trend line in slate-blue, behind letters -->
+  <path d="M 4 27 L 11 17 L 18 20 L 28 5" 
+        stroke="#5060a0" 
+        stroke-width="2" 
+        fill="none" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+        opacity="0.55"/>
+  
+  <!-- Small green up-arrow tip on the trend, echoing the app icon -->
+  <path d="M 24 6 L 28 5 L 28 9" 
+        stroke="#3fb950" 
+        stroke-width="2" 
+        fill="none" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+  
+  <!-- PM letters — large, bold, white -->
+  <text x="16" y="24" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" 
+        font-size="20" 
+        font-weight="900" 
+        fill="#ffffff" 
+        text-anchor="middle"
+        letter-spacing="-1">PM</text>
+</svg>
