@@ -911,7 +911,7 @@ function InnerTab({ label, active, onClick }: { label: string; active: boolean; 
     <button
       onClick={onClick}
       className={[
-        "px-4 py-1.5 text-xs font-medium border-b-2 transition-colors",
+        "px-4 py-1.5 text-xs font-medium border-b-2 transition-colors cursor-pointer",
         active ? "border-slate-400 text-slate-200" : "border-transparent text-slate-500 hover:text-slate-300",
       ].join(" ")}
     >

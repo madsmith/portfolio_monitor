@@ -107,14 +107,14 @@ export function AlertsPane({
           <div className="flex items-center gap-2">
             <button
               onClick={markAllAlertsRead}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              className="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
             >
               Mark all read
             </button>
             <span className="text-slate-600">·</span>
             <button
               onClick={handleClear}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              className="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
             >
               Clear all
             </button>
@@ -131,7 +131,7 @@ export function AlertsPane({
               key={a.id}
               onClick={() => { if (!a.read) markAlertRead(a.id); }}
               className={[
-                "group flex items-center gap-3 py-2.5 px-2 rounded transition-colors cursor-default hover:bg-[#2a2f45]",
+                "group flex items-center gap-3 py-2.5 px-2 rounded transition-colors cursor-pointer hover:bg-[#2a2f45]",
                 a.read ? "opacity-60" : "",
               ].join(" ")}
             >

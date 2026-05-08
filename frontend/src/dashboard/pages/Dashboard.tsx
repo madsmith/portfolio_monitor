@@ -215,7 +215,7 @@ export default function Dashboard() {
             )}
             <button
               onClick={() => { clearToken(); navigate("/login"); }}
-              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+              className="text-xs text-slate-600 hover:text-slate-400 transition-colors cursor-pointer"
             >
               Sign out
             </button>

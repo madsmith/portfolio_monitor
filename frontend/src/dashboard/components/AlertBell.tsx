@@ -61,7 +61,7 @@ function AlertRow({
   return (
     <li
       className={[
-        "group px-1.5 py-1 border-b border-[#2a2f45] last:border-0 cursor-default transition-colors hover:bg-[#323759]",
+        "group px-1.5 py-1 border-b border-[#2a2f45] last:border-0 cursor-pointer transition-colors hover:bg-[#323759]",
         alert.read ? "opacity-60" : "bg-[#1e2130]",
       ].join(" ")}
       onMouseEnter={handleMouseEnter}
@@ -185,7 +185,7 @@ export function AlertBell({
     <div className="relative" ref={panelRef}>
       <button
         onClick={handleOpen}
-        className="relative p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#2a2f45] transition-colors"
+        className="relative p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#2a2f45] transition-colors cursor-pointer"
         title="Alerts"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
