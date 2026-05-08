@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { AlertEntry, AlertWsMessage } from "../api/ws";
+import { ChevronLeftIcon } from "./icons/ChevronLeftIcon";
+import { CheckIcon } from "./icons/CheckIcon";
+import { XIcon } from "./icons/XIcon";
 
 const DISPLAY_LIMIT = 50;
 
@@ -201,11 +204,9 @@ export function AlertBell({
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#404868]">
             <button
               onClick={() => { onViewAll(); setOpen(false); }}
-              className="flex items-center gap-1.5 text-sm font-medium text-slate-200 hover:text-slate-100 transition-colors"
+              className="flex items-center gap-1.5 text-sm font-medium text-slate-200 hover:text-slate-100 transition-colors cursor-pointer"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="15 18 9 12 15 6" />
-              </svg>
+              <ChevronLeftIcon />
               Recent Alerts
             </button>
             {alerts.length > 0 && (
@@ -213,21 +214,16 @@ export function AlertBell({
                 <button
                   onClick={markAllAlertsRead}
                   title="Mark all read"
-                  className="p-1 rounded text-slate-400 hover:text-[#e2e8f0] hover:bg-[#404868] transition-colors"
+                  className="p-1 rounded text-slate-400 hover:text-[#e2e8f0] hover:bg-[#404868] transition-colors cursor-pointer"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckIcon />
                 </button>
                 <button
                   onClick={handleClear}
                   title="Clear all"
-                  className="p-1 rounded text-slate-400 hover:text-[#e2e8f0] hover:bg-[#404868] transition-colors"
+                  className="p-1 rounded text-slate-400 hover:text-[#e2e8f0] hover:bg-[#404868] transition-colors cursor-pointer"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
+                  <XIcon />
                 </button>
               </div>
             )}
