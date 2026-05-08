@@ -1,8 +1,10 @@
 import logfire
+from datetime import datetime, timedelta, timezone
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core import Currency
+from portfolio_monitor.data.database.performance import PortfolioPerformanceModule
 from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.portfolio import Asset, Lot, Portfolio
 from portfolio_monitor.portfolio.service import PortfolioService
@@ -147,6 +149,28 @@ def portfolio_edit_handlers(portfolio_service: PortfolioService):
         return JSONResponse(_portfolio_detail(result))
 
     return add_lot, update_lot, delete_lot, delete_asset_handler
+
+
+def portfolio_performance_handler(
+    portfolio_service: PortfolioService,
+    performance_module: PortfolioPerformanceModule,
+):
+    async def get_portfolio_performance(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        portfolio_id = request.path_params["id"]
+        portfolio = portfolio_service.get_portfolio(portfolio_id, auth)
+        if portfolio is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        try:
+            days = min(int(request.query_params.get("days", 30)), 365)
+        except (ValueError, TypeError):
+            days = 30
+        now = datetime.now(timezone.utc)
+        from_dt = now - timedelta(days=days)
+        snapshots = performance_module.get_range(portfolio_id, from_dt, now)
+        return JSONResponse({"portfolio_id": portfolio_id, "snapshots": snapshots})
+
+    return get_portfolio_performance
 
 
 def portfolio_users_handler(portfolio_service: PortfolioService):

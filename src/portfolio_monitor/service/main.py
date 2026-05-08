@@ -35,6 +35,7 @@ from portfolio_monitor.service.event_hooks import AlertConfigAdapter, WatchlistA
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
 from portfolio_monitor.service.monitor import MonitorService
+from portfolio_monitor.service.performance import PortfolioSnapshotService
 from portfolio_monitor.account import AccountStore
 from portfolio_monitor.session import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
@@ -134,6 +135,8 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         all_watchlist_symbols = list({e.symbol for wl in watchlist_service.get_all_watchlists() for e in wl.entries})
         await prime(config, bus, portfolio_service, data_provider, detection_service, extra_symbols=all_watchlist_symbols)
 
+    snapshot_service = PortfolioSnapshotService(portfolio_service, db.performance)
+
     # Start API server
     ctx = PortfolioMonitorContext(
         config=config,
@@ -187,6 +190,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
     try:
         await alert_manager.connect_all()
         await monitor.start()
+        await snapshot_service.start()
         if cp_server is not None:
             serve_task = asyncio.gather(api_server.serve(), cp_server.serve())
         else:
@@ -209,6 +213,11 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         if vite is not None and vite.returncode is None:
             vite.terminate()
             await vite.wait()
+
+        try:
+            await snapshot_service.stop()
+        except Exception as e:
+            logger.error("Error stopping snapshot service: %s", e)
 
         try:
             if monitor.running:
