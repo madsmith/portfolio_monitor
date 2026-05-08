@@ -1,5 +1,13 @@
 import { getToken } from "./client";
 
+let _wsLogging = false;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(window as any).ws_toggle_logging = () => {
+  _wsLogging = !_wsLogging;
+  console.log(`[ws] logging ${_wsLogging ? "enabled" : "disabled"}`);
+};
+const wsLog = (...args: unknown[]) => { if (_wsLogging) console.log("[ws]", ...args); };
+
 export type AssetSymbol = {
   ticker: string;
   type: string;
@@ -65,6 +73,17 @@ export type UnreadCountMessage = {
   unread_count: number;
 };
 
+export type WatchlistSnapshotEntry = {
+  symbol: AssetSymbol;
+  price: number | null;
+  prev_close: number | null;
+};
+
+export type WatchlistSnapshotMessage = {
+  type: "watchlist_snapshot";
+  entries: WatchlistSnapshotEntry[];
+};
+
 export type AlertWsMessage =
   | AlertEventMessage
   | AlertReadMessage
@@ -80,15 +99,18 @@ type IncomingMessage =
   | PreviousCloseMessage
   | AlertEventMessage
   | AlertReadMessage
+  | AlertDeletedMessage
   | AllAlertsReadMessage
   | AlertsClearedMessage
-  | UnreadCountMessage;
+  | UnreadCountMessage
+  | WatchlistSnapshotMessage;
 
 /** Called once per animation frame with all price updates received since the last flush. */
 type PriceUpdateHandler = (msgs: PriceUpdateMessage[]) => void;
 type PriceHandler = (msg: PriceMessage) => void;
 type PreviousCloseHandler = (msg: PreviousCloseMessage) => void;
 type AlertHandler = (msg: AlertWsMessage) => void;
+type WatchlistSnapshotHandler = (msg: WatchlistSnapshotMessage) => void;
 
 /**
  * Manages a WebSocket connection to /api/v1/ws.
@@ -107,6 +129,7 @@ export class PortfolioWebSocket {
   private priceHandlers: PriceHandler[] = [];
   private previousCloseHandlers: PreviousCloseHandler[] = [];
   private alertHandlers: AlertHandler[] = [];
+  private watchlistSnapshotHandlers: WatchlistSnapshotHandler[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
   // Keyed by "ticker:type" to provide O(1) dedup
@@ -117,6 +140,18 @@ export class PortfolioWebSocket {
 
   private _key(s: AssetSymbol): string {
     return `${s.ticker}:${s.type}`;
+  }
+
+  private _send(payload: Record<string, unknown>): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    wsLog("send", payload);
+    this.ws.send(JSON.stringify(payload));
+    wsLog("sent", payload);
+  }
+
+  private _on<T>(handlers: T[], handler: T): () => void {
+    handlers.push(handler);
+    return () => { const i = handlers.indexOf(handler); if (i >= 0) handlers.splice(i, 1); };
   }
 
   connect(): void {
@@ -137,6 +172,7 @@ export class PortfolioWebSocket {
     ws.onmessage = ({ data }: MessageEvent) => {
       try {
         const msg = JSON.parse(data as string) as IncomingMessage;
+        wsLog("message", msg);
         if (msg.type === "authenticated") {
           if (this.subscriptions.size > 0) {
             ws.send(JSON.stringify({ type: "subscribe", symbols: [...this.subscriptions.values()] }));
@@ -154,6 +190,8 @@ export class PortfolioWebSocket {
           msg.type === "unread_count"
         ) {
           for (const handler of this.alertHandlers) handler(msg);
+        } else if (msg.type === "watchlist_snapshot") {
+          for (const handler of this.watchlistSnapshotHandlers) handler(msg);
         } else if (msg.type === "price_update") {
           this.pendingUpdates.push(msg);
           if (this.rafHandle === null) {
@@ -180,76 +218,29 @@ export class PortfolioWebSocket {
   }
 
   subscribe(symbols: AssetSymbol[]): void {
+    wsLog("subscribe", symbols);
     for (const s of symbols) this.subscriptions.set(this._key(s), s);
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "subscribe", symbols }));
-    }
+    this._send({ type: "subscribe", symbols });
   }
 
   unsubscribe(symbols: AssetSymbol[]): void {
+    wsLog("unsubscribe", symbols);
     for (const s of symbols) this.subscriptions.delete(this._key(s));
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "unsubscribe", symbols }));
-    }
+    this._send({ type: "unsubscribe", symbols });
   }
 
-  requestPrice(symbol: AssetSymbol): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "get_price", symbol }));
-    }
-  }
+  requestPrice(symbol: AssetSymbol): void        { this._send({ type: "get_price", symbol }); }
+  requestPreviousClose(symbol: AssetSymbol): void { this._send({ type: "get_previous_close", symbol }); }
+  requestWatchlistSnapshot(symbols: AssetSymbol[]): void { this._send({ type: "get_watchlist_snapshot", symbols }); }
+  markAlertRead(alertId: string): void            { this._send({ type: "mark_alert_read", alert_id: alertId }); }
+  markAllAlertsRead(): void                       { this._send({ type: "mark_all_alerts_read" }); }
+  deleteAlert(alertId: string): void              { this._send({ type: "delete_alert", alert_id: alertId }); }
 
-  requestPreviousClose(symbol: AssetSymbol): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "get_previous_close", symbol }));
-    }
-  }
-
-  markAlertRead(alertId: string): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "mark_alert_read", alert_id: alertId }));
-    }
-  }
-
-  markAllAlertsRead(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "mark_all_alerts_read" }));
-    }
-  }
-
-  deleteAlert(alertId: string): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "delete_alert", alert_id: alertId }));
-    }
-  }
-
-  onPrice(handler: PriceHandler): () => void {
-    this.priceHandlers.push(handler);
-    return () => {
-      this.priceHandlers = this.priceHandlers.filter((h) => h !== handler);
-    };
-  }
-
-  onPreviousClose(handler: PreviousCloseHandler): () => void {
-    this.previousCloseHandlers.push(handler);
-    return () => {
-      this.previousCloseHandlers = this.previousCloseHandlers.filter((h) => h !== handler);
-    };
-  }
-
-  onAlert(handler: AlertHandler): () => void {
-    this.alertHandlers.push(handler);
-    return () => {
-      this.alertHandlers = this.alertHandlers.filter((h) => h !== handler);
-    };
-  }
-
-  onPriceUpdate(handler: PriceUpdateHandler): () => void {
-    this.handlers.push(handler);
-    return () => {
-      this.handlers = this.handlers.filter((h) => h !== handler);
-    };
-  }
+  onPriceUpdate(handler: PriceUpdateHandler): () => void       { return this._on(this.handlers, handler); }
+  onPrice(handler: PriceHandler): () => void                   { return this._on(this.priceHandlers, handler); }
+  onPreviousClose(handler: PreviousCloseHandler): () => void   { return this._on(this.previousCloseHandlers, handler); }
+  onAlert(handler: AlertHandler): () => void                   { return this._on(this.alertHandlers, handler); }
+  onWatchlistSnapshot(handler: WatchlistSnapshotHandler): () => void { return this._on(this.watchlistSnapshotHandlers, handler); }
 
   close(): void {
     this.closed = true;
