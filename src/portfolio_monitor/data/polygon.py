@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from polygon import RESTClient as PolygonRESTClient, BadResponse
 from polygon.rest.aggs import Agg, DailyOpenCloseAgg
 from urllib3 import HTTPResponse
-from urllib3.exceptions import RequestError
+from urllib3.exceptions import MaxRetryError, NameResolutionError, NewConnectionError, RequestError
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core import eastern_midnight
@@ -53,6 +53,40 @@ class PolygonDataProvider(DataProvider):
         self._rate_limit_sleep: float = 12.1  # Sleep time when rate limited (slightly over 12 seconds per Polygon docs)
         self._max_retries: int = 5
         self._api_semaphore: asyncio.Semaphore = asyncio.Semaphore(config.polygon_max_concurrent)
+        self._api_unavailable_until: datetime | None = None
+        self._connectivity_failure_count: int = 0
+        self._connectivity_unavailable_window: timedelta = timedelta(seconds=60)
+
+    def _is_connectivity_error(self, exc: RequestError) -> bool:
+        return isinstance(exc, MaxRetryError) and isinstance(exc.reason, (NameResolutionError, NewConnectionError))
+
+    async def _on_request_error(self, exc: RequestError, attempt: int) -> None:
+        """Sleep and optionally mark the API unavailable after a request failure."""
+        if self._is_connectivity_error(exc):
+            self._connectivity_failure_count += 1
+            if self._connectivity_failure_count >= 2:
+                self._api_unavailable_until = datetime.now(ZoneInfo("UTC")) + self._connectivity_unavailable_window
+                logger.warning(
+                    "Polygon API unreachable (DNS/connection failure) — pausing all requests for %ds",
+                    int(self._connectivity_unavailable_window.total_seconds()),
+                )
+            delay = min(5.0 * (2 ** attempt), 60.0)
+            await asyncio.sleep(delay)
+        else:
+            await asyncio.sleep(self._rate_limit_sleep)
+
+    def _api_is_unavailable(self) -> bool:
+        if self._api_unavailable_until is None:
+            return False
+        if datetime.now(ZoneInfo("UTC")) < self._api_unavailable_until:
+            return True
+        self._api_unavailable_until = None
+        self._connectivity_failure_count = 0
+        return False
+
+    def _record_api_success(self) -> None:
+        self._connectivity_failure_count = 0
+        self._api_unavailable_until = None
 
     @logfire.instrument("polygon.get_aggregate {symbol.ticker}")
     async def get_aggregate(
@@ -86,6 +120,9 @@ class PolygonDataProvider(DataProvider):
 
             aggs = None
             for attempt in range(self._max_retries):
+                if self._api_is_unavailable():
+                    logger.warning("Skipping Polygon fetch for %s — API marked unavailable", symbol)
+                    return current
                 try:
                     logger.debug("Fetching aggregate for %s from API (attempt %d)", symbol, attempt + 1)
                     async with self._api_semaphore:
@@ -99,13 +136,11 @@ class PolygonDataProvider(DataProvider):
                                 to=to_time,
                                 limit=1,
                             )
+                    self._record_api_success()
                     break
-                except RequestError:
+                except RequestError as e:
                     if attempt < self._max_retries - 1:
-                        logger.warning(
-                            f"Rate limit hit for {symbol}, waiting {self._rate_limit_sleep} seconds"
-                        )
-                        await asyncio.sleep(self._rate_limit_sleep)
+                        await self._on_request_error(e, attempt)
                     else:
                         raise
 
@@ -507,6 +542,9 @@ class PolygonDataProvider(DataProvider):
             aggs: list[Agg] | HTTPResponse | None = None
             # Fetch data from API with retry
             for attempt in range(self._max_retries):
+                if self._api_is_unavailable():
+                    logger.warning("Skipping Polygon fetch for %s — API marked unavailable", symbol)
+                    return result
                 try:
                     logger.debug("Fetching range for %s from API (attempt %d): %s to %s (span: %s)", symbol, attempt + 1, from_, to, effective_span)
                     async with self._api_semaphore:
@@ -519,13 +557,11 @@ class PolygonDataProvider(DataProvider):
                                 from_=from_,
                                 to=to,
                             )
+                    self._record_api_success()
                     break
-                except RequestError:
+                except RequestError as e:
                     if attempt < self._max_retries - 1:
-                        logger.warning(
-                            f"Rate limit hit for {symbol}, waiting {self._rate_limit_sleep} seconds"
-                        )
-                        await asyncio.sleep(self._rate_limit_sleep)
+                        await self._on_request_error(e, attempt)
                     else:
                         raise
 
