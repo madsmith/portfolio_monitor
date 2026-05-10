@@ -62,6 +62,7 @@ class AlertConfigAdapter:
                 ticker=db_rule.ticker or "",
                 kind=db_rule.kind,
                 args=db_rule.args,
+                asset_type=db_rule.asset_type,
             )
             self._register_rule(db_rule.owner, service_rule)
 
@@ -89,7 +90,7 @@ class AlertConfigAdapter:
     # ------------------------------------------------------------------
 
     def _register_rule(self, username: str, rule: ServiceAlertRule) -> None:
-        symbols = self._symbols_for_rule(rule.ticker, rule.args.get("asset_type"), username)
+        symbols = self._symbols_for_rule(rule.ticker, rule.asset_type, username)
         if not symbols:
             logger.warning(
                 "Rule %s (ticker=%r) matched no known symbols — skipping",
@@ -123,7 +124,7 @@ class AlertConfigAdapter:
         for db_rule in self._alerts_module.get_rules(owner):
             if db_rule.ticker and db_rule.ticker != symbol.ticker:
                 continue
-            asset_type_hint = db_rule.args.get("asset_type")
+            asset_type_hint = db_rule.asset_type
             if asset_type_hint and asset_type_hint != symbol.asset_type.value:
                 continue
             detector = DetectorRegistry.create_detector(db_rule.kind, db_rule.args)

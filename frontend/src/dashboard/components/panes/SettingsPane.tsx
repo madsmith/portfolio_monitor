@@ -480,6 +480,13 @@ const ASSET_TYPE_OPTIONS = [
   { value: "CURRENCY", label: "Currency" },
 ];
 
+const SCOPE_OPTIONS = [
+  { value: "",         label: "All assets" },
+  { value: "stock",    label: "Stocks only" },
+  { value: "crypto",   label: "Crypto only" },
+  { value: "currency", label: "Currencies only" },
+];
+
 function targetPlaceholder(type: string): string {
   if (type === "matrix") return "@you:matrix.server.com";
   return "Target";
@@ -499,6 +506,7 @@ function AlertConfigsSection() {
   const [addRuleArgs, setAddRuleArgs] = useState<Record<string, string>>({});
   const [addRuleTicker, setAddRuleTicker] = useState("");
   const [addRuleAssetType, setAddRuleAssetType] = useState("STOCK");
+  const [addRuleGlobalScope, setAddRuleGlobalScope] = useState("");
   const [addRuleSaving, setAddRuleSaving] = useState(false);
   const [addRuleError, setAddRuleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -620,6 +628,7 @@ function AlertConfigsSection() {
     setAddRuleKind(first?.name ?? "");
     setAddRuleArgs(args);
     setAddRuleTicker("");
+    setAddRuleGlobalScope("");
     setAddRuleError(null);
     setEditingRuleId(null);
     setAddingRuleMode(mode);
@@ -658,7 +667,7 @@ function AlertConfigsSection() {
       const args = parseRuleArgs(addRuleKind, addRuleArgs);
       const rule = await api.addAlertRule({
         ticker: addingRuleMode === "asset" ? addRuleTicker.trim().toUpperCase() : "",
-        asset_type: addingRuleMode === "asset" ? addRuleAssetType : undefined,
+        asset_type: addingRuleMode === "asset" ? addRuleAssetType : (addRuleGlobalScope || undefined),
         kind: addRuleKind,
         args,
       });
@@ -820,6 +829,12 @@ function AlertConfigsSection() {
                   <TextInput value={addRuleArgs[arg.name] ?? ""} onChange={(v) => setAddRuleArgs((prev) => ({ ...prev, [arg.name]: v }))} className="w-full" />
                 </div>
               ))}
+              {addingRuleMode === "global" && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wide">Scope</label>
+                  <DropdownSelector value={addRuleGlobalScope} onChange={setAddRuleGlobalScope} options={SCOPE_OPTIONS} className="w-36" />
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <Button variant="primary" onClick={handleAddRule} disabled={addRuleSaving}>{addRuleSaving ? "Adding…" : "Add"}</Button>
@@ -848,6 +863,14 @@ function AlertConfigsSection() {
                       />
                     </div>
                   ))}
+                  {!rule.ticker && (
+                    <div className="flex-none ml-auto">
+                      <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1">Scope</label>
+                      <span className="inline-block px-2 py-1 text-sm text-slate-400 bg-[#0f1117] border border-[#404868] rounded">
+                        {SCOPE_OPTIONS.find((o) => o.value === (rule.asset_type ?? ""))?.label ?? "All assets"}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <Button variant="primary" onClick={() => handleSaveRule(rule)} disabled={editRuleSaving}>{editRuleSaving ? "Saving…" : "Save"}</Button>
@@ -860,6 +883,11 @@ function AlertConfigsSection() {
             <div key={rule.id} className="group flex items-center bg-[#161a27] border border-[#404868] rounded-lg px-4 py-2 hover:bg-[#1e2338] hover:border-[#555c7a] transition-colors">
               {rule.ticker && <span className="w-16 shrink-0 text-sm text-slate-200 font-bold truncate">{rule.ticker}</span>}
               <span className="w-44 shrink-0 text-sm text-slate-200 truncate">{det?.display_name || rule.kind}</span>
+              {!rule.ticker && rule.asset_type && (
+                <span className="shrink-0 mr-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#2a2f45] text-slate-400 uppercase tracking-wide">
+                  {rule.asset_type}
+                </span>
+              )}
               <span className="shrink-0">{ruleValueDisplay(rule)}</span>
               <span className="flex-1" />
               <div className="relative shrink-0 ml-3 w-16 flex justify-end">

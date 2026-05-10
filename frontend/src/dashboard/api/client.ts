@@ -115,6 +115,7 @@ export type PortfolioUsers = {
 export type AlertRule = {
   id: string;
   ticker: string;
+  asset_type: string | null;
   kind: string;
   args: Record<string, unknown>;
 };

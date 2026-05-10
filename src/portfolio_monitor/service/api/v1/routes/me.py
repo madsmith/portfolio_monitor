@@ -79,7 +79,7 @@ def me_handler(
         if DetectorRegistry.get_detector_class(kind) is None:
             return JSONResponse({"error": f"unknown detector kind: {kind}"}, status_code=400)
         db_rule = alerts_module.add_rule(username, ticker or None, asset_type, kind, args)
-        service_rule = ServiceAlertRule(id=db_rule.id, ticker=ticker, kind=kind, args=args)
+        service_rule = ServiceAlertRule(id=db_rule.id, ticker=ticker, kind=kind, args=args, asset_type=asset_type)
         await bus.publish(AlertRuleAdded(username=username, rule=service_rule))
         return JSONResponse(
             {"id": db_rule.id, "ticker": ticker, "asset_type": asset_type, "kind": kind, "args": args},
@@ -100,8 +100,8 @@ def me_handler(
             return JSONResponse({"error": "invalid request body"}, status_code=400)
         new_args = body.get("args", existing.args)
         alerts_module.update_rule(rule_id, new_args)
-        old_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=existing.args)
-        new_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=new_args)
+        old_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=existing.args, asset_type=existing.asset_type)
+        new_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=new_args, asset_type=existing.asset_type)
         await bus.publish(AlertRuleUpdated(username=username, old_rule=old_rule, new_rule=new_rule))
         return JSONResponse({"id": rule_id, "args": new_args})
 
@@ -115,7 +115,7 @@ def me_handler(
             return JSONResponse({"error": "not found"}, status_code=404)
         alerts_module.delete_rule(rule_id, username)
         service_rule = ServiceAlertRule(
-            id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=existing.args
+            id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=existing.args, asset_type=existing.asset_type
         )
         await bus.publish(AlertRuleRemoved(username=username, rule=service_rule))
         return JSONResponse({"ok": True})
