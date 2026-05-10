@@ -164,6 +164,12 @@ export type DailyOpenClose = {
   after_hours: number | null;
 };
 
+export type PerformanceSnapshot = {
+  recorded_at: string;
+  total_value: number | null;
+  cost_basis: number;
+};
+
 export type DailyClose = {
   date: string;
   open: number;
@@ -247,6 +253,9 @@ export const api = {
 
   getPortfolio: (id: string): Promise<PortfolioDetail> =>
     authGet(`/api/v1/portfolio/${id}`),
+
+  getPortfolioPerformance: (id: string, days = 1): Promise<{ portfolio_id: string; snapshots: PerformanceSnapshot[] }> =>
+    authGet(`/api/v1/portfolio/${encodeURIComponent(id)}/performance?days=${days}`),
 
   addPortfolioLot: (id: string, assetType: string, ticker: string, lot: LotInput): Promise<PortfolioDetail> =>
     authPost(`/api/v1/portfolio/${id}/asset/${assetType}/${ticker}/lots`, lot),

@@ -1,6 +1,7 @@
 import type { PortfolioSummary } from "../../api/client";
 import { fmtMoney, fmtPct, fmtChg, plColor, type TodayChange } from "../../lib/formatters";
 import { DataTable, type ColDef } from "../DataTable";
+import { PortfolioPerformanceCharts } from "../PortfolioPerformanceChart";
 
 export function OverviewPane({
   portfolios,
@@ -29,35 +30,40 @@ export function OverviewPane({
   ];
 
   return (
-    <DataTable
-      columns={columns}
-      rows={portfolios}
-      getKey={(p) => p.id}
-      renderRow={(p) => {
-        const chg = todayChange[p.id] ?? null;
-        return (
-          <tr
-            onClick={() => onSelect(p.id)}
-            className="border-b border-[#2a2d3a] hover:bg-[#252a40] cursor-pointer transition-colors last:border-b-0"
-          >
-            <td className="px-3 py-3 font-semibold text-slate-100">{p.name}</td>
-            <td className="px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_value)}</td>
-            <td className={`px-3 py-3 text-right tabular-nums ${plColor(chg?.value ?? null)}`}>
-              {chg ? (
-                <>
-                  {fmtChg(chg.value)}
-                  <span className="hidden sm:inline"> ({fmtPct(chg.pct)})</span>
-                </>
-              ) : "—"}
-            </td>
-            <td className={`hidden md:table-cell px-3 py-3 text-right tabular-nums font-medium ${plColor(p.total_profit_loss)}`}>
-              {fmtMoney(p.total_profit_loss)} ({fmtPct(p.profit_loss_percentage)})
-            </td>
-            <td className="hidden lg:table-cell px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_cost_basis)}</td>
-            <td className="px-3 py-3 text-right text-slate-600 text-base">→</td>
-          </tr>
-        );
-      }}
-    />
+    <>
+      <DataTable
+        columns={columns}
+        rows={portfolios}
+        getKey={(p) => p.id}
+        renderRow={(p) => {
+          const chg = todayChange[p.id] ?? null;
+          return (
+            <tr
+              onClick={() => onSelect(p.id)}
+              className="border-b border-[#2a2d3a] hover:bg-[#252a40] cursor-pointer transition-colors last:border-b-0"
+            >
+              <td className="px-3 py-3 font-semibold text-slate-100">{p.name}</td>
+              <td className="px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_value)}</td>
+              <td className={`px-3 py-3 text-right tabular-nums ${plColor(chg?.value ?? null)}`}>
+                {chg ? (
+                  <>
+                    {fmtChg(chg.value)}
+                    <span className="hidden sm:inline"> ({fmtPct(chg.pct)})</span>
+                  </>
+                ) : "—"}
+              </td>
+              <td className={`hidden md:table-cell px-3 py-3 text-right tabular-nums font-medium ${plColor(p.total_profit_loss)}`}>
+                {fmtMoney(p.total_profit_loss)} ({fmtPct(p.profit_loss_percentage)})
+              </td>
+              <td className="hidden lg:table-cell px-3 py-3 text-right tabular-nums text-slate-300">{fmtMoney(p.total_cost_basis)}</td>
+              <td className="px-3 py-3 text-right text-slate-600 text-base">→</td>
+            </tr>
+          );
+        }}
+      />
+      <div className="mt-8 border-t border-[#2a2d3a] pt-6">
+        <PortfolioPerformanceCharts portfolios={portfolios} />
+      </div>
+    </>
   );
 }
