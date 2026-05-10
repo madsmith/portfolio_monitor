@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   getRole,
@@ -513,6 +513,11 @@ function AlertConfigsSection() {
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [exclusionRuleId, setExclusionRuleId] = useState<string | null>(null);
+  const [addExclusionTicker, setAddExclusionTicker] = useState("");
+  const [addExclusionAssetType, setAddExclusionAssetType] = useState("STOCK");
+  const [addExclusionSaving, setAddExclusionSaving] = useState(false);
+  const exclusionInputRef = useRef<HTMLInputElement>(null);
 
   // add/edit form state
   const [formChannelId, setFormChannelId] = useState("");
@@ -589,8 +594,41 @@ function AlertConfigsSection() {
     try {
       await api.deleteAlertRule(id);
       setRules((prev) => prev.filter((r) => r.id !== id));
+      if (exclusionRuleId === id) setExclusionRuleId(null);
     } catch { alert("Failed to delete rule"); }
     finally { setDeletingRuleId(null); }
+  }
+
+  async function handleAddExclusion(ruleId: string) {
+    const ticker = addExclusionTicker.trim().toUpperCase();
+    if (!ticker) return;
+    setAddExclusionSaving(true);
+    try {
+      await api.addRuleExclusion(ruleId, ticker, addExclusionAssetType);
+      setRules((prev) => prev.map((r) => r.id === ruleId
+        ? {
+            ...r,
+            excluded_tickers: [
+              ...(r.excluded_tickers ?? []).filter((e) => !(e.ticker === ticker && e.asset_type === addExclusionAssetType)),
+              { ticker, asset_type: addExclusionAssetType },
+            ],
+          }
+        : r
+      ));
+      setAddExclusionTicker("");
+      exclusionInputRef.current?.focus();
+    } catch { alert("Failed to add exclusion"); }
+    finally { setAddExclusionSaving(false); }
+  }
+
+  async function handleRemoveExclusion(ruleId: string, ticker: string, asset_type: string) {
+    try {
+      await api.removeRuleExclusion(ruleId, ticker, asset_type);
+      setRules((prev) => prev.map((r) => r.id === ruleId
+        ? { ...r, excluded_tickers: (r.excluded_tickers ?? []).filter((e) => !(e.ticker === ticker && e.asset_type === asset_type)) }
+        : r
+      ));
+    } catch { alert("Failed to remove exclusion"); }
   }
 
   function handleStartEditRule(rule: AlertRule) {
@@ -845,6 +883,7 @@ function AlertConfigsSection() {
 
         function renderRuleRow(rule: AlertRule) {
           const det = detectors.find((d) => d.name === rule.kind);
+          const isGlobal = !rule.ticker;
           if (editingRuleId === rule.id) {
             return (
               <div key={rule.id} className="bg-[#161a27] border border-[#404868] rounded-lg px-4 py-3 mb-1">
@@ -879,24 +918,93 @@ function AlertConfigsSection() {
               </div>
             );
           }
+          const exclusionOpen = isGlobal && exclusionRuleId === rule.id;
+          const exclusions = rule.excluded_tickers ?? [];
+          const toggleExclusions = () => { setExclusionRuleId((prev) => prev === rule.id ? null : rule.id); setAddExclusionTicker(""); };
           return (
-            <div key={rule.id} className="group flex items-center bg-[#161a27] border border-[#404868] rounded-lg px-4 py-2 hover:bg-[#1e2338] hover:border-[#555c7a] transition-colors">
-              {rule.ticker && <span className="w-16 shrink-0 text-sm text-slate-200 font-bold truncate">{rule.ticker}</span>}
-              <span className="w-44 shrink-0 text-sm text-slate-200 truncate">{det?.display_name || rule.kind}</span>
-              {!rule.ticker && rule.asset_type && (
-                <span className="shrink-0 mr-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#2a2f45] text-slate-400 uppercase tracking-wide">
-                  {rule.asset_type}
-                </span>
-              )}
-              <span className="shrink-0">{ruleValueDisplay(rule)}</span>
-              <span className="flex-1" />
-              <div className="relative shrink-0 ml-3 w-16 flex justify-end">
-                <span className="text-[10px] text-slate-600 font-mono group-hover:invisible">{rule.id.slice(0, 8)}</span>
-                <div className="absolute inset-0 hidden group-hover:flex items-center justify-end gap-3">
-                  <button className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer text-sm leading-none" title="Edit" onClick={() => handleStartEditRule(rule)}>✎</button>
-                  <button className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer text-sm leading-none disabled:opacity-40" title="Delete" disabled={deletingRuleId === rule.id} onClick={() => handleDeleteRule(rule.id)}>✕</button>
+            <div key={rule.id}>
+              <div className="group flex items-center bg-[#161a27] border border-[#404868] rounded-lg px-4 py-2 hover:bg-[#1e2338] hover:border-[#555c7a] transition-colors">
+                {rule.ticker && <span className="w-16 shrink-0 text-sm text-slate-200 font-bold truncate">{rule.ticker}</span>}
+                <span className="w-44 shrink-0 text-sm text-slate-200 truncate">{det?.display_name || rule.kind}</span>
+                {!rule.ticker && rule.asset_type && (
+                  <span className="shrink-0 mr-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#2a2f45] text-slate-400 uppercase tracking-wide">
+                    {rule.asset_type}
+                  </span>
+                )}
+                <span className="shrink-0">{ruleValueDisplay(rule)}</span>
+                <span className="flex-1" />
+                {isGlobal && exclusions.length > 0 && (
+                  <div className="group/excl relative shrink-0 mr-3">
+                    <button
+                      onClick={toggleExclusions}
+                      className={`text-[10px] font-medium cursor-pointer transition-colors ${exclusionOpen ? "text-amber-400" : "text-slate-500 hover:text-slate-300"}`}
+                    >
+                      Exclusions {exclusions.length}
+                    </button>
+                    {!exclusionOpen && (
+                      <div className="absolute bottom-full right-0 mb-2 hidden group-hover/excl:flex flex-col gap-1.5 bg-[#1e2338] border border-[#404868] rounded-lg p-3 z-20 min-w-[120px] shadow-xl pointer-events-none">
+                        {exclusions.map((e) => (
+                          <div key={`${e.ticker}:${e.asset_type}`} className="flex items-baseline gap-2">
+                            <span className="text-xs text-slate-200 font-mono font-medium">{e.ticker}</span>
+                            <span className="text-[10px] text-slate-500 uppercase tracking-wide">{e.asset_type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="relative shrink-0 w-16 flex justify-end">
+                  <span className="text-[10px] text-slate-600 font-mono group-hover:invisible">{rule.id.slice(0, 8)}</span>
+                  <div className="absolute inset-0 hidden group-hover:flex items-center justify-end gap-3">
+                    {isGlobal && (
+                      <button
+                        className={`transition-colors cursor-pointer text-sm leading-none font-bold ${exclusionOpen ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}
+                        title="Symbol exclusions"
+                        onClick={toggleExclusions}
+                      >!</button>
+                    )}
+                    <button className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer text-sm leading-none" title="Edit" onClick={() => handleStartEditRule(rule)}>✎</button>
+                    <button className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer text-sm leading-none disabled:opacity-40" title="Delete" disabled={deletingRuleId === rule.id} onClick={() => handleDeleteRule(rule.id)}>✕</button>
+                  </div>
                 </div>
               </div>
+              {exclusionOpen && (
+                <div className="ml-4 mt-1 mb-1 bg-[#0f1117] border border-[#404868] rounded-lg px-4 py-3">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Excluded symbols</p>
+                  <div className="flex flex-wrap gap-2 mb-3 min-h-[36px] items-start">
+                    {exclusions.length === 0
+                      ? <span className="text-sm text-slate-600 self-center">None — rule fires on all symbols</span>
+                      : exclusions.map((e) => (
+                        <span
+                          key={`${e.ticker}:${e.asset_type}`}
+                          className="group/pill relative flex flex-col items-center px-2.5 pt-1.5 pb-1 rounded bg-[#2a2f45] min-w-[40px]"
+                        >
+                          <span className="text-sm text-slate-200 font-mono font-medium leading-tight">{e.ticker}</span>
+                          <span className="text-xs text-slate-500 uppercase tracking-wide leading-tight">{e.asset_type}</span>
+                          <button
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[#1e2338] border border-[#404868] text-[9px] text-slate-500 hover:bg-red-900 hover:text-red-300 hover:border-red-700 transition-colors cursor-pointer flex items-center justify-center opacity-0 group-hover/pill:opacity-100"
+                            onClick={() => handleRemoveExclusion(rule.id, e.ticker, e.asset_type)}
+                          >✕</button>
+                        </span>
+                      ))
+                    }
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      ref={exclusionInputRef}
+                      type="text"
+                      value={addExclusionTicker}
+                      onChange={(e) => setAddExclusionTicker(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleAddExclusion(rule.id); }}
+                      placeholder="AAPL"
+                      disabled={addExclusionSaving}
+                      className="w-24 bg-[#0f1117] border border-[#404868] rounded px-3 py-1.5 text-sm text-slate-200 uppercase focus:outline-none focus:border-slate-400 disabled:opacity-50"
+                    />
+                    <DropdownSelector value={addExclusionAssetType} onChange={setAddExclusionAssetType} options={ASSET_TYPE_OPTIONS} className="w-28" />
+                    <Button variant="ghost" onClick={() => setExclusionRuleId(null)}>Done</Button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         }

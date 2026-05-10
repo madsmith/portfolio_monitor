@@ -65,6 +65,8 @@ class APIv1ServiceApp(Router):
             add_subscription,
             update_subscription,
             delete_subscription,
+            add_rule_exclusion,
+            remove_rule_exclusion,
         ) = me_handler(
             account_store, session_store, config.dashboard_username, ctx.bus,
             alerts_module=ctx.db.alerts,
@@ -119,6 +121,8 @@ class APIv1ServiceApp(Router):
                 Route("/me/alert-config/rules", require_auth(add_alert_rule), methods=["POST"]),
                 Route("/me/alert-config/rules/{rule_id}", require_auth(update_alert_rule), methods=["PUT"]),
                 Route("/me/alert-config/rules/{rule_id}", require_auth(delete_alert_rule), methods=["DELETE"]),
+                Route("/me/alert-config/rules/{rule_id}/exclusions", require_auth(add_rule_exclusion), methods=["POST"]),
+                Route("/me/alert-config/rules/{rule_id}/exclusions/{asset_type}/{ticker}", require_auth(remove_rule_exclusion), methods=["DELETE"]),
                 Route("/me/alert-config/subscriptions", require_auth(add_subscription), methods=["POST"]),
                 Route("/me/alert-config/subscriptions/{sub_id}", require_auth(update_subscription), methods=["PUT"]),
                 Route("/me/alert-config/subscriptions/{sub_id}", require_auth(delete_subscription), methods=["DELETE"]),

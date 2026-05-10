@@ -70,6 +70,7 @@ class AlertsModule(DatabaseModule):
             MigrationStep(version=1, apply=self._migrate_v1),
             MigrationStep(version=2, apply=self._migrate_v2),
             MigrationStep(version=3, apply=self._migrate_v3),
+            MigrationStep(version=4, apply=self._migrate_v4),
         ]
 
     def _migrate_v1(self, conn: sqlite3.Connection) -> None:
@@ -117,6 +118,16 @@ class AlertsModule(DatabaseModule):
                 rule_id         TEXT NOT NULL,
                 subscription_id TEXT NOT NULL,
                 PRIMARY KEY (rule_id, subscription_id)
+            );
+        """)
+
+    def _migrate_v4(self, conn: sqlite3.Connection) -> None:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS alert_rule_ticker_exclusions (
+                rule_id    TEXT NOT NULL,
+                ticker     TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                PRIMARY KEY (rule_id, ticker, asset_type)
             );
         """)
 
@@ -202,7 +213,37 @@ class AlertsModule(DatabaseModule):
                 "DELETE FROM alert_rules WHERE id = ? AND owner = ?",
                 (id, owner),
             )
+            if cursor.rowcount > 0:
+                self._conn.execute(
+                    "DELETE FROM alert_rule_ticker_exclusions WHERE rule_id = ?", (id,)
+                )
         return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # alert_rule_ticker_exclusions  (symbol exclusions for global rules)
+    # ------------------------------------------------------------------
+
+    def get_rule_exclusions(self, rule_id: str) -> list[dict[str, str]]:
+        rows = self._conn.execute(
+            "SELECT ticker, asset_type FROM alert_rule_ticker_exclusions WHERE rule_id = ?", (rule_id,)
+        ).fetchall()
+        return [{"ticker": r["ticker"], "asset_type": r["asset_type"]} for r in rows]
+
+    def add_rule_exclusion(self, rule_id: str, ticker: str, asset_type: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO alert_rule_ticker_exclusions (rule_id, ticker, asset_type)"
+                " VALUES (?, ?, ?)",
+                (rule_id, ticker, asset_type),
+            )
+
+    def remove_rule_exclusion(self, rule_id: str, ticker: str, asset_type: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM alert_rule_ticker_exclusions"
+                " WHERE rule_id = ? AND ticker = ? AND asset_type = ?",
+                (rule_id, ticker, asset_type),
+            )
 
     # ------------------------------------------------------------------
     # alert_channel_configs  (admin-managed, no owner filter)

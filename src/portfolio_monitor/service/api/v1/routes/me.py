@@ -47,8 +47,14 @@ def me_handler(
             })
         return JSONResponse({
             "rules": [
-                {"id": r.id, "ticker": r.ticker or "", "asset_type": r.asset_type,
-                 "kind": r.kind, "args": r.args}
+                {
+                    "id": r.id,
+                    "ticker": r.ticker or "",
+                    "asset_type": r.asset_type,
+                    "kind": r.kind,
+                    "args": r.args,
+                    "excluded_tickers": alerts_module.get_rule_exclusions(r.id) if not r.ticker else [],
+                }
                 for r in db_rules
             ],
             "subscriptions": sub_list,
@@ -175,6 +181,40 @@ def me_handler(
         alerts_module.delete_subscription(sub_id, username)
         return JSONResponse({"ok": True})
 
+    @logfire.instrument("api.me.alert_config.add_rule_exclusion")
+    async def add_rule_exclusion(request: Request) -> JSONResponse:
+        username = request.user.username
+        rule_id = request.path_params["rule_id"]
+        existing = alerts_module.get_rule(rule_id)
+        if existing is None or existing.owner != username:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        if existing.ticker:
+            return JSONResponse({"error": "exclusions only apply to global rules"}, status_code=400)
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid request body"}, status_code=400)
+        ticker = str(body.get("ticker", "")).strip().upper()
+        asset_type = str(body.get("asset_type", "")).strip().upper()
+        if not ticker:
+            return JSONResponse({"error": "ticker is required"}, status_code=400)
+        if not asset_type:
+            return JSONResponse({"error": "asset_type is required"}, status_code=400)
+        alerts_module.add_rule_exclusion(rule_id, ticker, asset_type)
+        return JSONResponse({"ok": True, "ticker": ticker, "asset_type": asset_type}, status_code=201)
+
+    @logfire.instrument("api.me.alert_config.remove_rule_exclusion")
+    async def remove_rule_exclusion(request: Request) -> JSONResponse:
+        username = request.user.username
+        rule_id = request.path_params["rule_id"]
+        ticker = request.path_params["ticker"].upper()
+        asset_type = request.path_params["asset_type"].upper()
+        existing = alerts_module.get_rule(rule_id)
+        if existing is None or existing.owner != username:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        alerts_module.remove_rule_exclusion(rule_id, ticker, asset_type)
+        return JSONResponse({"ok": True})
+
     return (
         me,
         get_my_alerts,
@@ -185,4 +225,6 @@ def me_handler(
         add_subscription,
         update_subscription,
         delete_subscription,
+        add_rule_exclusion,
+        remove_rule_exclusion,
     )

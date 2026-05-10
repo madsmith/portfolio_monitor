@@ -112,12 +112,18 @@ export type PortfolioUsers = {
   permissions: Record<string, PortfolioUserPermission>;
 };
 
+export type AlertRuleExclusion = {
+  ticker: string;
+  asset_type: string;
+};
+
 export type AlertRule = {
   id: string;
   ticker: string;
   asset_type: string | null;
   kind: string;
   args: Record<string, unknown>;
+  excluded_tickers: AlertRuleExclusion[];
 };
 
 export type AlertChannelConfig = {
@@ -333,6 +339,12 @@ export const api = {
 
   deleteAlertRule: (id: string): Promise<{ ok: boolean }> =>
     authDelete(`/api/v1/me/alert-config/rules/${encodeURIComponent(id)}`),
+
+  addRuleExclusion: (ruleId: string, ticker: string, asset_type: string): Promise<{ ok: boolean; ticker: string; asset_type: string }> =>
+    authPost(`/api/v1/me/alert-config/rules/${encodeURIComponent(ruleId)}/exclusions`, { ticker, asset_type }),
+
+  removeRuleExclusion: (ruleId: string, ticker: string, asset_type: string): Promise<{ ok: boolean }> =>
+    authDelete(`/api/v1/me/alert-config/rules/${encodeURIComponent(ruleId)}/exclusions/${encodeURIComponent(asset_type)}/${encodeURIComponent(ticker)}`),
 
   getAccountAlerts: (username: string): Promise<AlertConfig> =>
     authGet(`/api/v1/accounts/${encodeURIComponent(username)}/alert-config`),
