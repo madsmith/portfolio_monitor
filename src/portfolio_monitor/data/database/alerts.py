@@ -15,6 +15,7 @@ class AlertRule:
     asset_type: str | None
     kind: str
     args: dict[str, Any]
+    enabled: bool = True
 
 
 @dataclass
@@ -71,6 +72,7 @@ class AlertsModule(DatabaseModule):
             MigrationStep(version=2, apply=self._migrate_v2),
             MigrationStep(version=3, apply=self._migrate_v3),
             MigrationStep(version=4, apply=self._migrate_v4),
+            MigrationStep(version=5, apply=self._migrate_v5),
         ]
 
     def _migrate_v1(self, conn: sqlite3.Connection) -> None:
@@ -131,6 +133,11 @@ class AlertsModule(DatabaseModule):
             );
         """)
 
+    def _migrate_v5(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            "ALTER TABLE alert_rules ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"
+        )
+
     def _migrate_v2(self, conn: sqlite3.Connection) -> None:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS alert_records (
@@ -156,20 +163,20 @@ class AlertsModule(DatabaseModule):
 
     def get_all_rules(self) -> list[AlertRule]:
         rows = self._conn.execute(
-            "SELECT id, owner, ticker, asset_type, kind, args FROM alert_rules"
+            "SELECT id, owner, ticker, asset_type, kind, args, enabled FROM alert_rules"
         ).fetchall()
         return [self._row_to_rule(r) for r in rows]
 
     def get_rules(self, owner: str) -> list[AlertRule]:
         rows = self._conn.execute(
-            "SELECT id, owner, ticker, asset_type, kind, args FROM alert_rules WHERE owner = ?",
+            "SELECT id, owner, ticker, asset_type, kind, args, enabled FROM alert_rules WHERE owner = ?",
             (owner,),
         ).fetchall()
         return [self._row_to_rule(r) for r in rows]
 
     def get_rule(self, id: str) -> AlertRule | None:
         row = self._conn.execute(
-            "SELECT id, owner, ticker, asset_type, kind, args FROM alert_rules WHERE id = ?",
+            "SELECT id, owner, ticker, asset_type, kind, args, enabled FROM alert_rules WHERE id = ?",
             (id,),
         ).fetchone()
         return self._row_to_rule(row) if row else None
@@ -204,6 +211,14 @@ class AlertsModule(DatabaseModule):
             cursor = self._conn.execute(
                 "UPDATE alert_rules SET args = ? WHERE id = ?",
                 (json.dumps(args), id),
+            )
+        return cursor.rowcount > 0
+
+    def set_rule_enabled(self, id: str, enabled: bool) -> bool:
+        with self._conn:
+            cursor = self._conn.execute(
+                "UPDATE alert_rules SET enabled = ? WHERE id = ?",
+                (1 if enabled else 0, id),
             )
         return cursor.rowcount > 0
 
@@ -482,6 +497,7 @@ class AlertsModule(DatabaseModule):
             asset_type=row["asset_type"],
             kind=row["kind"],
             args=json.loads(row["args"]),
+            enabled=bool(row["enabled"]),
         )
 
     @staticmethod

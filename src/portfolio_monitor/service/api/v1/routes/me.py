@@ -53,6 +53,7 @@ def me_handler(
                     "asset_type": r.asset_type,
                     "kind": r.kind,
                     "args": r.args,
+                    "enabled": r.enabled,
                     "excluded_tickers": alerts_module.get_rule_exclusions(r.id) if not r.ticker else [],
                 }
                 for r in db_rules
@@ -88,7 +89,7 @@ def me_handler(
         service_rule = ServiceAlertRule(id=db_rule.id, ticker=ticker, kind=kind, args=args, asset_type=asset_type)
         await bus.publish(AlertRuleAdded(username=username, rule=service_rule))
         return JSONResponse(
-            {"id": db_rule.id, "ticker": ticker, "asset_type": asset_type, "kind": kind, "args": args},
+            {"id": db_rule.id, "ticker": ticker, "asset_type": asset_type, "kind": kind, "args": args, "enabled": True},
             status_code=201,
         )
 
@@ -105,11 +106,14 @@ def me_handler(
         except Exception:
             return JSONResponse({"error": "invalid request body"}, status_code=400)
         new_args = body.get("args", existing.args)
+        new_enabled = bool(body["enabled"]) if "enabled" in body else existing.enabled
         alerts_module.update_rule(rule_id, new_args)
-        old_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=existing.args, asset_type=existing.asset_type)
-        new_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=new_args, asset_type=existing.asset_type)
+        if new_enabled != existing.enabled:
+            alerts_module.set_rule_enabled(rule_id, new_enabled)
+        old_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=existing.args, asset_type=existing.asset_type, enabled=existing.enabled)
+        new_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=new_args, asset_type=existing.asset_type, enabled=new_enabled)
         await bus.publish(AlertRuleUpdated(username=username, old_rule=old_rule, new_rule=new_rule))
-        return JSONResponse({"id": rule_id, "args": new_args})
+        return JSONResponse({"id": rule_id, "args": new_args, "enabled": new_enabled})
 
     @logfire.instrument("api.me.alert_config.delete_rule")
     async def delete_alert_rule(request: Request) -> JSONResponse:

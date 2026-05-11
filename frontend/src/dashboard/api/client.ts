@@ -123,6 +123,7 @@ export type AlertRule = {
   asset_type: string | null;
   kind: string;
   args: Record<string, unknown>;
+  enabled: boolean;
   excluded_tickers: AlertRuleExclusion[];
 };
 
@@ -334,7 +335,7 @@ export const api = {
   addAlertRule: (rule: { ticker?: string; asset_type?: string; kind: string; args: Record<string, unknown> }): Promise<AlertRule> =>
     authPost("/api/v1/me/alert-config/rules", rule),
 
-  updateAlertRule: (id: string, patch: { args?: Record<string, unknown> }): Promise<{ ok: boolean }> =>
+  updateAlertRule: (id: string, patch: { args?: Record<string, unknown>; enabled?: boolean }): Promise<{ ok: boolean }> =>
     authPut(`/api/v1/me/alert-config/rules/${encodeURIComponent(id)}`, patch),
 
   deleteAlertRule: (id: string): Promise<{ ok: boolean }> =>

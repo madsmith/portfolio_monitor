@@ -17,6 +17,7 @@ class AlertRule:
     kind: str                    # detector kind, e.g. "percent_change"
     args: dict[str, Any] = field(default_factory=dict)
     asset_type: str | None = None  # None = all types; "stock" / "crypto" / "currency"
+    enabled: bool = True
 
     @classmethod
     def create(cls, ticker: str, kind: str, args: dict[str, Any] | None = None, asset_type: str | None = None) -> "AlertRule":
@@ -24,7 +25,7 @@ class AlertRule:
         return cls(id=uuid4().hex, ticker=ticker, kind=kind, args=args or {}, asset_type=asset_type)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "ticker": self.ticker, "asset_type": self.asset_type, "kind": self.kind, "args": self.args}
+        return {"id": self.id, "ticker": self.ticker, "asset_type": self.asset_type, "kind": self.kind, "args": self.args, "enabled": self.enabled}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "AlertRule":
@@ -34,6 +35,7 @@ class AlertRule:
             kind=d.get("kind", ""),
             args=d.get("args") or {},
             asset_type=d.get("asset_type"),
+            enabled=d.get("enabled", True),
         )
 
 

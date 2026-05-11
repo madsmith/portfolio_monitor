@@ -63,6 +63,7 @@ class AlertConfigAdapter:
                 kind=db_rule.kind,
                 args=db_rule.args,
                 asset_type=db_rule.asset_type,
+                enabled=db_rule.enabled,
             )
             self._register_rule(db_rule.owner, service_rule)
 
@@ -90,6 +91,9 @@ class AlertConfigAdapter:
     # ------------------------------------------------------------------
 
     def _register_rule(self, username: str, rule: ServiceAlertRule) -> None:
+        if not rule.enabled:
+            self._rule_detectors[rule.id] = []
+            return
         excluded: set[tuple[str, str]] = set()
         if not rule.ticker:
             excluded = {(e["ticker"], e["asset_type"]) for e in self._alerts_module.get_rule_exclusions(rule.id)}
@@ -128,6 +132,8 @@ class AlertConfigAdapter:
         Called by WatchlistAdapter when a new entry is added post-startup.
         """
         for db_rule in self._alerts_module.get_rules(owner):
+            if not db_rule.enabled:
+                continue
             if db_rule.ticker and db_rule.ticker != symbol.ticker:
                 continue
             if not db_rule.ticker:

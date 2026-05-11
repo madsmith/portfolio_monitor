@@ -11,7 +11,7 @@ import {
   type DetectorInfo,
 } from "../../api/client";
 import { Button } from "../buttons";
-import { DropdownSelector } from "../inputs";
+import { DropdownSelector, ToggleSlider } from "../inputs";
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -589,6 +589,15 @@ function AlertConfigsSection() {
     finally { setConfirmDelete(null); }
   }
 
+  async function handleToggleRule(id: string, enabled: boolean) {
+    setRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled } : r));
+    try {
+      await api.updateAlertRule(id, { enabled });
+    } catch {
+      setRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled: !enabled } : r));
+    }
+  }
+
   async function handleDeleteRule(id: string) {
     setDeletingRuleId(id);
     try {
@@ -953,18 +962,21 @@ function AlertConfigsSection() {
                     )}
                   </div>
                 )}
-                <div className="relative shrink-0 w-16 flex justify-end">
-                  <span className="text-[10px] text-slate-600 font-mono group-hover:invisible">{rule.id.slice(0, 8)}</span>
-                  <div className="absolute inset-0 hidden group-hover:flex items-center justify-end gap-3">
-                    {isGlobal && (
-                      <button
-                        className={`transition-colors cursor-pointer text-sm leading-none font-bold ${exclusionOpen ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}
-                        title="Symbol exclusions"
-                        onClick={toggleExclusions}
-                      >!</button>
-                    )}
-                    <button className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer text-sm leading-none" title="Edit" onClick={() => handleStartEditRule(rule)}>✎</button>
-                    <button className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer text-sm leading-none disabled:opacity-40" title="Delete" disabled={deletingRuleId === rule.id} onClick={() => handleDeleteRule(rule.id)}>✕</button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <ToggleSlider enabled={rule.enabled} onChange={(v) => handleToggleRule(rule.id, v)} />
+                  <div className="relative w-16 flex justify-end">
+                    <span className="text-[10px] text-slate-600 font-mono group-hover:invisible">{rule.id.slice(0, 8)}</span>
+                    <div className="absolute inset-0 hidden group-hover:flex items-center justify-end gap-3">
+                      {isGlobal && (
+                        <button
+                          className={`transition-colors cursor-pointer text-sm leading-none font-bold ${exclusionOpen ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}
+                          title="Symbol exclusions"
+                          onClick={toggleExclusions}
+                        >!</button>
+                      )}
+                      <button className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer text-sm leading-none" title="Edit" onClick={() => handleStartEditRule(rule)}>✎</button>
+                      <button className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer text-sm leading-none disabled:opacity-40" title="Delete" disabled={deletingRuleId === rule.id} onClick={() => handleDeleteRule(rule.id)}>✕</button>
+                    </div>
                   </div>
                 </div>
               </div>
