@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type AlertRule, type DetectorInfo } from "../api/client";
 import { CancelButton, ConfirmButton } from "./buttons";
-import { DropdownSelector, Input } from "./inputs";
+import { DropdownSelector, Input, ToggleSlider } from "./inputs";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -274,6 +274,7 @@ function ManageAlertsModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [globalExpanded, setGlobalExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -303,6 +304,15 @@ function ManageAlertsModal({
     }
   }
 
+  async function handleToggle(id: string, enabled: boolean) {
+    setRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled } : r));
+    try {
+      await api.updateAlertRule(id, { enabled });
+    } catch {
+      setRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled: !enabled } : r));
+    }
+  }
+
   function handleSaved(updated: AlertRule) {
     setRules((prev) => prev.map((r) => r.id === updated.id ? updated : r));
     setEditingId(null);
@@ -311,6 +321,58 @@ function ManageAlertsModal({
   function handleAdded(rule: AlertRule) {
     setRules((prev) => [...prev, rule]);
     setShowAdd(false);
+  }
+
+  const assetRules = rules.filter((r) => r.ticker === ticker);
+  const globalRules = rules.filter((r) => r.ticker === "");
+
+  function renderRuleRow(rule: AlertRule, opts: { showEdit: boolean; showDelete: boolean }) {
+    if (editingId === rule.id) {
+      return (
+        <EditRuleRow
+          key={rule.id}
+          rule={rule}
+          detectors={detectors}
+          onSaved={handleSaved}
+          onCancel={() => setEditingId(null)}
+        />
+      );
+    }
+    return (
+      <div
+        key={rule.id}
+        className="flex items-center justify-between bg-[#151720] border border-[#2a2f45] rounded px-3 py-2 mb-2"
+      >
+        <div className="min-w-0 flex-1">
+          <span className="text-sm text-slate-200 font-medium">
+            {detectors.find((d) => d.name === rule.kind)?.display_name || rule.kind}
+          </span>
+          <div className="text-xs text-slate-500 mt-0.5">
+            {Object.entries(rule.args).map(([k, v]) => `${k}=${v}`).join("  ")}
+          </div>
+        </div>
+        <div className="flex items-center gap-3 ml-3 shrink-0">
+          <ToggleSlider enabled={rule.enabled} onChange={(v) => handleToggle(rule.id, v)} />
+          {opts.showEdit && (
+            <button
+              className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer transition-colors"
+              onClick={() => { setEditingId(rule.id); setShowAdd(false); }}
+            >
+              Edit
+            </button>
+          )}
+          {opts.showDelete && (
+            <button
+              className="text-xs text-red-500 hover:text-red-400 cursor-pointer transition-colors disabled:opacity-50"
+              disabled={deletingId === rule.id}
+              onClick={() => handleDelete(rule.id)}
+            >
+              {deletingId === rule.id ? "…" : "Remove"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return createPortal(
@@ -331,53 +393,11 @@ function ManageAlertsModal({
           <p className="text-sm text-slate-500 mb-4">Loading…</p>
         ) : (
           <>
-            {rules.length === 0 && !showAdd && (
-              <p className="text-sm text-slate-500 mb-4">No alerts configured for this asset.</p>
+            {assetRules.length === 0 && !showAdd && (
+              <p className="text-sm text-slate-500 mb-4">No asset-specific alerts configured.</p>
             )}
 
-            {rules.map((rule) =>
-              editingId === rule.id ? (
-                <EditRuleRow
-                  key={rule.id}
-                  rule={rule}
-                  detectors={detectors}
-                  onSaved={handleSaved}
-                  onCancel={() => setEditingId(null)}
-                />
-              ) : (
-                <div
-                  key={rule.id}
-                  className="flex items-center justify-between bg-[#151720] border border-[#2a2f45] rounded px-3 py-2 mb-2"
-                >
-                  <div>
-                    <span className="text-sm text-slate-200 font-medium">
-                      {detectors.find((d) => d.name === rule.kind)?.display_name || rule.kind}
-                    </span>
-                    {rule.ticker === "" && (
-                      <span className="ml-2 text-xs text-slate-500">all symbols</span>
-                    )}
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {Object.entries(rule.args).map(([k, v]) => `${k}=${v}`).join("  ")}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 ml-3 shrink-0">
-                    <button
-                      className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer transition-colors"
-                      onClick={() => { setEditingId(rule.id); setShowAdd(false); }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="text-xs text-red-500 hover:text-red-400 cursor-pointer transition-colors disabled:opacity-50"
-                      disabled={deletingId === rule.id}
-                      onClick={() => handleDelete(rule.id)}
-                    >
-                      {deletingId === rule.id ? "…" : "Remove"}
-                    </button>
-                  </div>
-                </div>
-              )
-            )}
+            {assetRules.map((rule) => renderRuleRow(rule, { showEdit: true, showDelete: true }))}
 
             {showAdd && (
               <AddAlertForm
@@ -386,6 +406,24 @@ function ManageAlertsModal({
                 onAdded={handleAdded}
                 onCancel={() => setShowAdd(false)}
               />
+            )}
+
+            {globalRules.length > 0 && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setGlobalExpanded((v) => !v)}
+                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer mb-2"
+                >
+                  <svg
+                    className={`transition-transform duration-150 ${globalExpanded ? "rotate-90" : ""}`}
+                    width="8" height="8" viewBox="0 0 8 8" fill="currentColor"
+                  >
+                    <polygon points="2,1 7,4 2,7" />
+                  </svg>
+                  Global Alerts ({globalRules.length})
+                </button>
+                {globalExpanded && globalRules.map((rule) => renderRuleRow(rule, { showEdit: false, showDelete: false }))}
+              </div>
             )}
           </>
         )}
