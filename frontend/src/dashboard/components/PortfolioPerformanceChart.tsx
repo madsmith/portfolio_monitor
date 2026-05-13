@@ -206,7 +206,8 @@ function PortfolioPerformanceChart({
   const [viewWindow, setViewWindow] = useState<[number, number] | null>(null);
   const [hoverMs,    setHoverMs]    = useState<number | null>(null);
 
-  const dragRef = useRef<{ startX: number; fromMs: number; toMs: number } | null>(null);
+  const dragRef = useRef<{ startX: number; fromMs: number; toMs: number; isPan: boolean } | null>(null);
+  const [inPanZone, setInPanZone] = useState(false);
 
   // Measure rendered SVG width so pixel coordinates are accurate
   useEffect(() => {
@@ -355,6 +356,9 @@ function PortfolioPerformanceChart({
     }
   };
 
+  // Y threshold separating hover zone (top 80%) from pan zone (bottom 20%)
+  const panZoneY = MARGIN.top + plotH * 0.8;
+
   // Touch interaction — always current via ref so handlers see latest state
   touchRef.current = {
     start(e: TouchEvent) {
@@ -363,10 +367,15 @@ function PortfolioPerformanceChart({
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
       const clientX = e.touches[0].clientX;
-      dragRef.current = { startX: clientX, fromMs, toMs };
-      const relX = clientX - rect.left - MARGIN.left;
-      const frac = Math.max(0, Math.min(1, relX / plotW));
-      setHoverMs(clampFrom + frac * (clampTo - clampFrom));
+      const clientY = e.touches[0].clientY;
+      const relY    = clientY - rect.top;
+      const isPan   = relY > panZoneY;
+      dragRef.current = { startX: clientX, fromMs, toMs, isPan };
+      if (!isPan) {
+        const relX = clientX - rect.left - MARGIN.left;
+        const frac = Math.max(0, Math.min(1, relX / plotW));
+        setHoverMs(clampFrom + frac * (clampTo - clampFrom));
+      }
     },
     move(e: TouchEvent) {
       if (e.touches.length !== 1) return;
@@ -374,19 +383,18 @@ function PortfolioPerformanceChart({
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
       const clientX = e.touches[0].clientX;
-      // Pan view if dragging
-      if (dragRef.current) {
+      if (dragRef.current?.isPan) {
         const dx    = clientX - dragRef.current.startX;
         const msPx  = (dragRef.current.toMs - dragRef.current.fromMs) / plotW;
         const shift = -dx * msPx;
         const winSz = dragRef.current.toMs - dragRef.current.fromMs;
         const nFrom = Math.max(dataFromMs, Math.min(dataToMs - winSz, dragRef.current.fromMs + shift));
         setViewWindow([nFrom, nFrom + winSz]);
+      } else {
+        const relX = clientX - rect.left - MARGIN.left;
+        const frac = Math.max(0, Math.min(1, relX / plotW));
+        setHoverMs(clampFrom + frac * (clampTo - clampFrom));
       }
-      // Always track crosshair at finger position
-      const relX = clientX - rect.left - MARGIN.left;
-      const frac = Math.max(0, Math.min(1, relX / plotW));
-      setHoverMs(clampFrom + frac * (clampTo - clampFrom));
     },
     end() {
       dragRef.current = null;
@@ -397,28 +405,39 @@ function PortfolioPerformanceChart({
   // Interaction handlers
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
-    if (dragRef.current) {
-      const dx     = e.clientX - dragRef.current.startX;
-      const msPx   = (dragRef.current.toMs - dragRef.current.fromMs) / plotW;
-      const shift  = -dx * msPx;
-      const winSz  = dragRef.current.toMs - dragRef.current.fromMs;
-      const nFrom  = Math.max(dataFromMs, Math.min(dataToMs - winSz, dragRef.current.fromMs + shift));
+    const relY  = e.clientY - rect.top;
+    const isPan = relY > panZoneY;
+    setInPanZone(isPan);
+    if (dragRef.current?.isPan) {
+      const dx    = e.clientX - dragRef.current.startX;
+      const msPx  = (dragRef.current.toMs - dragRef.current.fromMs) / plotW;
+      const shift = -dx * msPx;
+      const winSz = dragRef.current.toMs - dragRef.current.fromMs;
+      const nFrom = Math.max(dataFromMs, Math.min(dataToMs - winSz, dragRef.current.fromMs + shift));
       setViewWindow([nFrom, nFrom + winSz]);
       return;
     }
-    const relX  = e.clientX - rect.left - MARGIN.left;
-    const frac  = Math.max(0, Math.min(1, relX / plotW));
-    setHoverMs(clampFrom + frac * (clampTo - clampFrom));
+    if (!isPan) {
+      const relX = e.clientX - rect.left - MARGIN.left;
+      const frac = Math.max(0, Math.min(1, relX / plotW));
+      setHoverMs(clampFrom + frac * (clampTo - clampFrom));
+    } else {
+      setHoverMs(null);
+    }
   }
 
   function handleMouseDown(e: React.MouseEvent<SVGSVGElement>) {
-    dragRef.current = { startX: e.clientX, fromMs: fromMs, toMs: toMs };
+    const rect  = e.currentTarget.getBoundingClientRect();
+    const relY  = e.clientY - rect.top;
+    const isPan = relY > panZoneY;
+    dragRef.current = { startX: e.clientX, fromMs, toMs, isPan };
     e.preventDefault();
   }
 
   function handleMouseLeave() {
     dragRef.current = null;
     setHoverMs(null);
+    setInPanZone(false);
   }
 
   function handleDoubleClick() {
@@ -485,7 +504,7 @@ function PortfolioPerformanceChart({
           onMouseUp={() => { dragRef.current = null; }}
           onMouseLeave={handleMouseLeave}
           onDoubleClick={handleDoubleClick}
-          className="cursor-crosshair"
+          className={inPanZone ? "cursor-ew-resize" : "cursor-crosshair"}
         >
           <defs>
             <clipPath id={clipId}>
