@@ -378,12 +378,24 @@ function AddAssetForm({ assetType, portfolioId, onMutated, onCancel }: {
   onMutated: (updated: PortfolioDetail) => void;
   onCancel: () => void;
 }) {
-  const [ticker, setTicker] = useState("");
-  const [draft, setDraft] = useState<LotDraft>(BLANK_LOT);
+  const isCurrency = assetType === "currency";
+  const [ticker, setTicker] = useState(isCurrency ? "USD" : "");
+  const [draft, setDraft] = useState<LotDraft>(isCurrency ? { ...BLANK_LOT, price: "1" } : BLANK_LOT);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateTouched, setDateTouched] = useState(false);
+  const [priceFetching, setPriceFetching] = useState(false);
   const today = todayStr();
+
+  async function fetchCurrencyPrice(code: string) {
+    if (!isCurrency || code === "USD") return;
+    setPriceFetching(true);
+    try {
+      const result = await api.getCurrentPrice("currency", code);
+      setDraft((d) => ({ ...d, price: result.price.toString() }));
+    } catch { /* leave price as-is if fetch fails */ }
+    finally { setPriceFetching(false); }
+  }
 
   const ic = "bg-[#0a0c14] border border-[#404868] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400";
   const canSave = ticker.trim() !== "" && draft.quantity.trim() !== "" && draft.price.trim() !== "" && !isNaN(parseFloat(draft.price));
@@ -397,9 +409,9 @@ function AddAssetForm({ assetType, portfolioId, onMutated, onCancel }: {
     finally { setSaving(false); }
   }
 
-  const fields: { key: keyof LotDraft; label: string; ph: string; w: string; onFocus?: () => void }[] = [
+  const fields: { key: keyof LotDraft; label: string; ph: string; w: string; onFocus?: () => void; readOnly?: boolean }[] = [
     { key: "quantity", label: "Qty *",   ph: "10.5",   w: "w-24" },
-    { key: "price",    label: "Price *", ph: "150.00", w: "w-28" },
+    { key: "price",    label: "Price *", ph: "1.00",   w: "w-28", readOnly: priceFetching },
     { key: "date",     label: "Date",    ph: today,    w: "w-28",
       onFocus: () => { if (!dateTouched) { setDateTouched(true); if (!draft.date) setDraft((d) => ({ ...d, date: today })); } } },
     { key: "fees",     label: "Fees",    ph: "0.00",   w: "w-20" },
@@ -409,24 +421,32 @@ function AddAssetForm({ assetType, portfolioId, onMutated, onCancel }: {
     <div className="border-t border-[#404868] px-3 py-2.5 bg-[#0f1117]">
       <div className="flex flex-wrap gap-2 items-end">
         <div className="flex flex-col gap-1">
-          <label className="text-[0.6rem] uppercase tracking-wide text-slate-500">Ticker *</label>
+          <label className="text-[0.6rem] uppercase tracking-wide text-slate-500">
+            {isCurrency ? "Currency *" : "Ticker *"}
+          </label>
           <input
             value={ticker}
-            onChange={(e) => setTicker(e.target.value.toUpperCase())}
+            onChange={(e) => {
+              const val = e.target.value.toUpperCase();
+              setTicker(val);
+              if (isCurrency) setDraft((d) => ({ ...d, price: val === "USD" ? "1" : "" }));
+            }}
+            onBlur={() => { if (isCurrency && ticker && ticker !== "USD") fetchCurrencyPrice(ticker); }}
             onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancel(); }}
             className={`${ic} w-20 uppercase`}
-            placeholder="AAPL"
+            placeholder={isCurrency ? "USD" : "AAPL"}
             autoFocus
           />
         </div>
-        {fields.map(({ key, label, ph, w, onFocus }) => (
+        {fields.map(({ key, label, ph, w, onFocus, readOnly }) => (
           <div key={key} className="flex flex-col gap-1">
             <label className="text-[0.6rem] uppercase tracking-wide text-slate-500">{label}</label>
             <input
               value={draft[key]}
               onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
               onFocus={onFocus}
-              className={`${ic} ${w}`}
+              readOnly={readOnly}
+              className={`${ic} ${w} ${readOnly ? "opacity-50" : ""}`}
               placeholder={ph}
             />
           </div>

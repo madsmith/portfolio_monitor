@@ -277,6 +277,9 @@ export const api = {
   deletePortfolioAsset: (id: string, assetType: string, ticker: string): Promise<PortfolioDetail> =>
     authDelete(`/api/v1/portfolio/${id}/asset/${assetType}/${ticker}`),
 
+  getCurrentPrice: (assetType: string, ticker: string): Promise<{ price: number; timestamp: string }> =>
+    authGet(`/api/v1/price/${assetType}/${ticker}`),
+
   getPreviousClose: (assetType: string, ticker: string): Promise<{ open: number; high: number; low: number; close: number; volume: number; timestamp: string }> =>
     authGet(`/api/v1/price/${assetType}/${ticker}/previous-close`),
 

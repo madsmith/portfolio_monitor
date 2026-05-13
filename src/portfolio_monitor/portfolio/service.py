@@ -41,6 +41,8 @@ class PortfolioService:
             self._portfolios_by_owner.setdefault(portfolio.owner, []).append(portfolio)
             for asset in portfolio.assets():
                 self._tracked_symbols.add(asset.symbol)
+                if asset.symbol.is_base_currency:
+                    asset.current_price = Currency(1)
 
         self._bus.subscribe(AggregateUpdated, self._on_aggregate_updated)
 
@@ -95,6 +97,8 @@ class PortfolioService:
             asset_list.append(asset)
             self._tracked_symbols.add(symbol)
         asset.lots.append(Lot.from_dict(lot_data))
+        if asset.symbol.is_base_currency:
+            asset.current_price = Currency(1)
         self._save_portfolio(portfolio)
         if is_new_asset:
             asyncio.create_task(self._bus.publish(AssetAdded(symbol=asset.symbol)))
@@ -111,6 +115,8 @@ class PortfolioService:
         if asset is None or lot_idx < 0 or lot_idx >= len(asset.lots):
             return None
         asset.lots[lot_idx] = Lot.from_dict(lot_data)
+        if asset.symbol.is_base_currency:
+            asset.current_price = Currency(1)
         self._save_portfolio(portfolio)
         return portfolio, asset
 
