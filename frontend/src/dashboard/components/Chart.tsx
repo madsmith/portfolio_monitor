@@ -590,7 +590,7 @@ export function Chart({
             const tipW = 132;
             const tipH = 32;
             const tipX = cx > PAD.left + PLOT_W / 2 ? cx - tipW - 10 : cx + 10;
-            const tipY = PAD.top + 2;
+            const tipY = Math.max(PAD.top + 2, cy - tipH - 8);
             return (
               <g>
                 <circle cx={cx} cy={cy} r={3} fill={lineColor} stroke="#0f1117" strokeWidth={1.5} />
