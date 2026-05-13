@@ -206,7 +206,8 @@ function PortfolioPerformanceChart({
   const [viewWindow, setViewWindow] = useState<[number, number] | null>(null);
   const [hoverMs,    setHoverMs]    = useState<number | null>(null);
 
-  const dragRef = useRef<{ startX: number; fromMs: number; toMs: number; isPan: boolean } | null>(null);
+  const dragRef  = useRef<{ startX: number; fromMs: number; toMs: number; isPan: boolean } | null>(null);
+  const pinchRef = useRef<{ midFrac: number; dist: number; fromMs: number; toMs: number } | null>(null);
   const [inPanZone, setInPanZone] = useState(false);
 
   // Measure rendered SVG width so pixel coordinates are accurate
@@ -362,10 +363,25 @@ function PortfolioPerformanceChart({
   // Touch interaction — always current via ref so handlers see latest state
   touchRef.current = {
     start(e: TouchEvent) {
-      if (e.touches.length !== 1) return;
       e.preventDefault();
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
+
+      if (e.touches.length === 2) {
+        // Begin pinch — cancel any single-touch drag
+        dragRef.current = null;
+        setHoverMs(null);
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const midClientX = (t0.clientX + t1.clientX) / 2;
+        const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const relX = midClientX - rect.left - MARGIN.left;
+        const midFrac = Math.max(0, Math.min(1, relX / plotW));
+        pinchRef.current = { midFrac, dist, fromMs, toMs };
+        return;
+      }
+
+      if (e.touches.length !== 1) return;
       const clientX = e.touches[0].clientX;
       const clientY = e.touches[0].clientY;
       const relY    = clientY - rect.top;
@@ -378,10 +394,30 @@ function PortfolioPerformanceChart({
       }
     },
     move(e: TouchEvent) {
-      if (e.touches.length !== 1) return;
       e.preventDefault();
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
+
+      if (e.touches.length === 2 && pinchRef.current) {
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        if (newDist < 1) return;
+        const { midFrac, dist: initDist, fromMs: initFrom, toMs: initTo } = pinchRef.current;
+        const initWinSize = initTo - initFrom;
+        const newSize  = Math.max(30 * 60_000, initWinSize * (initDist / newDist));
+        const pivot    = initFrom + midFrac * initWinSize;
+        const newFrom  = Math.max(dataFromMs, pivot - midFrac * newSize);
+        const newTo    = Math.min(dataToMs, newFrom + newSize);
+        if (newFrom <= dataFromMs && newTo >= dataToMs) {
+          setViewWindow(null);
+        } else {
+          setViewWindow([newFrom, newTo]);
+        }
+        return;
+      }
+
+      if (e.touches.length !== 1) return;
       const clientX = e.touches[0].clientX;
       if (dragRef.current?.isPan) {
         const dx    = clientX - dragRef.current.startX;
@@ -398,6 +434,7 @@ function PortfolioPerformanceChart({
     },
     end() {
       dragRef.current = null;
+      pinchRef.current = null;
       setHoverMs(null);
     },
   };
