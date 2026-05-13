@@ -150,7 +150,7 @@ export function VolumeBars({
         {showTooltip && hoveredDay && (
           <div
             className="absolute pointer-events-none text-sm whitespace-nowrap -translate-x-1/2 text-slate-400"
-            style={{ left: `${tipPct}%`, bottom: "100%" }}
+            style={{ left: `${tipPct}%`, bottom: "calc(100% + 2.5em)" }}
           >
             {`${fmtVol(hoveredDay.volume)} · ${fmtShortDate(hoveredDay.date)}`}
           </div>

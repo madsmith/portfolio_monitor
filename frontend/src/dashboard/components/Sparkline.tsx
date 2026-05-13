@@ -332,7 +332,7 @@ export function Sparkline({
         {showTooltip && intercept !== null && (
           <div
             className="absolute pointer-events-none text-sm whitespace-nowrap -translate-x-1/2"
-            style={{ left: `${tipPct}%`, bottom: "100%", color: intercept.textColor }}
+            style={{ left: `${tipPct}%`, bottom: "calc(100% + 2.5em)", color: intercept.textColor }}
           >
             {intercept.tipText}
           </div>

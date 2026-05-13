@@ -453,6 +453,7 @@ export function Chart({
         <p className="text-slate-600 text-xs py-6 text-center">No data available</p>
       )}
       {!(loading || openCloseLoading) && !error && data.length >= 2 && (
+        <div className="relative">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
@@ -582,35 +583,41 @@ export function Chart({
             );
           })()}
 
-          {/* Snapped dot + tooltip — driven by nearest data point */}
+          {/* Snapped dot */}
           {hoverIdx !== null && (() => {
             const hovered = data[hoverIdx];
             const cx = xScaleTs(hovered.timestamp);
             const cy = yScale(hovered.close);
-            const tipW = 132;
-            const tipH = 32;
-            const tipX = cx > PAD.left + PLOT_W / 2 ? cx - tipW - 10 : cx + 10;
-            const tipY = Math.max(PAD.top + 2, cy - tipH - 8);
-            return (
-              <g>
-                <circle cx={cx} cy={cy} r={3} fill={lineColor} stroke="#0f1117" strokeWidth={1.5} />
-                {showTooltip && (
-                  <g>
-                    <rect x={tipX} y={tipY} width={tipW} height={tipH} rx={3}
-                      fill="#1e2130" stroke="#404868" strokeWidth={1}
-                      fillOpacity={0.5} strokeOpacity={1} />
-                    <text x={tipX + 8} y={tipY + 12} fontSize="1em" fill="#e2e8f0" fontWeight="600">
-                      {fmtPrice(hovered.close, assetType, ticker)}
-                    </text>
-                    <text x={tipX + 8} y={tipY + 25} fontSize="0.9em" fill="#64748b">
-                      {fmtTooltipTime(hovered.timestamp)}
-                    </text>
-                  </g>
-                )}
-              </g>
-            );
+            return <circle cx={cx} cy={cy} r={3} fill={lineColor} stroke="#0f1117" strokeWidth={1.5} />;
           })()}
         </svg>
+
+        {/* HTML tooltip — pinned above the chart, following cursor horizontally */}
+        {hoverIdx !== null && showTooltip && (() => {
+          const hovered = data[hoverIdx];
+          const cx = xScaleTs(hovered.timestamp);
+          const leftPct = Math.max(5, Math.min(90, (cx / W) * 100));
+          return (
+            <div
+              className="absolute pointer-events-none z-10"
+              style={{
+                left: `${leftPct}%`,
+                bottom: "calc(100% + 2.5em)",
+                transform: cx > W / 2 ? "translateX(-100%)" : "translateX(0)",
+              }}
+            >
+              <div className="bg-[#12151f] border border-[#404868] rounded px-2 py-1 shadow-lg text-xs whitespace-nowrap">
+                <span className="font-semibold" style={{ color: lineColor }}>
+                  {fmtPrice(hovered.close, assetType, ticker)}
+                </span>
+                <span className="text-slate-500 ml-2">
+                  {fmtTooltipTime(hovered.timestamp)}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
+        </div>
       )}
     </div>
   );
