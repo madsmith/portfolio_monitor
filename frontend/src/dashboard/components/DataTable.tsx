@@ -1,4 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
+
+export interface HoldMenuItem {
+  label: string;
+  active?: boolean;
+  onSelect: () => void;
+}
 
 export interface ColDef<T> {
   key: string;
@@ -14,6 +20,8 @@ export interface ColDef<T> {
   badge?: string;
   /** Called when the badge is clicked; does not trigger sort */
   onBadge?: () => void;
+  /** Options shown in a long-press (hold) dropdown on the column header */
+  holdMenu?: HoldMenuItem[];
 }
 
 export function DataTable<T>({
@@ -31,6 +39,10 @@ export function DataTable<T>({
 }) {
   const [sortColKey, setSortColKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [openMenuCol, setOpenMenuCol] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didLongPressRef = useRef(false);
 
   function handleSort(col: ColDef<T>) {
     if (sortColKey === col.key) {
@@ -40,6 +52,39 @@ export function DataTable<T>({
       setSortDir(col.defaultDir ?? "desc");
     }
   }
+
+  function startHold(colKey: string, target: HTMLTableCellElement) {
+    didLongPressRef.current = false;
+    holdTimerRef.current = setTimeout(() => {
+      didLongPressRef.current = true;
+      const rect = target.getBoundingClientRect();
+      setMenuPos({ x: rect.left, y: rect.bottom + 4 });
+      setOpenMenuCol(colKey);
+    }, 500);
+  }
+
+  function cancelHold() {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }
+
+  function closeMenu() {
+    setOpenMenuCol(null);
+    setMenuPos(null);
+  }
+
+  useEffect(() => {
+    if (!openMenuCol) return;
+    function handleOutside() { closeMenu(); }
+    document.addEventListener("touchstart", handleOutside, { once: true });
+    document.addEventListener("mousedown", handleOutside, { once: true });
+    return () => {
+      document.removeEventListener("touchstart", handleOutside);
+      document.removeEventListener("mousedown", handleOutside);
+    };
+  }, [openMenuCol]);
 
   const activeCol = columns.find((c) => c.key === sortColKey);
 
@@ -56,54 +101,90 @@ export function DataTable<T>({
     return sortDir === "asc" ? cmp : -cmp;
   });
 
+  const openMenuDef = openMenuCol ? columns.find((c) => c.key === openMenuCol) : null;
+
   return (
-    <table className="w-full text-sm border-collapse">
-      <thead>
-        <tr>
-          {columns.map((col) => {
-            const isSorted = sortColKey === col.key;
-            const alignClass = col.align === "right" ? "text-right" : "text-left";
-            return (
-              <th
-                key={col.key}
-                onClick={() => col.sortValue && handleSort(col)}
-                className={[
-                  alignClass,
-                  col.vis ?? "",
-                  "text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-1 sm:px-1.5 py-2 border-b border-[#404868]",
-                  col.sortValue ? "cursor-pointer hover:text-slate-300 select-none" : "",
-                ].join(" ")}
-              >
-                {col.sortValue ? (
-                  <span className={`inline-flex items-center ${col.align === "right" ? "justify-end" : ""}`}>
-                    {col.label}
-                    {col.badge !== undefined && (
-                      <span
-                        onClick={(e) => { e.stopPropagation(); col.onBadge?.(); }}
-                        className="ml-1 px-1 rounded bg-[#2a2d3a] text-slate-400 hover:text-slate-100 hover:bg-[#404868] cursor-pointer transition-colors normal-case tracking-normal font-normal"
-                      >
-                        {col.badge}
-                      </span>
-                    )}
-                    {isSorted
-                      ? <span className="text-slate-300 ml-0.5">{sortDir === "asc" ? "↑" : "↓"}</span>
-                      : <span className="text-slate-700 ml-0.5">⇅</span>
-                    }
-                  </span>
-                ) : col.label}
-              </th>
-            );
-          })}
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((row) => (
-          <React.Fragment key={getKey(row)}>
-            {renderRow(row)}
-          </React.Fragment>
-        ))}
-        {footer}
-      </tbody>
-    </table>
+    <>
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr>
+            {columns.map((col) => {
+              const isSorted = sortColKey === col.key;
+              const alignClass = col.align === "right" ? "text-right" : "text-left";
+              const hasHold = !!col.holdMenu?.length;
+              return (
+                <th
+                  key={col.key}
+                  onClick={() => { if (!didLongPressRef.current) col.sortValue && handleSort(col); }}
+                  onTouchStart={(e) => { if (hasHold) startHold(col.key, e.currentTarget); }}
+                  onTouchEnd={cancelHold}
+                  onTouchCancel={cancelHold}
+                  onTouchMove={cancelHold}
+                  onContextMenu={(e) => { if (hasHold) e.preventDefault(); }}
+                  className={[
+                    alignClass,
+                    col.vis ?? "",
+                    "text-[0.7rem] uppercase tracking-wide text-slate-500 font-semibold px-1 sm:px-1.5 py-2 border-b border-[#404868]",
+                    col.sortValue ? "cursor-pointer hover:text-slate-300 select-none" : "",
+                    hasHold ? "touch-none" : "",
+                  ].join(" ")}
+                >
+                  {col.sortValue ? (
+                    <span className={`inline-flex items-center ${col.align === "right" ? "justify-end" : ""}`}>
+                      {col.label}
+                      {col.badge !== undefined && (
+                        <span
+                          onClick={(e) => { e.stopPropagation(); col.onBadge?.(); }}
+                          className="ml-1 px-1 rounded bg-[#2a2d3a] text-slate-400 hover:text-slate-100 hover:bg-[#404868] cursor-pointer transition-colors normal-case tracking-normal font-normal"
+                        >
+                          {col.badge}
+                        </span>
+                      )}
+                      {isSorted
+                        ? <span className="text-slate-300 ml-0.5">{sortDir === "asc" ? "↑" : "↓"}</span>
+                        : <span className="text-slate-700 ml-0.5">⇅</span>
+                      }
+                    </span>
+                  ) : col.label}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row) => (
+            <React.Fragment key={getKey(row)}>
+              {renderRow(row)}
+            </React.Fragment>
+          ))}
+          {footer}
+        </tbody>
+      </table>
+
+      {openMenuDef?.holdMenu && menuPos && (
+        <div
+          style={{ position: "fixed", left: menuPos.x, top: menuPos.y, zIndex: 9999 }}
+          className="min-w-[160px] bg-[#1a1f2e] border border-[#404868] rounded-md shadow-xl py-1 text-left"
+          onTouchStart={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {openMenuDef.holdMenu.map((item) => (
+            <button
+              key={item.label}
+              className={[
+                "block w-full text-left px-3 py-2 text-xs transition-colors",
+                item.active
+                  ? "text-sky-400 bg-[#1e2640]"
+                  : "text-slate-300 hover:text-white hover:bg-[#252a3e]",
+              ].join(" ")}
+              onTouchStart={(e) => { e.stopPropagation(); item.onSelect(); closeMenu(); }}
+              onClick={() => { item.onSelect(); closeMenu(); }}
+            >
+              {item.active ? "✓ " : "\u00a0\u00a0"}{item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

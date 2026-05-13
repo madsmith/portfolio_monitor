@@ -492,6 +492,8 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
   const [chartTickers, setChartTickers] = useState<Set<string>>(new Set());
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [valueChgMode, setValueChgMode] = useState<"dollar" | "percent">("dollar");
+  const [priceColMode, setPriceColMode] = useState<"price" | "qty">("price");
+  const [valueGroupMode, setValueGroupMode] = useState<"value" | "pl">("value");
   const [deletingTicker, setDeletingTicker] = useState<string | null>(null);
 
   function toggleTicker(ticker: string) {
@@ -527,18 +529,51 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
     return { ...a, dayChgPrice, dayChgValue, dayChgPct };
   });
 
+  const valueHoldMenu = [
+    { label: "Value / Value Chg", active: valueGroupMode === "value", onSelect: () => setValueGroupMode("value") },
+    { label: "P&L / P&L %",       active: valueGroupMode === "pl",    onSelect: () => setValueGroupMode("pl") },
+  ];
+
   const columns: ColDef<EnrichedAsset>[] = [
     { key: "ticker",   label: "Ticker",    align: "left",  sortValue: (a) => a.ticker,                    defaultDir: "asc" },
-    { key: "qty",      label: "Qty",       align: "right", sortValue: (a) => parseFloat(a.total_quantity), vis: editing ? undefined : "hidden sm:table-cell" },
-    { key: "price",    label: "Price",     align: "right", sortValue: (a) => a.current_price,               vis: editing ? "hidden sm:table-cell" : undefined },
+    {
+      key: "qty", label: "Qty", align: "right", sortValue: (a) => parseFloat(a.total_quantity),
+      vis: priceColMode === "qty" ? "hidden" : (editing ? undefined : "hidden sm:table-cell"),
+    },
+    {
+      key: "price",
+      label: priceColMode === "price" ? "Price" : "Qty",
+      align: "right",
+      sortValue: priceColMode === "price" ? (a) => a.current_price : (a) => parseFloat(a.total_quantity),
+      vis: priceColMode === "price" ? (editing ? "hidden sm:table-cell" : undefined) : undefined,
+      holdMenu: [
+        { label: "Price", active: priceColMode === "price", onSelect: () => setPriceColMode("price") },
+        { label: "Qty",   active: priceColMode === "qty",   onSelect: () => setPriceColMode("qty") },
+      ],
+    },
     { key: "priceChg", label: "Price Chg", align: "right", sortValue: (a) => priceChgMode === "dollar" ? a.dayChgPrice : a.dayChgPct,
       badge: priceChgMode === "dollar" ? "$" : "%", onBadge: () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
-    { key: "value",    label: "Value",     align: "right", sortValue: (a) => a.current_value },
-    { key: "valueChg", label: "Value Chg", align: "right", sortValue: (a) => valueChgMode === "dollar" ? a.dayChgValue : a.dayChgPct,
-      badge: valueChgMode === "dollar" ? "$" : "%", onBadge: () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
-    { key: "pl",       label: "P&L",       align: "right", sortValue: (a) => a.profit_loss,               vis: "hidden lg:table-cell" },
-    { key: "plPct",    label: "P&L %",     align: "right", sortValue: (a) => a.profit_loss_percentage,    vis: "hidden lg:table-cell" },
-    { key: "menu",     label: "",          align: "right" },
+    {
+      key: "value",
+      label: valueGroupMode === "value" ? "Value" : "P&L",
+      align: "right",
+      sortValue: valueGroupMode === "value" ? (a) => a.current_value : (a) => a.profit_loss,
+      holdMenu: valueHoldMenu,
+    },
+    {
+      key: "valueChg",
+      label: valueGroupMode === "value" ? "Value Chg" : "P&L %",
+      align: "right",
+      sortValue: valueGroupMode === "value"
+        ? (a) => valueChgMode === "dollar" ? a.dayChgValue : a.dayChgPct
+        : (a) => a.profit_loss_percentage,
+      badge: valueGroupMode === "value" ? (valueChgMode === "dollar" ? "$" : "%") : undefined,
+      onBadge: valueGroupMode === "value" ? () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")) : undefined,
+      holdMenu: valueHoldMenu,
+    },
+    { key: "pl",    label: "P&L",   align: "right", sortValue: (a) => a.profit_loss,            vis: valueGroupMode === "value" ? "hidden lg:table-cell" : "hidden" },
+    { key: "plPct", label: "P&L %", align: "right", sortValue: (a) => a.profit_loss_percentage, vis: valueGroupMode === "value" ? "hidden lg:table-cell" : "hidden" },
+    { key: "menu",  label: "",      align: "right" },
   ];
 
   return (
@@ -565,10 +600,25 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
                   {a.ticker}
                 </button>
               </td>
-              <td className={`${editing ? "" : "hidden sm:table-cell "}px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300`}>
+              {/* qty column — hidden when priceColMode=qty (data shown in price slot instead) */}
+              <td className={`${priceColMode === "qty" ? "hidden " : (editing ? "" : "hidden sm:table-cell ")}px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300`}>
                 <span className="inline-flex items-center justify-end gap-1.5">
                   {fmtQty(a.total_quantity)}
-                  {(
+                  <button
+                    onClick={() => toggleTicker(a.ticker)}
+                    title="View lots"
+                    disabled={!editing && a.lots.length === 0}
+                    className={`leading-none transition-colors ${a.lots.length > 0 || editing ? "text-[#404868] hover:text-slate-400 cursor-pointer" : "invisible"}`}
+                  >
+                    ⓘ
+                  </button>
+                </span>
+              </td>
+              {/* price/qty slot — shows qty data when priceColMode=qty */}
+              <td className={`${priceColMode === "price" && editing ? "hidden sm:table-cell " : ""}px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300`}>
+                {priceColMode === "price" ? fmtPrice(a.current_price, a.asset_type, a.ticker) : (
+                  <span className="inline-flex items-center justify-end gap-1.5">
+                    {fmtQty(a.total_quantity)}
                     <button
                       onClick={() => toggleTicker(a.ticker)}
                       title="View lots"
@@ -577,21 +627,27 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
                     >
                       ⓘ
                     </button>
-                  )}
-                </span>
+                  </span>
+                )}
               </td>
-              <td className={`${editing ? "hidden sm:table-cell " : ""}px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300`}>{fmtPrice(a.current_price, a.asset_type, a.ticker)}</td>
               <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
                 {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
               </td>
-              <td className="px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
-              <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
-                {valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct)}
+              {/* value/P&L slot */}
+              <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${valueGroupMode === "value" ? "text-slate-300" : plColor(a.profit_loss)}`}>
+                {valueGroupMode === "value" ? fmtMoney(a.current_value) : fmtMoney(a.profit_loss)}
               </td>
-              <td className={`hidden lg:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
+              {/* valueChg/P&L% slot */}
+              <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(valueGroupMode === "value" ? a.dayChgValue : a.profit_loss_percentage)}`}>
+                {valueGroupMode === "value"
+                  ? (valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct))
+                  : fmtPct(a.profit_loss_percentage)}
+              </td>
+              {/* P&L columns — hidden when valueGroupMode=pl to avoid duplication on large screens */}
+              <td className={`${valueGroupMode === "value" ? "hidden lg:table-cell" : "hidden"} px-1 sm:px-1.5 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
                 {fmtMoney(a.profit_loss)}
               </td>
-              <td className={`hidden lg:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
+              <td className={`${valueGroupMode === "value" ? "hidden lg:table-cell" : "hidden"} px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.profit_loss_percentage)}`}>
                 {fmtPct(a.profit_loss_percentage)}
               </td>
               <td className="pl-0 pr-1 sm:pr-1.5 py-2 text-right">
