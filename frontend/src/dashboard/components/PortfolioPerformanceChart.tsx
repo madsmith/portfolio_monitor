@@ -227,6 +227,27 @@ function PortfolioPerformanceChart({
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
+  // Register non-passive touch handlers so e.preventDefault() suppresses page scroll
+  type TouchHandlers = { start: (e: TouchEvent) => void; move: (e: TouchEvent) => void; end: () => void };
+  const touchRef = useRef<TouchHandlers | null>(null);
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onStart  = (e: TouchEvent) => touchRef.current?.start(e);
+    const onMove   = (e: TouchEvent) => touchRef.current?.move(e);
+    const onEnd    = ()              => touchRef.current?.end();
+    el.addEventListener("touchstart",  onStart, { passive: false });
+    el.addEventListener("touchmove",   onMove,  { passive: false });
+    el.addEventListener("touchend",    onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart",  onStart);
+      el.removeEventListener("touchmove",   onMove);
+      el.removeEventListener("touchend",    onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);
+
   const validSnaps = snapshots.filter((s) => s.total_value !== null);
 
   if (validSnaps.length < 2) {
@@ -332,6 +353,45 @@ function PortfolioPerformanceChart({
     } else {
       setViewWindow([newFrom, newTo]);
     }
+  };
+
+  // Touch interaction — always current via ref so handlers see latest state
+  touchRef.current = {
+    start(e: TouchEvent) {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const clientX = e.touches[0].clientX;
+      dragRef.current = { startX: clientX, fromMs, toMs };
+      const relX = clientX - rect.left - MARGIN.left;
+      const frac = Math.max(0, Math.min(1, relX / plotW));
+      setHoverMs(clampFrom + frac * (clampTo - clampFrom));
+    },
+    move(e: TouchEvent) {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const clientX = e.touches[0].clientX;
+      // Pan view if dragging
+      if (dragRef.current) {
+        const dx    = clientX - dragRef.current.startX;
+        const msPx  = (dragRef.current.toMs - dragRef.current.fromMs) / plotW;
+        const shift = -dx * msPx;
+        const winSz = dragRef.current.toMs - dragRef.current.fromMs;
+        const nFrom = Math.max(dataFromMs, Math.min(dataToMs - winSz, dragRef.current.fromMs + shift));
+        setViewWindow([nFrom, nFrom + winSz]);
+      }
+      // Always track crosshair at finger position
+      const relX = clientX - rect.left - MARGIN.left;
+      const frac = Math.max(0, Math.min(1, relX / plotW));
+      setHoverMs(clampFrom + frac * (clampTo - clampFrom));
+    },
+    end() {
+      dragRef.current = null;
+      setHoverMs(null);
+    },
   };
 
   // Interaction handlers
@@ -565,7 +625,7 @@ function PortfolioPerformanceChart({
 
       {/* Scroll/zoom hint */}
       <div className="text-[10px] text-slate-700 mt-0.5">
-        Scroll to zoom · Drag to pan · Double-click to reset
+        Scroll to zoom · Drag to pan · Double-click to reset · Touch &amp; drag on mobile
       </div>
     </div>
   );
