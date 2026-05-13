@@ -21,7 +21,7 @@ class PortfolioPerformanceModule(DatabaseModule):
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS portfolio_performance (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                portfolio_id TEXT NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
+                portfolio_id TEXT NOT NULL REFERENCES portfolios(id),
                 recorded_at  TEXT NOT NULL,
                 total_value  REAL,
                 cost_basis   REAL NOT NULL

@@ -161,12 +161,15 @@ def portfolio_performance_handler(
         portfolio = portfolio_service.get_portfolio(portfolio_id, auth)
         if portfolio is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        try:
-            days = min(int(request.query_params.get("days", 30)), 365)
-        except (ValueError, TypeError):
-            days = 30
         now = datetime.now(timezone.utc)
-        from_dt = now - timedelta(days=days)
+        if request.query_params.get("all") == "true":
+            from_dt = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        else:
+            try:
+                days = min(int(request.query_params.get("days", 30)), 365)
+            except (ValueError, TypeError):
+                days = 30
+            from_dt = now - timedelta(days=days)
         snapshots = performance_module.get_range(portfolio_id, from_dt, now)
         return JSONResponse({"portfolio_id": portfolio_id, "snapshots": snapshots})
 

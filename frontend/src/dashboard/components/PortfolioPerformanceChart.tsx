@@ -32,10 +32,18 @@ function fmtTooltipTime(ms: number): string {
 }
 
 function fmtAxisTime(ms: number, rangeMs: number): string {
-  if (rangeMs > 3 * 24 * 3600 * 1000) {
+  const DAY = 24 * 3_600_000;
+  if (rangeMs > 180 * DAY) {
+    // Show "Jan 2025" style for very long ranges
+    return new Date(ms).toLocaleDateString("en-US", {
+      month: "short", year: "numeric",
+      timeZone: "UTC",
+    });
+  }
+  if (rangeMs > 3 * DAY) {
     return new Date(ms).toLocaleDateString("en-US", {
       month: "short", day: "numeric",
-      timeZone: "America/New_York",
+      timeZone: "UTC",
     });
   }
   return new Date(ms).toLocaleTimeString("en-US", {
@@ -66,18 +74,66 @@ function niceTicks(min: number, max: number, targetCount: number): number[] {
 function niceTimeTicks(fromMs: number, toMs: number, count: number): number[] {
   const range = toMs - fromMs;
   const rawInterval = range / count;
-  const intervals = [
+  const DAY = 24 * 3_600_000;
+  const WEEK = 7 * DAY;
+
+  // Sub-day intervals (fixed ms)
+  const subDayIntervals = [
     5 * 60_000, 15 * 60_000, 30 * 60_000,
     3_600_000, 2 * 3_600_000, 3 * 3_600_000,
-    6 * 3_600_000, 12 * 3_600_000, 24 * 3_600_000,
+    6 * 3_600_000, 12 * 3_600_000,
   ];
-  let interval = intervals[intervals.length - 1];
-  for (const iv of intervals) {
-    if (iv >= rawInterval) { interval = iv; break; }
+
+  if (rawInterval < DAY) {
+    let interval = subDayIntervals[subDayIntervals.length - 1];
+    for (const iv of subDayIntervals) {
+      if (iv >= rawInterval) { interval = iv; break; }
+    }
+    const start = Math.ceil(fromMs / interval) * interval;
+    const ticks: number[] = [];
+    for (let t = start; t <= toMs; t += interval) ticks.push(t);
+    return ticks;
   }
-  const start = Math.ceil(fromMs / interval) * interval;
+
+  // Multi-day: snap to calendar boundaries in UTC
+  if (rawInterval < WEEK) {
+    // Daily ticks: midnight UTC
+    const ticks: number[] = [];
+    const d = new Date(fromMs);
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() + 1);
+    while (d.getTime() <= toMs) {
+      ticks.push(d.getTime());
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return ticks;
+  }
+
+  // Multi-week: weekly ticks (Monday midnight UTC)
+  if (rawInterval < 4 * WEEK) {
+    const ticks: number[] = [];
+    const d = new Date(fromMs);
+    d.setUTCHours(0, 0, 0, 0);
+    // advance to next Monday
+    d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7 || 7));
+    while (d.getTime() <= toMs) {
+      ticks.push(d.getTime());
+      d.setUTCDate(d.getUTCDate() + 7);
+    }
+    return ticks;
+  }
+
+  // Multi-month: 1st of each month UTC
+  const monthStep = rawInterval < 10 * WEEK ? 1 : rawInterval < 20 * WEEK ? 2 : rawInterval < 40 * WEEK ? 3 : 6;
   const ticks: number[] = [];
-  for (let t = start; t <= toMs; t += interval) ticks.push(t);
+  const d = new Date(fromMs);
+  d.setUTCDate(1);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  while (d.getTime() <= toMs) {
+    ticks.push(d.getTime());
+    d.setUTCMonth(d.getUTCMonth() + monthStep);
+  }
   return ticks;
 }
 
@@ -266,11 +322,16 @@ function PortfolioPerformanceChart({
     const curTo    = viewWindow?.[1] ?? dataToMs;
     const winSize  = curTo - curFrom;
     const factor   = e.deltaY > 0 ? 1.25 : 0.8;
-    const newSize  = Math.max(30 * 60_000, Math.min(dataToMs - dataFromMs, winSize * factor));
+    const newSize  = Math.max(30 * 60_000, winSize * factor);
     const pivot    = curFrom + fraction * winSize;
     const newFrom  = Math.max(dataFromMs, pivot - fraction * newSize);
-    const newTo    = Math.min(dataToMs,   newFrom + newSize);
-    setViewWindow([newFrom, newTo]);
+    const newTo    = Math.min(dataToMs, newFrom + newSize);
+    // If we've zoomed out to cover full range, reset to null (show all)
+    if (newFrom <= dataFromMs && newTo >= dataToMs) {
+      setViewWindow(null);
+    } else {
+      setViewWindow([newFrom, newTo]);
+    }
   };
 
   // Interaction handlers
@@ -305,20 +366,54 @@ function PortfolioPerformanceChart({
   }
 
   const clipId = `perf-clip-${chartId}`;
-  const isZoomed = viewWindow !== null;
+
+  const DAY = 24 * 3_600_000;
+  const PRESETS: { label: string; ms: number | null }[] = [
+    { label: "1D", ms: DAY },
+    { label: "1W", ms: 7 * DAY },
+    { label: "1M", ms: 30 * DAY },
+    { label: "3M", ms: 91 * DAY },
+    { label: "1Y", ms: 365 * DAY },
+    { label: "All", ms: null },
+  ];
+
+  function activePreset(): string {
+    if (viewWindow === null) return "All";
+    const winMs = viewWindow[1] - viewWindow[0];
+    for (const p of [...PRESETS].reverse()) {
+      if (p.ms !== null && Math.abs(winMs - p.ms) < 0.1 * p.ms) return p.label;
+    }
+    return "";
+  }
+
+  function applyPreset(ms: number | null) {
+    if (ms === null) { setViewWindow(null); return; }
+    const from = Math.max(dataFromMs, dataToMs - ms);
+    setViewWindow([from, dataToMs]);
+  }
+
+  const active = activePreset();
 
   return (
     <div className="relative select-none">
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{name}</span>
-        {isZoomed && (
-          <button
-            onClick={handleDoubleClick}
-            className="text-[10px] text-slate-600 hover:text-slate-400 cursor-pointer transition-colors"
-          >
-            Reset zoom
-          </button>
-        )}
+        <div className="flex items-center gap-0.5">
+          {PRESETS.filter((p) => p.ms === null || p.ms <= dataToMs - dataFromMs + DAY).map((p) => (
+            <button
+              key={p.label}
+              onClick={() => applyPreset(p.ms)}
+              className={[
+                "px-1.5 py-0.5 text-[10px] rounded transition-colors cursor-pointer",
+                active === p.label
+                  ? "bg-[#2a2f45] text-slate-200"
+                  : "text-slate-600 hover:text-slate-400",
+              ].join(" ")}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="relative">
         <svg
@@ -490,14 +585,16 @@ export function PortfolioPerformanceCharts({ portfolios }: { portfolios: Portfol
     setPerfData({});
     for (const p of portfolios) {
       setPerfData((prev) => ({ ...prev, [p.id]: { loading: true, error: false, snapshots: [] } }));
-      api.getPortfolioPerformance(p.id, 1)
+      api.getPortfolioPerformance(p.id, { all: true })
         .then((data) => {
+          console.debug(`[perf] ${p.name} (${p.id}): ${data.snapshots.length} snapshots`, data.snapshots[0], "→", data.snapshots[data.snapshots.length - 1]);
           setPerfData((prev) => ({
             ...prev,
             [p.id]: { loading: false, error: false, snapshots: data.snapshots },
           }));
         })
-        .catch(() => {
+        .catch((err: unknown) => {
+          console.error(`[perf] ${p.name} (${p.id}): fetch failed`, err);
           setPerfData((prev) => ({
             ...prev,
             [p.id]: { loading: false, error: true, snapshots: [] },
@@ -508,15 +605,24 @@ export function PortfolioPerformanceCharts({ portfolios }: { portfolios: Portfol
   }, [portfolioKey]);
 
   const allLoading = Object.values(perfData).length > 0 && Object.values(perfData).every((d) => d.loading);
-  const chartsToShow = portfolios.filter(
-    (p) => perfData[p.id] && !perfData[p.id].loading && !perfData[p.id].error && perfData[p.id].snapshots.length >= 2
-  );
+
+  function suppressReason(id: string): string | null {
+    const d = perfData[id];
+    if (!d) return "no data loaded";
+    if (d.loading) return "loading";
+    if (d.error) return "fetch error";
+    if (d.snapshots.length < 2) return `only ${d.snapshots.length} snapshot(s)`;
+    return null;
+  }
+
+  const chartsToShow = portfolios.filter((p) => suppressReason(p.id) === null);
+  const suppressed   = portfolios.filter((p) => suppressReason(p.id) !== null && perfData[p.id] && !perfData[p.id].loading);
 
   if (allLoading) {
     return <div className="text-slate-600 text-sm py-2">Loading performance data…</div>;
   }
 
-  if (chartsToShow.length === 0) return null;
+  if (chartsToShow.length === 0 && suppressed.length === 0) return null;
 
   return (
     <div className="space-y-6">
@@ -527,6 +633,16 @@ export function PortfolioPerformanceCharts({ portfolios }: { portfolios: Portfol
           name={p.name}
           snapshots={perfData[p.id].snapshots}
         />
+      ))}
+      {suppressed.map((p) => (
+        <div key={p.id} className="text-xs text-slate-600 font-mono">
+          [{p.name}] suppressed — {suppressReason(p.id)}
+          {perfData[p.id]?.snapshots.length === 1 && (
+            <span className="ml-2 text-slate-700">
+              (1 snapshot: {perfData[p.id].snapshots[0].recorded_at})
+            </span>
+          )}
+        </div>
       ))}
     </div>
   );

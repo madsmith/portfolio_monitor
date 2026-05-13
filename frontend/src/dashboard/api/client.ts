@@ -262,8 +262,8 @@ export const api = {
   getPortfolio: (id: string): Promise<PortfolioDetail> =>
     authGet(`/api/v1/portfolio/${id}`),
 
-  getPortfolioPerformance: (id: string, days = 1): Promise<{ portfolio_id: string; snapshots: PerformanceSnapshot[] }> =>
-    authGet(`/api/v1/portfolio/${encodeURIComponent(id)}/performance?days=${days}`),
+  getPortfolioPerformance: (id: string, opts: { days?: number; all?: boolean } = {}): Promise<{ portfolio_id: string; snapshots: PerformanceSnapshot[] }> =>
+    authGet(`/api/v1/portfolio/${encodeURIComponent(id)}/performance${opts.all ? "?all=true" : `?days=${opts.days ?? 1}`}`),
 
   addPortfolioLot: (id: string, assetType: string, ticker: string, lot: LotInput): Promise<PortfolioDetail> =>
     authPost(`/api/v1/portfolio/${id}/asset/${assetType}/${ticker}/lots`, lot),

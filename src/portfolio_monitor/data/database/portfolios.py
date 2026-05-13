@@ -113,7 +113,8 @@ class PortfoliosModule(DatabaseModule):
     def upsert(self, portfolio: Portfolio) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT OR REPLACE INTO portfolios (id, name, owner) VALUES (?, ?, ?)",
+                "INSERT INTO portfolios (id, name, owner) VALUES (?, ?, ?)"
+                " ON CONFLICT(id) DO UPDATE SET name = excluded.name, owner = excluded.owner",
                 (portfolio.id, portfolio.name, portfolio.owner),
             )
             self._conn.execute(

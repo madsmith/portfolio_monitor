@@ -57,18 +57,26 @@ class PortfolioSnapshotService:
         portfolios = self._portfolio_service.get_all_portfolios()
         count = 0
         for portfolio in portfolios:
-            cost_basis_currency = portfolio.total_cost_basis
-            if cost_basis_currency is None:
-                continue
-            total_value_currency = portfolio.total_value
-            total_value = float(total_value_currency._value) if total_value_currency is not None else None
-            cost_basis = float(cost_basis_currency._value)
-            self._performance_module.insert_snapshot(
-                portfolio_id=portfolio.id,
-                recorded_at=recorded_at,
-                total_value=total_value,
-                cost_basis=cost_basis,
-            )
-            count += 1
+            try:
+                cost_basis_currency = portfolio.total_cost_basis
+                if cost_basis_currency is None:
+                    logger.warning("Skipping snapshot for portfolio %s (%s): total_cost_basis is None", portfolio.id, portfolio.name)
+                    continue
+                total_value_currency = portfolio.total_value
+                total_value = float(total_value_currency._value) if total_value_currency is not None else None
+                cost_basis = float(cost_basis_currency._value)
+                self._performance_module.insert_snapshot(
+                    portfolio_id=portfolio.id,
+                    recorded_at=recorded_at,
+                    total_value=total_value,
+                    cost_basis=cost_basis,
+                )
+                logger.debug(
+                    "Snapshot for portfolio %s (%s): value=%s basis=%s",
+                    portfolio.id, portfolio.name, total_value, cost_basis,
+                )
+                count += 1
+            except Exception:
+                logger.exception("Error snapshotting portfolio %s (%s) — skipping", portfolio.id, portfolio.name)
         if count:
             logger.info("Wrote %d portfolio performance snapshot(s) at %s", count, recorded_at.isoformat())
