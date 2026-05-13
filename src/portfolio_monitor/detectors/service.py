@@ -125,12 +125,10 @@ class DetectionService:
             alert = change.alert
             if change.kind == "fired":
                 self._add_to_log(alert)
-                print("  !!!!  Firing alert", alert)  # TODO: remove
                 logger.trace("Alert fired: %s", alert)
                 await self._bus.publish(AlertFired(alert=alert))
             elif change.kind == "updated":
                 self._update_in_log(alert)
-                print("  !!!!  Updating alert", alert)  # TODO: remove
                 logger.trace("Alert updated: %s", alert)
                 await self._bus.publish(AlertUpdated(alert=alert))
             elif change.kind == "cleared":

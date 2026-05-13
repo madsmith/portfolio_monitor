@@ -259,6 +259,12 @@ export const api = {
   getPortfolios: (): Promise<PortfolioSummary[]> =>
     authGet("/api/v1/portfolios"),
 
+  createPortfolio: (name: string): Promise<PortfolioSummary> =>
+    authPost("/api/v1/portfolios", { name }),
+
+  deletePortfolio: (id: string): Promise<{ ok: boolean }> =>
+    authDelete(`/api/v1/portfolio/${id}`),
+
   getPortfolio: (id: string): Promise<PortfolioDetail> =>
     authGet(`/api/v1/portfolio/${id}`),
 

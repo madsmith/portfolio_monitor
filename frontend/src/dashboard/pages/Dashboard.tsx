@@ -51,6 +51,10 @@ export default function Dashboard() {
   const [watchlists, setWatchlists] = useState<WatchlistSummary[]>([]);
   const [portfoliosLoading, setPortfoliosLoading] = useState(true);
   const [portfoliosError, setPortfoliosError] = useState<string | null>(null);
+  const [addingPortfolio, setAddingPortfolio] = useState(false);
+  const [newPortfolioName, setNewPortfolioName] = useState("");
+  const [addPortfolioSaving, setAddPortfolioSaving] = useState(false);
+  const [newlyCreatedId, setNewlyCreatedId] = useState<string | null>(null);
 
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -202,6 +206,20 @@ export default function Dashboard() {
     return () => { active = false; };
   }, [activeId, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function handleAddPortfolio() {
+    if (!newPortfolioName.trim() || addPortfolioSaving) return;
+    setAddPortfolioSaving(true);
+    try {
+      const created = await api.createPortfolio(newPortfolioName.trim());
+      setPortfolios((prev) => [...prev, created]);
+      setAddingPortfolio(false);
+      setNewPortfolioName("");
+      setNewlyCreatedId(created.id);
+      navigate(`/portfolio/${created.id}`);
+    } catch { /* silent */ }
+    finally { setAddPortfolioSaving(false); }
+  }
+
   return (
     <div className="min-h-screen bg-[#0f1117] text-slate-300 pt-8 px-4">
       <div className="max-w-6xl mx-auto">
@@ -230,6 +248,7 @@ export default function Dashboard() {
               ...portfolios.map((p) => ({ value: p.id, label: p.name, go: () => navigate(`/portfolio/${p.id}`) })),
               ...(watchlists.length > 0 ? [{ value: "watchlist", label: "Watchlist", go: () => navigate("/watchlist") }] : []),
               { value: "settings", label: "Settings", go: () => navigate("/settings") },
+              { value: "__add__", label: "+ Add portfolio…", go: () => setAddingPortfolio(true) },
             ];
             const currentValue = isSettingsActive ? "settings" : isWatchlistActive ? "watchlist" : (activeId ?? "overview");
             const currentIndex = pages.findIndex((p) => p.value === currentValue);
@@ -250,6 +269,7 @@ export default function Dashboard() {
                   value={currentValue}
                   onChange={(e) => {
                     const v = e.target.value;
+                    if (v === "__add__") { setAddingPortfolio(true); return; }
                     if (v === "overview") navigate("/");
                     else if (v === "settings") navigate("/settings");
                     else if (v === "watchlist") navigate("/watchlist");
@@ -275,16 +295,59 @@ export default function Dashboard() {
         </div>
 
         {/* Desktop: tab bar */}
-        <div className="relative hidden sm:flex items-end gap-1">
+        <div className="group/tabbar relative hidden sm:flex items-end gap-1">
           <Tab label="Overview" active={!isSettingsActive && !isWatchlistActive && !isAlertsActive && activeId === null} onClick={() => navigate("/")} />
           {portfolios.map((p) => (
             <Tab key={p.id} label={p.name} active={p.id === activeId} onClick={() => navigate(`/portfolio/${p.id}`)} />
           ))}
           <Tab label="Watchlists" active={isWatchlistActive} onClick={() => navigate("/watchlist")} />
+          {/* Add portfolio button — visible on hover of tab bar, opens modal */}
+          <button
+            onClick={() => setAddingPortfolio(true)}
+            className="opacity-0 group-hover/tabbar:opacity-100 transition-opacity px-3 py-2 text-sm font-medium rounded-t-md border-2 border-transparent hover:border-[#404868] hover:bg-[#13171f] text-slate-500 hover:text-slate-300 cursor-pointer min-w-[4em] text-center"
+            title="Add portfolio"
+          >
+            +
+          </button>
           <div className="flex-1" />
           <Tab label="Settings" active={isSettingsActive} onClick={() => navigate("/settings")} />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[#404868]" />
         </div>
+
+        {/* Add portfolio modal */}
+        {addingPortfolio && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) { setAddingPortfolio(false); setNewPortfolioName(""); } }}
+          >
+            <div className="bg-[#1a1e2e] border border-[#404868] rounded-lg shadow-2xl px-6 py-5 w-80">
+              <h2 className="text-sm font-semibold text-slate-200 mb-3">New Portfolio</h2>
+              <input
+                autoFocus
+                value={newPortfolioName}
+                onChange={(e) => setNewPortfolioName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddPortfolio(); if (e.key === "Escape") { setAddingPortfolio(false); setNewPortfolioName(""); } }}
+                placeholder="Portfolio name"
+                className="w-full bg-[#0f1117] border border-[#404868] rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-slate-500 mb-3"
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setAddingPortfolio(false); setNewPortfolioName(""); }}
+                  className="px-3 py-1.5 text-sm rounded bg-[#2a2f45] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddPortfolio}
+                  disabled={addPortfolioSaving || !newPortfolioName.trim()}
+                  className="px-3 py-1.5 text-sm rounded bg-[#2d4a3e] text-[#6bc98a] hover:bg-[#3a5e50] disabled:opacity-40 transition-colors cursor-pointer"
+                >
+                  {addPortfolioSaving ? "Creating…" : "Create"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-[#1e2130] border-2 border-[#404868] rounded-lg sm:rounded-t-none p-6 min-h-[120px]">
           {isAlertsActive ? (
@@ -315,6 +378,7 @@ export default function Dashboard() {
               loading={detailLoading}
               error={detailError}
               prevClose={prevClose}
+              initialEditing={detail?.id === newlyCreatedId}
               onMutated={(updated) => {
                 const key = hourKey(updated.id);
                 detailCacheRef.current[key] = Promise.resolve(updated);
@@ -324,6 +388,13 @@ export default function Dashboard() {
                 const symbols = [...updated.stocks, ...updated.currencies, ...updated.crypto]
                   .map(toWsSymbol);
                 wsRef.current?.subscribe(symbols);
+              }}
+              onDelete={async () => {
+                if (!detail) return;
+                await api.deletePortfolio(detail.id);
+                setPortfolios((prev) => prev.filter((p) => p.id !== detail.id));
+                setDetail(null);
+                navigate("/");
               }}
             />
           )}

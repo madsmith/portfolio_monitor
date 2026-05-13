@@ -78,6 +78,23 @@ class PortfolioService:
     def _save_portfolio(self, portfolio: Portfolio) -> None:
         self._portfolios_module.upsert(portfolio)
 
+    def create_portfolio(self, name: str, auth: "AuthContext") -> Portfolio:
+        """Create a new empty portfolio owned by the authenticated user."""
+        portfolio = Portfolio(name=name, owner=auth.username)
+        self._portfolios_by_owner.setdefault(auth.username, []).append(portfolio)
+        self._save_portfolio(portfolio)
+        return portfolio
+
+    def delete_portfolio(self, portfolio_id: str, auth: "AuthContext") -> bool:
+        """Delete a portfolio. Returns True if deleted, False if not found/unauthorized."""
+        portfolio = self.get_portfolio(portfolio_id, auth)
+        if portfolio is None or not self._can_write(portfolio, auth):
+            return False
+        owner_list = self._portfolios_by_owner.get(portfolio.owner, [])
+        self._portfolios_by_owner[portfolio.owner] = [p for p in owner_list if p.id != portfolio_id]
+        self._portfolios_module.delete(portfolio_id)
+        return True
+
     def _asset_list(self, portfolio: Portfolio, asset_type: str) -> list[Asset] | None:
         attr = _ASSET_TYPE_ATTR.get(asset_type)
         return getattr(portfolio, attr) if attr else None

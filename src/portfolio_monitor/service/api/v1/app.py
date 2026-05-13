@@ -15,7 +15,7 @@ from .routes.health import health
 from .routes.login import login_handler
 from .routes.me import me_handler
 from .routes.market_info import market_close_handler, market_hours_handler, market_open_handler
-from .routes.portfolios import portfolio_edit_handlers, portfolio_handler, portfolio_performance_handler, portfolio_users_handler, portfolios_handler
+from .routes.portfolios import create_portfolio_handler, delete_portfolio_handler, portfolio_edit_handlers, portfolio_handler, portfolio_performance_handler, portfolio_users_handler, portfolios_handler
 from .routes.prices import current_price_handler, daily_range_handler, open_close_handler, previous_close_handler, price_history_handler
 from .routes.watchlists import watchlists_handler
 from .ws import WebSocketManager
@@ -106,6 +106,8 @@ class APIv1ServiceApp(Router):
 
         get_recent_alerts, clear_recent_alerts = _recent_alerts_handler(ctx.db.alerts, ctx.bus)
         add_lot, update_lot, delete_lot, delete_asset = portfolio_edit_handlers(ctx.portfolio_service)
+        create_portfolio = create_portfolio_handler(ctx.portfolio_service)
+        delete_portfolio = delete_portfolio_handler(ctx.portfolio_service)
         get_portfolio_users, update_portfolio_users = portfolio_users_handler(ctx.portfolio_service)
         get_portfolio_performance = portfolio_performance_handler(ctx.portfolio_service, ctx.db.performance)
         super().__init__(
@@ -131,7 +133,9 @@ class APIv1ServiceApp(Router):
                 Route("/users", require_auth(list_users), methods=["GET"]),
                 Route("/accounts/{username}/password", require_auth(reset_password), methods=["PUT"]),
                 Route("/portfolios", require_auth(portfolios_handler(ctx.portfolio_service)), methods=["GET"]),
+                Route("/portfolios", require_auth(create_portfolio), methods=["POST"]),
                 Route("/portfolio/{id}", require_auth(portfolio_handler(ctx.portfolio_service)), methods=["GET"]),
+                Route("/portfolio/{id}", require_auth(delete_portfolio), methods=["DELETE"]),
                 Route("/portfolio/{id}/performance", require_auth(get_portfolio_performance), methods=["GET"]),
                 Route("/portfolio/{id}/users", require_auth(get_portfolio_users), methods=["GET"]),
                 Route("/portfolio/{id}/users", require_auth(update_portfolio_users), methods=["PUT"]),

@@ -5,6 +5,7 @@ import { fmtMoney, fmtPrice, fmtPct, fmtQty, fmtDate, fmtChg, plColor, lotPlColo
 import { DataTable, type ColDef } from "../DataTable";
 import { Chart } from "../Chart";
 import { AssetMenu } from "../AssetMenu";
+import { Button } from "../buttons/Button";
 
 // ---------------------------------------------------------------------------
 // Portfolio users section (admin-only, shown in edit mode)
@@ -762,19 +763,26 @@ export function PortfolioDetailPane({
   error,
   prevClose,
   onMutated,
+  onDelete,
+  initialEditing = false,
 }: {
   detail: PortfolioDetail | null;
   loading: boolean;
   error: string | null;
   prevClose: Record<string, number>;
   onMutated?: (updated: PortfolioDetail) => void;
+  onDelete?: () => Promise<void>;
+  initialEditing?: boolean;
 }) {
   const navigate = useNavigate();
   const [defaultPeriodLabel, setDefaultPeriodLabel] = useState("4H");
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditing);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const canManageUsers = getRole() === "admin" || getUsername() === detail?.owner;
+  const isAdmin = getRole() === "admin";
 
-  useEffect(() => { setEditing(false); }, [detail?.id]);
+  useEffect(() => { setEditing(initialEditing); setConfirmDelete(false); }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;
   if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;
@@ -818,7 +826,7 @@ export function PortfolioDetailPane({
       <div className="flex items-center justify-between mb-3">
         {onMutated ? (
           <button
-            onClick={() => setEditing((e) => !e)}
+            onClick={() => { setEditing((e) => !e); setConfirmDelete(false); }}
             className={`text-xs transition-colors cursor-pointer ${editing ? "text-sky-400 hover:text-sky-300" : "text-slate-500 hover:text-slate-300"}`}
           >
             {editing ? "Done" : "Edit"}
@@ -851,6 +859,21 @@ export function PortfolioDetailPane({
         editing={editing} portfolioId={detail.id} onMutated={onMutated}
       />
       {editing && canManageUsers && <PortfolioUsersSection portfolioId={detail.id} />}
+      {editing && isAdmin && onDelete && (
+        <div className="mt-6 pt-5 border-t border-[#2a2d3a] flex items-center gap-3">
+          {confirmDelete ? (
+            <>
+              <span className="text-xs text-slate-400">Delete this portfolio?</span>
+              <Button variant="danger" disabled={deleting} onClick={async () => { setDeleting(true); await onDelete(); }}>
+                {deleting ? "Deleting…" : "Confirm delete"}
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+            </>
+          ) : (
+            <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>Delete portfolio</Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

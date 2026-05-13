@@ -80,6 +80,30 @@ def portfolios_handler(portfolio_service: PortfolioService):
     return list_portfolios
 
 
+def create_portfolio_handler(portfolio_service: PortfolioService):
+    async def create_portfolio(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        body = await request.json()
+        name = (body.get("name") or "").strip()
+        if not name:
+            return JSONResponse({"error": "name is required"}, status_code=400)
+        portfolio = portfolio_service.create_portfolio(name, auth)
+        return JSONResponse(_portfolio_summary(portfolio), status_code=201)
+
+    return create_portfolio
+
+
+def delete_portfolio_handler(portfolio_service: PortfolioService):
+    async def delete_portfolio(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        portfolio_id = request.path_params["id"]
+        if not portfolio_service.delete_portfolio(portfolio_id, auth):
+            return JSONResponse({"error": "not found or unauthorized"}, status_code=404)
+        return JSONResponse({"ok": True})
+
+    return delete_portfolio
+
+
 def portfolio_handler(portfolio_service: PortfolioService):
     @logfire.instrument("api.portfolios.get")
     async def get_portfolio(request: Request) -> JSONResponse:
