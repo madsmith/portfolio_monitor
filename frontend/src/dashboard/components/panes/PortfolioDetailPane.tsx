@@ -509,12 +509,12 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
 
   const columns: ColDef<EnrichedAsset>[] = [
     { key: "ticker",   label: "Ticker",    align: "left",  sortValue: (a) => a.ticker,                    defaultDir: "asc" },
-    { key: "qty",      label: "Qty",       align: "right", sortValue: (a) => parseFloat(a.total_quantity), vis: "hidden sm:table-cell" },
-    { key: "price",    label: "Price",     align: "right", sortValue: (a) => a.current_price },
+    { key: "qty",      label: "Qty",       align: "right", sortValue: (a) => parseFloat(a.total_quantity), vis: editing ? undefined : "hidden sm:table-cell" },
+    { key: "price",    label: "Price",     align: "right", sortValue: (a) => a.current_price,               vis: editing ? "hidden sm:table-cell" : undefined },
     { key: "priceChg", label: "Price Chg", align: "right", sortValue: (a) => priceChgMode === "dollar" ? a.dayChgPrice : a.dayChgPct,
       badge: priceChgMode === "dollar" ? "$" : "%", onBadge: () => setPriceChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
     { key: "value",    label: "Value",     align: "right", sortValue: (a) => a.current_value },
-    { key: "valueChg", label: "Value Chg", align: "right", sortValue: (a) => valueChgMode === "dollar" ? a.dayChgValue : a.dayChgPct, vis: "hidden md:table-cell",
+    { key: "valueChg", label: "Value Chg", align: "right", sortValue: (a) => valueChgMode === "dollar" ? a.dayChgValue : a.dayChgPct,
       badge: valueChgMode === "dollar" ? "$" : "%", onBadge: () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")) },
     { key: "pl",       label: "P&L",       align: "right", sortValue: (a) => a.profit_loss,               vis: "hidden lg:table-cell" },
     { key: "plPct",    label: "P&L %",     align: "right", sortValue: (a) => a.profit_loss_percentage,    vis: "hidden lg:table-cell" },
@@ -545,7 +545,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
                   {a.ticker}
                 </button>
               </td>
-              <td className="hidden sm:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">
+              <td className={`${editing ? "" : "hidden sm:table-cell "}px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300`}>
                 <span className="inline-flex items-center justify-end gap-1.5">
                   {fmtQty(a.total_quantity)}
                   {(
@@ -560,12 +560,12 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
                   )}
                 </span>
               </td>
-              <td className="px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">{fmtPrice(a.current_price, a.asset_type, a.ticker)}</td>
+              <td className={`${editing ? "hidden sm:table-cell " : ""}px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300`}>{fmtPrice(a.current_price, a.asset_type, a.ticker)}</td>
               <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.dayChgPrice)}`}>
                 {priceChgMode === "dollar" ? fmtChg(a.dayChgPrice) : fmtPct(a.dayChgPct)}
               </td>
               <td className="px-1 sm:px-1.5 py-2 text-right tabular-nums text-slate-300">{fmtMoney(a.current_value)}</td>
-              <td className={`hidden md:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
+              <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(a.dayChgValue)}`}>
                 {valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct)}
               </td>
               <td className={`hidden lg:table-cell px-1 sm:px-1.5 py-2 text-right tabular-nums font-medium ${plColor(a.profit_loss)}`}>
