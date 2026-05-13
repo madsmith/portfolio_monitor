@@ -1,3 +1,5 @@
+import { useRef, useEffect, useState } from "react";
+
 export const SPARK_GREEN = "#4d9060";
 export const SPARK_RED   = "#9c4040";
 export const SPARK_TEXT_GREEN = "#2cb152";
@@ -123,6 +125,48 @@ export function Sparkline({
    *  absolutely-positioned div above the chart so it isn't subject to viewBox scaling. */
   tooltipStyle?: "svg" | "html";
 }) {
+  const svgRef     = useRef<SVGSVGElement>(null);
+  const touchCbRef = useRef<{ handle: (e: TouchEvent) => void; clear: () => void } | null>(null);
+  // Local fraction updated synchronously on touch — avoids the parent round-trip
+  // (onHoverFraction → parent setState → re-render → hoverFraction prop back) that
+  // makes the crosshair feel laggy during a drag.
+  const [localFraction, setLocalFraction] = useState<number | null>(null);
+
+  // Non-passive touch listeners so preventDefault() actually suppresses page scroll
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const handle = (e: TouchEvent) => touchCbRef.current?.handle(e);
+    const clear  = ()              => touchCbRef.current?.clear();
+    el.addEventListener("touchstart",  handle, { passive: false });
+    el.addEventListener("touchmove",   handle, { passive: false });
+    el.addEventListener("touchend",    clear);
+    el.addEventListener("touchcancel", clear);
+    return () => {
+      el.removeEventListener("touchstart",  handle);
+      el.removeEventListener("touchmove",   handle);
+      el.removeEventListener("touchend",    clear);
+      el.removeEventListener("touchcancel", clear);
+    };
+  }, []);
+
+  // Always-current callbacks — closed over latest props/state
+  touchCbRef.current = onHoverFraction ? {
+    handle(e: TouchEvent) {
+      if (e.touches.length === 0) return;
+      e.preventDefault();
+      const el = svgRef.current;
+      if (!el) return;
+      const f = fractionFromClientX(el, e.touches[0].clientX);
+      setLocalFraction(f);    // immediate local update — no parent round-trip
+      onHoverFraction(f);     // sync group (other sparklines) async
+    },
+    clear() {
+      setLocalFraction(null);
+      onHoverFraction(null);
+    },
+  } : null;
+
   const W = 400; // internal viewBox width; CSS scales to container
 
   // Not enough data to draw a line — render a muted dashed placeholder
@@ -177,11 +221,15 @@ export function Sparkline({
   const posId = `spark-pos-${id}`;
   const negId = `spark-neg-${id}`;
 
+  // localFraction (touch-driven) takes priority over the parent-propagated hoverFraction
+  // so the crosshair reacts instantly on touch without waiting for the parent re-render cycle.
+  const activeFraction = localFraction ?? hoverFraction;
+
   // Compute the hovered intercept point from the incoming fraction.
   // ix is the SVG x coordinate; nearestIdx snaps to the closest data point.
-  const intercept = hoverFraction !== null ? (() => {
-    const ix = PAD.left + hoverFraction * plotW;
-    const nearestIdx = Math.round(hoverFraction * (pcts.length - 1));
+  const intercept = activeFraction !== null ? (() => {
+    const ix = PAD.left + activeFraction * plotW;
+    const nearestIdx = Math.round(activeFraction * (pcts.length - 1));
     const pct = pcts[nearestIdx];
     const iy = yScale(pct);
     const color = pct >= 0 ? positiveColor : negativeColor;
@@ -209,27 +257,21 @@ export function Sparkline({
     onHoverFraction(fractionFromClientX(e.currentTarget, e.clientX));
   }
 
-  function handleTouchMove(e: React.TouchEvent<SVGSVGElement>) {
-    if (!onHoverFraction) return;
-    e.preventDefault();
-    onHoverFraction(fractionFromClientX(e.currentTarget, e.touches[0].clientX));
-  }
 
-  const tipPct = hoverFraction !== null
-    ? Math.max(4, Math.min(96, hoverFraction * 100))
+  const tipPct = activeFraction !== null
+    ? Math.max(4, Math.min(96, activeFraction * 100))
     : 50;
 
   const svg = (
     <svg
+      ref={svgRef}
       viewBox={`0 0 ${W} ${height}`}
       width="100%"
       height={height}
       preserveAspectRatio="none"
-      className="overflow-visible"
+      className="overflow-visible select-none"
       onMouseMove={onHoverFraction ? handleMouseMove : undefined}
       onMouseLeave={onHoverFraction ? () => onHoverFraction(null) : undefined}
-      onTouchMove={onHoverFraction ? handleTouchMove : undefined}
-      onTouchEnd={onHoverFraction ? () => onHoverFraction(null) : undefined}
     >
       <defs>
         <linearGradient id={posId} x1="0" y1="0" x2="0" y2="1">
@@ -285,7 +327,7 @@ export function Sparkline({
 
   if (tooltipStyle === "html") {
     return (
-      <div className="relative">
+      <div className="relative select-none">
         {svg}
         {showTooltip && intercept !== null && (
           <div

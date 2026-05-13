@@ -225,7 +225,8 @@ export function Chart({
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [openClose, setOpenClose] = useState<DailyOpenClose | null>(null);
   const [openCloseLoading, setOpenCloseLoading] = useState(false);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const svgRef  = useRef<SVGSVGElement>(null);
+  const touchRef = useRef<((e: TouchEvent) => void) | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -256,6 +257,29 @@ export function Chart({
       .catch(() => { if (active) { setOpenClose(null); setOpenCloseLoading(false); } });
     return () => { active = false; };
   }, [ticker, assetType, effectiveShowOpen]);
+
+  // True once the SVG is in the DOM — used to key the touch listener effect.
+  const svgShown = !(loading || openCloseLoading) && !error && data.length >= 2;
+
+  // Non-passive touch listeners so preventDefault() suppresses page scroll.
+  // Keyed on svgShown because the SVG (and its ref) only exists after data loads.
+  useEffect(() => {
+    if (!svgShown) return;
+    const el = svgRef.current;
+    if (!el) return;
+    const onTouch = (e: TouchEvent) => touchRef.current?.(e);
+    const onEnd   = () => { setHoverIdx(null); setHoverPos(null); };
+    el.addEventListener("touchstart",  onTouch, { passive: false });
+    el.addEventListener("touchmove",   onTouch, { passive: false });
+    el.addEventListener("touchend",    onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart",  onTouch);
+      el.removeEventListener("touchmove",   onTouch);
+      el.removeEventListener("touchend",    onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [svgShown]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const displayAgg = data.length > 0
     ? (hoverIdx !== null ? data[hoverIdx] : data[data.length - 1])
@@ -361,8 +385,35 @@ export function Chart({
 
   const currentPrice  = data.length > 0 ? data[data.length - 1].close : null;
 
+  // Always-current touch handler — sees latest compactLayout, data, tMin, tRange
+  touchRef.current = (e: TouchEvent) => {
+    if (e.touches.length === 0) return;
+    e.preventDefault();
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const svgX  = ((e.touches[0].clientX - rect.left)  / rect.width)  * W;
+    const svgY  = ((e.touches[0].clientY - rect.top)   / rect.height) * H;
+    const plotX = svgX - PAD.left;
+    const plotY = svgY - PAD.top;
+    if (plotX < 0 || plotX > PLOT_W || plotY < 0 || plotY > PLOT_H) {
+      setHoverIdx(null); setHoverPos(null); return;
+    }
+    setHoverPos({ x: svgX, y: svgY });
+    if (data.length >= 2) {
+      const hoverTs = compactLayout
+        ? compactLayout.xInverse(svgX).getTime()
+        : tMin + (plotX / PLOT_W) * tRange;
+      let nearest = 0, nearestDist = Infinity;
+      for (let i = 0; i < data.length; i++) {
+        const dist = Math.abs(new Date(data[i].timestamp).getTime() - hoverTs);
+        if (dist < nearestDist) { nearestDist = dist; nearest = i; }
+      }
+      setHoverIdx(nearest);
+    }
+  };
+
   return (
-    <div className="text-sm">
+    <div className="text-sm select-none">
       {/* Header: period controls + price display */}
       <div className="flex items-center justify-between mb-2 gap-4">
         <div className="flex gap-1">
