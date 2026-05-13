@@ -655,13 +655,13 @@ function PortfolioPerformanceChart({
           </g>
         </svg>
 
-        {/* HTML tooltip — floats above the hovered data point */}
+        {/* HTML tooltip — pinned above the chart, following cursor horizontally */}
         {hoverData && (
           <div
             className="absolute pointer-events-none -translate-x-1/2 z-10"
             style={{
               left: `calc(${MARGIN.left}px + ${hoverLeftPct / 100} * ${plotW}px)`,
-              bottom: `${Math.min(HEIGHT - MARGIN.top - 4, HEIGHT - hoverData.valueY + 12)}px`,
+              bottom: "calc(100% + 4px)",
             }}
           >
             <div className="bg-[#12151f] border border-[#404868] rounded px-2.5 py-1.5 shadow-lg text-xs whitespace-nowrap">
