@@ -28,3 +28,4 @@ config/*.db
 *.db-wal
 *.db-shm
 yaml2db*
+.claude/
