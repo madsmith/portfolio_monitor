@@ -44,7 +44,7 @@ export function SparklineView({ rows, chartDays }: { rows: PerfRow[]; chartDays:
   }
 
   return (
-    <div className="border border-[#404868] rounded-md overflow-hidden">
+    <div className="border border-[#404868] rounded-md overflow-visible">
       {rows.map((row) => {
         const visible = row.days !== null ? sliceDays(row.days, chartDays) : null;
         const rangeReturn = visible && visible.length > 0
@@ -106,7 +106,7 @@ export function MomentumView({ rows, windowSize, chartDays }: {
   }
 
   return (
-    <div className="border border-[#404868] rounded-md overflow-hidden">
+    <div className="border border-[#404868] rounded-md overflow-visible">
       {rows.map((row) => {
         const series = row.days !== null
           ? momentumSeries(sliceDays(row.days, chartDays), windowSize)
@@ -164,7 +164,7 @@ export function VolumeView({ rows, chartDays }: { rows: PerfRow[]; chartDays: nu
   }
 
   return (
-    <div className="border border-[#404868] rounded-md overflow-hidden">
+    <div className="border border-[#404868] rounded-md overflow-visible">
       {rows.map((row) => {
         const visible = row.days !== null ? sliceDays(row.days, chartDays) : null;
         const nearestIdx = (hoverFraction !== null && visible !== null && visible.length >= 2)
