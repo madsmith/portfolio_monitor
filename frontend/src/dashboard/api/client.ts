@@ -232,6 +232,7 @@ export type DetectorArgSpec = {
   type: string;        // "float", "str", "int", etc.
   default?: number | string;  // absent means the arg is required
   description?: string;
+  options?: string[];  // present for enum types; use a dropdown when set
 };
 
 export type DetectorInfo = {

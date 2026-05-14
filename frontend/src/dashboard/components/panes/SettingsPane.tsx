@@ -885,7 +885,16 @@ function AlertConfigsSection() {
               {(detectors.find((d) => d.name === addRuleKind)?.args ?? []).map((arg) => (
                 <div key={arg.name} className="flex flex-col gap-1 flex-1 min-w-[80px]">
                   <label className="text-[10px] text-slate-500 uppercase tracking-wide">{arg.name}</label>
-                  <TextInput value={addRuleArgs[arg.name] ?? ""} onChange={(v) => setAddRuleArgs((prev) => ({ ...prev, [arg.name]: v }))} className="w-full" />
+                  {arg.options ? (
+                    <DropdownSelector
+                      value={addRuleArgs[arg.name] ?? (arg.default !== undefined ? String(arg.default) : arg.options[0])}
+                      onChange={(v) => setAddRuleArgs((prev) => ({ ...prev, [arg.name]: v }))}
+                      options={arg.options.map((o) => ({ value: o, label: o }))}
+                      className="w-full"
+                    />
+                  ) : (
+                    <TextInput value={addRuleArgs[arg.name] ?? ""} onChange={(v) => setAddRuleArgs((prev) => ({ ...prev, [arg.name]: v }))} className="w-full" />
+                  )}
                 </div>
               ))}
               {addingRuleMode === "global" && (
@@ -916,11 +925,20 @@ function AlertConfigsSection() {
                   {(det?.args ?? []).map((arg) => (
                     <div key={arg.name} className="flex-1 min-w-[80px]">
                       <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1">{arg.name}</label>
-                      <input
-                        className="w-full bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-slate-400"
-                        value={editRuleArgs[arg.name] ?? ""}
-                        onChange={(e) => setEditRuleArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
-                      />
+                      {arg.options ? (
+                        <DropdownSelector
+                          value={editRuleArgs[arg.name] ?? (arg.default !== undefined ? String(arg.default) : arg.options[0])}
+                          onChange={(v) => setEditRuleArgs((prev) => ({ ...prev, [arg.name]: v }))}
+                          options={arg.options.map((o) => ({ value: o, label: o }))}
+                          className="w-full"
+                        />
+                      ) : (
+                        <input
+                          className="w-full bg-[#0f1117] border border-[#404868] rounded px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-slate-400"
+                          value={editRuleArgs[arg.name] ?? ""}
+                          onChange={(e) => setEditRuleArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
+                        />
+                      )}
                     </div>
                   ))}
                   {!rule.ticker && (

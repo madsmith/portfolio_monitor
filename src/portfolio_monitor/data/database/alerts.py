@@ -176,7 +176,7 @@ class AlertsModule(DatabaseModule):
 
     def get_rules(self, owner: str) -> list[AlertRule]:
         rows = self._conn.execute(
-            "SELECT id, owner, ticker, asset_type, kind, args, enabled FROM alert_rules WHERE owner = ?",
+            "SELECT id, owner, ticker, asset_type, kind, args, enabled, muted_until FROM alert_rules WHERE owner = ?",
             (owner,),
         ).fetchall()
         return [self._row_to_rule(r) for r in rows]

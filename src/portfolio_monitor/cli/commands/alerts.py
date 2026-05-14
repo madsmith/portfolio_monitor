@@ -56,8 +56,10 @@ def _alert_rows(config: dict[str, Any]) -> list[AlertRow]:
 
 
 def _arg_spec(arg: dict) -> str:
+    options = arg.get("options")
+    type_str = "|".join(options) if options else arg["type"]
     default_str = "required)" if "default" not in arg else f"default={arg['default']})"
-    return f"    {arg['name']} ({arg['type']}, {default_str}"
+    return f"    {arg['name']} ({type_str}, {default_str}"
 
 
 def _print_detectors(detectors: list[dict]) -> None:

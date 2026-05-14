@@ -99,12 +99,21 @@ function AddAlertForm({
             </span>
           )}
         </label>
-        <Input
-          value={args[arg.name] ?? ""}
-          placeholder={arg.default !== undefined ? String(arg.default) : ""}
-          onChange={(v) => setArgs((prev) => ({ ...prev, [arg.name]: v }))}
-          className="w-full"
-        />
+        {arg.options ? (
+          <DropdownSelector
+            value={args[arg.name] ?? (arg.default !== undefined ? String(arg.default) : arg.options[0])}
+            onChange={(v) => setArgs((prev) => ({ ...prev, [arg.name]: v }))}
+            options={arg.options.map((o) => ({ value: o, label: o }))}
+            className="w-full"
+          />
+        ) : (
+          <Input
+            value={args[arg.name] ?? ""}
+            placeholder={arg.default !== undefined ? String(arg.default) : ""}
+            onChange={(v) => setArgs((prev) => ({ ...prev, [arg.name]: v }))}
+            className="w-full"
+          />
+        )}
       </div>
     );
   }

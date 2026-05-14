@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Annotated, Any, ClassVar, Generic, NamedTuple, Protocol, TypeVar, get_args, get_origin, runtime_checkable
 from uuid import uuid4
 
@@ -49,6 +50,7 @@ class DetectorArgSpec:
     type: str   # human-readable, e.g. "float", "str", "int"
     default: Any  # inspect.Parameter.empty when the arg is required
     description: str = ""
+    options: list[str] | None = None  # valid values for enum types
 
     @property
     def required(self) -> bool:
@@ -152,7 +154,10 @@ class DetectorBase(ABC, Detector):
                 type_str = annotation.__name__
             else:
                 type_str = str(annotation)
-            args.append(DetectorArgSpec(name=param_name, type=type_str, default=param.default, description=description))
+            options: list[str] | None = None
+            if isinstance(annotation, type) and issubclass(annotation, Enum):
+                options = [e.value for e in annotation]
+            args.append(DetectorArgSpec(name=param_name, type=type_str, default=param.default, description=description, options=options))
         doc = inspect.getdoc(cls) or ""
         description = doc.splitlines()[0] if doc else ""
         return DetectorInfo(name=cls.name(), args=args, description=description, display_name=cls.display_name)
