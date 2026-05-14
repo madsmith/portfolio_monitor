@@ -598,6 +598,18 @@ function AlertConfigsSection() {
     }
   }
 
+  async function handleToggleMute(id: string, currentMutedUntil: string | null) {
+    const mute = !currentMutedUntil || new Date(currentMutedUntil) <= new Date();
+    const optimisticMutedUntil = mute ? "pending" : null;
+    setRules((prev) => prev.map((r) => r.id === id ? { ...r, muted_until: optimisticMutedUntil } : r));
+    try {
+      const result = await api.updateAlertRule(id, { mute });
+      setRules((prev) => prev.map((r) => r.id === id ? { ...r, muted_until: result.muted_until ?? null } : r));
+    } catch {
+      setRules((prev) => prev.map((r) => r.id === id ? { ...r, muted_until: currentMutedUntil } : r));
+    }
+  }
+
   async function handleDeleteRule(id: string) {
     setDeletingRuleId(id);
     try {
@@ -964,9 +976,19 @@ function AlertConfigsSection() {
                 )}
                 <div className="flex items-center gap-3 shrink-0">
                   <ToggleSlider enabled={rule.enabled} onChange={(v) => handleToggleRule(rule.id, v)} />
-                  <div className="relative w-16 flex justify-end">
+                  <div className="relative w-20 flex justify-end">
                     <span className="text-[10px] text-slate-600 font-mono group-hover:invisible">{rule.id.slice(0, 8)}</span>
                     <div className="absolute inset-0 hidden group-hover:flex items-center justify-end gap-3">
+                      {(() => {
+                        const isMuted = !!rule.muted_until && new Date(rule.muted_until) > new Date();
+                        return (
+                          <button
+                            onClick={() => handleToggleMute(rule.id, rule.muted_until ?? null)}
+                            title={isMuted ? `Muted until next market open (${new Date(rule.muted_until!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : "Mute until next market open"}
+                            className={`text-base leading-none transition-colors cursor-pointer ${isMuted ? "text-amber-400 hover:text-slate-400" : "text-slate-600 hover:text-slate-300"}`}
+                          >⊘</button>
+                        );
+                      })()}
                       {isGlobal && (
                         <button
                           className={`transition-colors cursor-pointer text-sm leading-none font-bold ${exclusionOpen ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}

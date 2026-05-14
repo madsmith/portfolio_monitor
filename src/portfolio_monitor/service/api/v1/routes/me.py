@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -5,6 +8,7 @@ from starlette.responses import JSONResponse
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.account import AccountStore
 from portfolio_monitor.data.database.alerts import AlertsModule
+from portfolio_monitor.data.market_info import MarketInfo
 from portfolio_monitor.detectors.registry import DetectorRegistry
 from portfolio_monitor.service.alerts.models import AlertRule as ServiceAlertRule
 from portfolio_monitor.service.alerts.events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
@@ -54,6 +58,7 @@ def me_handler(
                     "kind": r.kind,
                     "args": r.args,
                     "enabled": r.enabled,
+                    "muted_until": r.muted_until,
                     "excluded_tickers": alerts_module.get_rule_exclusions(r.id) if not r.ticker else [],
                 }
                 for r in db_rules
@@ -89,7 +94,7 @@ def me_handler(
         service_rule = ServiceAlertRule(id=db_rule.id, ticker=ticker, kind=kind, args=args, asset_type=asset_type)
         await bus.publish(AlertRuleAdded(username=username, rule=service_rule))
         return JSONResponse(
-            {"id": db_rule.id, "ticker": ticker, "asset_type": asset_type, "kind": kind, "args": args, "enabled": True},
+            {"id": db_rule.id, "ticker": ticker, "asset_type": asset_type, "kind": kind, "args": args, "enabled": True, "muted_until": None},
             status_code=201,
         )
 
@@ -107,13 +112,24 @@ def me_handler(
             return JSONResponse({"error": "invalid request body"}, status_code=400)
         new_args = body.get("args", existing.args)
         new_enabled = bool(body["enabled"]) if "enabled" in body else existing.enabled
+        # "mute": true → compute muted_until as next NYSE open; false/null → clear mute
+        if "mute" in body:
+            if body["mute"]:
+                new_muted_until_dt = MarketInfo.get_next_market_open(datetime.now(ZoneInfo("UTC")))
+                new_muted_until = new_muted_until_dt.astimezone(ZoneInfo("UTC")).isoformat()
+            else:
+                new_muted_until = None
+        else:
+            new_muted_until = existing.muted_until
         alerts_module.update_rule(rule_id, new_args)
         if new_enabled != existing.enabled:
             alerts_module.set_rule_enabled(rule_id, new_enabled)
-        old_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=existing.args, asset_type=existing.asset_type, enabled=existing.enabled)
-        new_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=new_args, asset_type=existing.asset_type, enabled=new_enabled)
+        if new_muted_until != existing.muted_until:
+            alerts_module.set_rule_muted_until(rule_id, new_muted_until)
+        old_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=existing.args, asset_type=existing.asset_type, enabled=existing.enabled, muted_until=existing.muted_until)
+        new_rule = ServiceAlertRule(id=existing.id, ticker=existing.ticker or "", kind=existing.kind, args=new_args, asset_type=existing.asset_type, enabled=new_enabled, muted_until=new_muted_until)
         await bus.publish(AlertRuleUpdated(username=username, old_rule=old_rule, new_rule=new_rule))
-        return JSONResponse({"id": rule_id, "args": new_args, "enabled": new_enabled})
+        return JSONResponse({"id": rule_id, "args": new_args, "enabled": new_enabled, "muted_until": new_muted_until})
 
     @logfire.instrument("api.me.alert_config.delete_rule")
     async def delete_alert_rule(request: Request) -> JSONResponse:

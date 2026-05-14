@@ -1,7 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.database.alerts import AlertsModule
@@ -64,6 +63,7 @@ class AlertConfigAdapter:
                 args=db_rule.args,
                 asset_type=db_rule.asset_type,
                 enabled=db_rule.enabled,
+                muted_until=db_rule.muted_until,
             )
             self._register_rule(db_rule.owner, service_rule)
 
@@ -117,6 +117,7 @@ class AlertConfigAdapter:
                 continue
             self._engine.add_detector(symbol, detector)
             self._alert_manager.register_detector_account(detector.detector_id, username)
+            self._alert_manager.register_detector_rule(detector.detector_id, rule.id)
             registered.append((symbol, detector.detector_id, detector))
             logger.debug(
                 "Registered detector %r for symbol %s (rule=%s, user=%s)",
@@ -125,6 +126,14 @@ class AlertConfigAdapter:
         self._rule_detectors[rule.id] = registered
         for symbol, _, _ in registered:
             self._monitor.register_symbol(symbol)
+        # Apply muted_until to the alert manager if still in the future
+        if rule.muted_until:
+            try:
+                muted_until_dt = datetime.fromisoformat(rule.muted_until)
+                if muted_until_dt > datetime.now(timezone.utc):
+                    self._alert_manager.set_rule_muted_until(rule.id, muted_until_dt)
+            except ValueError:
+                pass
 
     def apply_rules_to_symbol(self, symbol: AssetSymbol, owner: str) -> None:
         """Register detectors for a newly-tracked symbol against the owner's existing rules.
@@ -148,6 +157,7 @@ class AlertConfigAdapter:
                 continue
             self._engine.add_detector(symbol, detector)
             self._alert_manager.register_detector_account(detector.detector_id, owner)
+            self._alert_manager.register_detector_rule(detector.detector_id, db_rule.id)
             self._rule_detectors.setdefault(db_rule.id, []).append((symbol, detector.detector_id, detector))
             logger.debug("Applied rule %s to new symbol %s (user=%s)", db_rule.id, symbol, owner)
 
@@ -161,6 +171,7 @@ class AlertConfigAdapter:
             for s, detector_id, d in to_remove:
                 self._engine.remove_detector(s, detector_id)
                 self._alert_manager.unregister_detector_account(detector_id)
+                self._alert_manager.unregister_detector_rule(detector_id)
                 registrations.remove((s, detector_id, d))
             logger.debug("Removed detectors for symbol %s (user=%s)", symbol, owner)
 
@@ -169,8 +180,10 @@ class AlertConfigAdapter:
         for symbol, detector_id, _ in registrations:
             self._engine.remove_detector(symbol, detector_id)
             self._alert_manager.unregister_detector_account(detector_id)
+            self._alert_manager.unregister_detector_rule(detector_id)
             if self._is_alert_only_symbol(symbol):
                 self._monitor.unregister_symbol(symbol)
+        self._alert_manager.clear_rule_muted_until(rule_id)
 
     def _is_alert_only_symbol(self, symbol: AssetSymbol) -> bool:
         """True if this symbol has no remaining alert detectors and is not in any portfolio or watchlist."""

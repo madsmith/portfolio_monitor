@@ -16,6 +16,7 @@ class AlertRule:
     kind: str
     args: dict[str, Any]
     enabled: bool = True
+    muted_until: str | None = None  # ISO UTC timestamp; rule suppressed until this time
 
 
 @dataclass
@@ -73,6 +74,7 @@ class AlertsModule(DatabaseModule):
             MigrationStep(version=3, apply=self._migrate_v3),
             MigrationStep(version=4, apply=self._migrate_v4),
             MigrationStep(version=5, apply=self._migrate_v5),
+            MigrationStep(version=6, apply=self._migrate_v6),
         ]
 
     def _migrate_v1(self, conn: sqlite3.Connection) -> None:
@@ -138,6 +140,11 @@ class AlertsModule(DatabaseModule):
             "ALTER TABLE alert_rules ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"
         )
 
+    def _migrate_v6(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            "ALTER TABLE alert_rules ADD COLUMN muted_until TEXT"
+        )
+
     def _migrate_v2(self, conn: sqlite3.Connection) -> None:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS alert_records (
@@ -163,7 +170,7 @@ class AlertsModule(DatabaseModule):
 
     def get_all_rules(self) -> list[AlertRule]:
         rows = self._conn.execute(
-            "SELECT id, owner, ticker, asset_type, kind, args, enabled FROM alert_rules"
+            "SELECT id, owner, ticker, asset_type, kind, args, enabled, muted_until FROM alert_rules"
         ).fetchall()
         return [self._row_to_rule(r) for r in rows]
 
@@ -211,6 +218,14 @@ class AlertsModule(DatabaseModule):
             cursor = self._conn.execute(
                 "UPDATE alert_rules SET args = ? WHERE id = ?",
                 (json.dumps(args), id),
+            )
+        return cursor.rowcount > 0
+
+    def set_rule_muted_until(self, id: str, muted_until: str | None) -> bool:
+        with self._conn:
+            cursor = self._conn.execute(
+                "UPDATE alert_rules SET muted_until = ? WHERE id = ?",
+                (muted_until, id),
             )
         return cursor.rowcount > 0
 
@@ -498,6 +513,7 @@ class AlertsModule(DatabaseModule):
             kind=row["kind"],
             args=json.loads(row["args"]),
             enabled=bool(row["enabled"]),
+            muted_until=row["muted_until"],
         )
 
     @staticmethod

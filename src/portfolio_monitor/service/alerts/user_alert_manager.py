@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.database.alerts import AlertChannelSub, AlertsModule
@@ -48,6 +50,9 @@ class UserAlertManager:
         # dev-mode: suppress delivery by detector kind
         self.suppressed_detectors: set[str] = set()
 
+        # rule_id → muted_until datetime; alerts from rules with an active mute are suppressed
+        self._muted_rules: dict[str, datetime] = {}
+
         self._bus.subscribe(AlertFired, self._on_alert_fired)
         self._bus.subscribe(AlertUpdated, self._on_alert_updated)
         self._bus.subscribe(AlertCleared, self._on_alert_cleared)
@@ -87,6 +92,12 @@ class UserAlertManager:
 
     def unregister_detector_rule(self, detector_id: str) -> None:
         self._detector_rule.pop(detector_id, None)
+
+    def set_rule_muted_until(self, rule_id: str, muted_until: datetime) -> None:
+        self._muted_rules[rule_id] = muted_until
+
+    def clear_rule_muted_until(self, rule_id: str) -> None:
+        self._muted_rules.pop(rule_id, None)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -172,6 +183,12 @@ class UserAlertManager:
     async def _fan_out(self, alert: Alert, event: AlertEventType) -> None:
         if alert.kind in self.suppressed_detectors:
             return
+        rule_id = self._detector_rule.get(alert.detector_id)
+        if rule_id and rule_id in self._muted_rules:
+            now = datetime.now(ZoneInfo("UTC"))
+            if now < self._muted_rules[rule_id]:
+                return  # muted until next market open
+            self._muted_rules.pop(rule_id)  # mute expired — auto-clear
 
         for target in self._global_targets:
             try:

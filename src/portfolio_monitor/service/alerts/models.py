@@ -18,6 +18,7 @@ class AlertRule:
     args: dict[str, Any] = field(default_factory=dict)
     asset_type: str | None = None  # None = all types; "stock" / "crypto" / "currency"
     enabled: bool = True
+    muted_until: str | None = None  # ISO UTC timestamp; rule suppressed until this time
 
     @classmethod
     def create(cls, ticker: str, kind: str, args: dict[str, Any] | None = None, asset_type: str | None = None) -> "AlertRule":

@@ -202,6 +202,20 @@ class MarketInfo:
         return False
 
     @classmethod
+    def get_next_market_open(cls, from_dt: datetime) -> datetime:
+        """Return the next NYSE open (9:30 ET) strictly after *from_dt*.
+
+        Advances past weekends. Works for stocks; used for mute expiry.
+        """
+        et = from_dt.astimezone(_EASTERN)
+        candidate = et.date()
+        if et.time() >= _MARKET_OPEN_TIME:
+            candidate += timedelta(days=1)
+        while candidate.weekday() >= 5:  # skip Saturday/Sunday
+            candidate += timedelta(days=1)
+        return datetime.combine(candidate, _MARKET_OPEN_TIME, tzinfo=_EASTERN)
+
+    @classmethod
     def get_previous_market_close(cls, symbol: AssetSymbol, date: datetime) -> datetime:
         """Return the close datetime of the session immediately before *date*.
 
