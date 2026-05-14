@@ -243,17 +243,20 @@ export default function Dashboard() {
         {/* Mobile: dropdown with prev/next arrows */}
         <div className="sm:hidden mb-3">
           {(() => {
-            const pages = [
+            const navPages = [
               { value: "overview", label: "Overview", go: () => navigate("/") },
               ...portfolios.map((p) => ({ value: p.id, label: p.name, go: () => navigate(`/portfolio/${p.id}`) })),
               ...(watchlists.length > 0 ? [{ value: "watchlist", label: "Watchlist", go: () => navigate("/watchlist") }] : []),
               { value: "settings", label: "Settings", go: () => navigate("/settings") },
+            ];
+            const dropdownPages = [
+              ...navPages,
               { value: "__add__", label: "+ Add portfolio…", go: () => setAddingPortfolio(true) },
             ];
             const currentValue = isSettingsActive ? "settings" : isWatchlistActive ? "watchlist" : (activeId ?? "overview");
-            const currentIndex = pages.findIndex((p) => p.value === currentValue);
-            const prev = currentIndex > 0 ? pages[currentIndex - 1] : null;
-            const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
+            const currentIndex = navPages.findIndex((p) => p.value === currentValue);
+            const prev = currentIndex > 0 ? navPages[currentIndex - 1] : null;
+            const next = currentIndex < navPages.length - 1 ? navPages[currentIndex + 1] : null;
             const arrowCls = "flex items-center justify-center w-9 shrink-0 bg-[#1e2130] border border-[#404868] rounded-md text-slate-400 transition-colors";
             return (
               <div className="flex gap-2">
@@ -277,7 +280,7 @@ export default function Dashboard() {
                   }}
                   className="flex-1 bg-[#1e2130] border border-[#404868] rounded-md px-3 py-2 text-sm text-slate-100 text-center focus:outline-none focus:border-slate-500 appearance-none cursor-pointer"
                 >
-                  {pages.map((p) => (
+                  {dropdownPages.map((p) => (
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
                 </select>
