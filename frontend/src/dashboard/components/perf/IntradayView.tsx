@@ -52,7 +52,7 @@ export function IntradayView({
   }
 
   return (
-    <div className="border border-[#404868] rounded-md overflow-hidden">
+    <div className="border border-[#404868] rounded-md overflow-visible">
       {rows.map((row) => {
         const entry = data[row.id];
         const aggs = entry?.aggregates ?? null;
