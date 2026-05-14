@@ -731,7 +731,7 @@ export function PortfolioPerformanceCharts({ portfolios }: { portfolios: Portfol
     return null;
   }
 
-  const chartsToShow = portfolios.filter((p) => suppressReason(p.id) === null);
+  const chartsToShow = portfolios.filter((p) => suppressReason(p.id) === null).sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
   const suppressed   = portfolios.filter((p) => suppressReason(p.id) !== null && perfData[p.id] && !perfData[p.id].loading);
 
   if (allLoading) {
