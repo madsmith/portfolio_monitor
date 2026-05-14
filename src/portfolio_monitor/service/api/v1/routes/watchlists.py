@@ -117,14 +117,22 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
             initial_price=initial_price,
             meta=dict(body.get("meta") or {})
         )
-        if entry.initial_price is None:
-            agg = await data_provider.get_aggregate(entry.symbol)
-            if agg is not None:
-                entry.initial_price = float(agg.close)
+        # Always fetch the aggregate so the response can include current_price immediately,
+        # and reuse it to backfill initial_price if not provided.
+        agg = await data_provider.get_aggregate(entry.symbol)
+        new_entry_price: float | None = float(agg.close) if agg is not None else None
+        if entry.initial_price is None and new_entry_price is not None:
+            entry.initial_price = new_entry_price
         wl = await watchlist_service.add_entry(wl_id, entry, auth)
         if wl is None:
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
-        return JSONResponse(_watchlist_detail(wl))
+        # Return current_price for the new entry so the frontend can display it immediately
+        # without waiting for a WebSocket snapshot round-trip.
+        entries = [
+            _entry_dict(e, new_entry_price if e.symbol.ticker == ticker and e.symbol.asset_type == asset_type else None)
+            for e in wl.entries
+        ]
+        return JSONResponse({"id": wl.id, "name": wl.name, "owner": wl.owner, "entries": entries})
 
     @logfire.instrument("api.watchlists.entry.remove")
     async def remove_entry(request: Request) -> JSONResponse:

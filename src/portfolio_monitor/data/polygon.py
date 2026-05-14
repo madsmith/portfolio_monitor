@@ -187,7 +187,25 @@ class PolygonDataProvider(DataProvider):
         except Exception as e:
             logger.exception(f"Error fetching recent aggregate for {symbol}: {e}")
 
-        return current  # Fall back to cached value even if it's old
+        if current is not None:
+            return current  # Fall back to cached value even if it's old
+
+        # Last resort: fetch the most recent completed session's minute bars, cache them,
+        # and return the last bar. This primes the cache for cold/new symbols when the
+        # market is closed or the 1-min endpoint has no data yet.
+        # We use the *current* session (today's open → today's close) so that the returned
+        # price is the most recent session's close, while get_previous_close targets the
+        # session before that — giving a meaningful day-change calculation.
+        logger.debug("No aggregate found for %s — fetching current session bars as fallback", symbol)
+        session_open_dt = MarketInfo.get_market_open(symbol, now)
+        try:
+            prior_bars = await self._fetch_range(symbol, session_open_dt, now, cache_write=True)
+            if prior_bars:
+                return prior_bars[-1]
+        except Exception as e:
+            logger.exception("Error fetching current session bars for %s: %s", symbol, e)
+
+        return None
 
     @logfire.instrument("polygon.get_previous_close {symbol.ticker}")
     async def get_previous_close(
