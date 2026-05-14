@@ -295,7 +295,7 @@ export default function Dashboard() {
         </div>
 
         {/* Desktop: tab bar */}
-        <div className="group/tabbar relative hidden sm:flex items-end gap-1">
+        <div className="relative hidden sm:flex items-end gap-1">
           <Tab label="Overview" active={!isSettingsActive && !isWatchlistActive && !isAlertsActive && activeId === null} onClick={() => navigate("/")} />
           {portfolios.map((p) => (
             <Tab key={p.id} label={p.name} active={p.id === activeId} onClick={() => navigate(`/portfolio/${p.id}`)} />
@@ -304,7 +304,7 @@ export default function Dashboard() {
           {/* Add portfolio button — visible on hover of tab bar, opens modal */}
           <button
             onClick={() => setAddingPortfolio(true)}
-            className="opacity-0 group-hover/tabbar:opacity-100 transition-opacity px-3 py-2 text-sm font-medium rounded-t-md border-2 border-transparent hover:border-[#404868] hover:bg-[#13171f] text-slate-500 hover:text-slate-300 cursor-pointer min-w-[4em] text-center"
+            className="opacity-0 hover:opacity-100 transition-opacity px-3 py-2 text-sm font-medium rounded-t-md border-2 border-transparent hover:border-[#404868] hover:bg-[#13171f] text-slate-500 hover:text-slate-300 cursor-pointer min-w-[4em] text-center"
             title="Add portfolio"
           >
             +
