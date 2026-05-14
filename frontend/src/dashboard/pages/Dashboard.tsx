@@ -249,10 +249,7 @@ export default function Dashboard() {
               ...(watchlists.length > 0 ? [{ value: "watchlist", label: "Watchlist", go: () => navigate("/watchlist") }] : []),
               { value: "settings", label: "Settings", go: () => navigate("/settings") },
             ];
-            const dropdownPages = [
-              ...navPages,
-              { value: "__add__", label: "+ Add portfolio…", go: () => setAddingPortfolio(true) },
-            ];
+            const dropdownPages = navPages;
             const currentValue = isSettingsActive ? "settings" : isWatchlistActive ? "watchlist" : (activeId ?? "overview");
             const currentIndex = navPages.findIndex((p) => p.value === currentValue);
             const prev = currentIndex > 0 ? navPages[currentIndex - 1] : null;
@@ -283,6 +280,8 @@ export default function Dashboard() {
                   {dropdownPages.map((p) => (
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
+                  <option disabled>──────────</option>
+                  <option value="__add__">+ Add portfolio…</option>
                 </select>
                 <button
                   onClick={() => next?.go()}
