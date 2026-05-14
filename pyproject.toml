@@ -7,6 +7,7 @@ authors = [
     {name = "Martin Smith", email = "msmith@bitmonster.org"}
 ]
 license = {text = "MIT"}
+# TODO: confirm this issue exists in massive api library
 # Python 3.14 breaks polygon-api-client: PEP 749 deferred annotations
 # cause KeyError on cls.__dict__["__annotations__"] in modelclass decorator.
 requires-python = ">=3.12,<3.14"
@@ -20,7 +21,6 @@ dependencies = [
     "asyncio>=3.4.3",
     "logfire>=4.0.0",
     "omegaconf>=2.3.0",
-    "polygon-api-client>=1.15.3",
     "sortedcontainers>=2.4.0",
     "appconf @ git+https://github.com/madsmith/appconf@v1.4.1",
     "numpy>=2.3.2",
@@ -34,6 +34,7 @@ dependencies = [
     "cryptography>=44.0.0",
     "pydantic>=2.12.5",
     "opentelemetry-instrumentation-urllib3>=0.57b0",
+    "massive>=2.7.0",
 ]
 
 [project.scripts]

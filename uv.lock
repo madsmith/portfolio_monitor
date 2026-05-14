@@ -519,6 +519,20 @@ wheels = [
 ]
 
 [[package]]
+name = "massive"
+version = "2.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/9b/97e50ffbc27c43be79b79399e437d1cfc6547a16b8ad86c398757bd9cdd4/massive-2.7.0.tar.gz", hash = "sha256:52073f8fb77e15e93014dcbe367b8b1835aa9d7341ee0d1931d498e050b6dd96", size = 50890, upload-time = "2026-05-04T19:00:27.477Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/7a/f6b701e45deb66a54aef1b3ac9a4a50b780c5a82a42a363937b4e89eeb43/massive-2.7.0-py3-none-any.whl", hash = "sha256:2d490723a1163fa22b397d7a253aa7298961108d9bf1b4f26361d8a027879c3f", size = 68664, upload-time = "2026-05-04T19:00:28.549Z" },
+]
+
+[[package]]
 name = "matplotlib"
 version = "3.10.9"
 source = { registry = "https://pypi.org/simple" }
@@ -806,20 +820,6 @@ wheels = [
 ]
 
 [[package]]
-name = "polygon-api-client"
-version = "1.15.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "certifi" },
-    { name = "urllib3" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/87/da00179018cbbe5201e835b1b08b1006bccbac23d29c07db77fd93832447/polygon_api_client-1.15.3.tar.gz", hash = "sha256:6f802bf845cce6004fc2f7921b6fe2e7941caf6539216033415cbea2194f8a48", size = 37976, upload-time = "2025-07-17T15:55:27.344Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/b2/4a51232a3017dce2a74cd3e9bda16d118a95cc20e7c75969710ca9839dc0/polygon_api_client-1.15.3-py3-none-any.whl", hash = "sha256:a6a3b36cfb4a021c4fd89d782e5950d2e6b20554afb463c1217f3cc138c0d2d3", size = 54553, upload-time = "2025-07-17T15:55:25.958Z" },
-]
-
-[[package]]
 name = "portfolio-monitor"
 source = { editable = "." }
 dependencies = [
@@ -830,10 +830,10 @@ dependencies = [
     { name = "itsdangerous" },
     { name = "jinja2" },
     { name = "logfire" },
+    { name = "massive" },
     { name = "numpy" },
     { name = "omegaconf" },
     { name = "opentelemetry-instrumentation-urllib3" },
-    { name = "polygon-api-client" },
     { name = "pydantic" },
     { name = "python-multipart" },
     { name = "sortedcontainers" },
@@ -858,11 +858,11 @@ requires-dist = [
     { name = "itsdangerous", specifier = ">=2.1.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "logfire", specifier = ">=4.0.0" },
+    { name = "massive", specifier = ">=2.7.0" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.9.0" },
     { name = "numpy", specifier = ">=2.3.2" },
     { name = "omegaconf", specifier = ">=2.3.0" },
     { name = "opentelemetry-instrumentation-urllib3", specifier = ">=0.57b0" },
-    { name = "polygon-api-client", specifier = ">=1.15.3" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.25.0" },

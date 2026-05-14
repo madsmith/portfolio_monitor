@@ -21,7 +21,7 @@ from uvicorn.server import Server
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import Aggregate, AggregateCache, AggregateUpdated, MarketInfo, PolygonDataProvider
+from portfolio_monitor.data import Aggregate, AggregateCache, AggregateUpdated, MarketInfo, MassiveDataProvider
 from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
@@ -73,7 +73,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         bus.subscribe(AggregateUpdated, _persist_aggregate)
 
         # Create data provider
-        data_provider = PolygonDataProvider(config, aggregate_cache)
+        data_provider = MassiveDataProvider(config, aggregate_cache)
 
         # Initialize stores and services backed by AppDatabase
         account_store = AccountStore(db)
@@ -250,7 +250,7 @@ async def prime(
     config: PortfolioMonitorConfig,
     bus: EventBus,
     portfolio_service: PortfolioService,
-    data_provider: PolygonDataProvider,
+    data_provider: MassiveDataProvider,
     detection_service: DetectionService,
     extra_symbols: list[AssetSymbol] | None = None,
 ) -> None:
@@ -270,13 +270,13 @@ async def prime(
                 await bus.publish(AggregateUpdated(symbol=symbol, aggregate=agg))
 
     if config.deep_prime:
-        logger.info("Deep priming - fetching all symbols from Polygon...")
+        logger.info("Deep priming - fetching all symbols from Massive...")
         with logfire.span("service.prime.deep_prime", symbol_count=len(all_symbols)):
             for symbol in all_symbols:
                 await _deep_prime(symbol, data_provider)
 
-async def _deep_prime(symbol: AssetSymbol, data_provider: PolygonDataProvider) -> None:
-    """Deep prime a symbol by fetching all data from Polygon."""
+async def _deep_prime(symbol: AssetSymbol, data_provider: MassiveDataProvider) -> None:
+    """Deep prime a symbol by fetching all data from Massive."""
     # Load all aggregates for this symbol from current "last" price to prior last close
     current_aggregate: Aggregate = await data_provider.get_aggregate(symbol)
 
@@ -333,7 +333,7 @@ def arg_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--prime",
         action="store_true",
-        help="Run with deep prime mode (fetch all symbols from Polygon)",
+        help="Run with deep prime mode (fetch all symbols from Massive)",
     )
     run_parser.add_argument(
         "--dev",
@@ -343,7 +343,7 @@ def arg_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--dev-live",
         action="store_true",
-        help="Run with live Polygon data but start Vite dev server for frontend development",
+        help="Run with live Massive data but start Vite dev server for frontend development",
     )
     run_parser.add_argument(
         "--tick-interval",
@@ -380,7 +380,7 @@ def main() -> None:
     if args.command is None:
         args = parser.parse_args(["run"])
 
-    # Dev mode — synthetic data, no Polygon API
+    # Dev mode — synthetic data, no Massive API
     if args.dev:
         from portfolio_monitor.service.dev import run_dev_service
         from portfolio_monitor.service.dev.config import DevConfig

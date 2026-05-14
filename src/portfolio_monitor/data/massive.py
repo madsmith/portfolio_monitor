@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import logfire
 from zoneinfo import ZoneInfo
 
-from polygon import RESTClient as PolygonRESTClient, BadResponse
-from polygon.rest.aggs import Agg, DailyOpenCloseAgg
+from massive import RESTClient as MassiveRESTClient, BadResponse
+from massive.rest.aggs import Agg, DailyOpenCloseAgg
 from urllib3 import HTTPResponse
 from urllib3.exceptions import MaxRetryError, NameResolutionError, NewConnectionError, RequestError, ResponseError
 
@@ -27,15 +27,15 @@ logger = get_trace_logger(__name__)
 type DateRange = tuple[datetime, datetime]
 
 
-class PolygonDataProvider(DataProvider):
-    """Provider for fetching aggregate data from Polygon with cache-first approach."""
+class MassiveDataProvider(DataProvider):
+    """Provider for fetching aggregate data from Massive with cache-first approach."""
 
     def __init__(self, config: PortfolioMonitorConfig, aggregate_cache: AggregateCache):
         """
         Initialize the data provider with configuration and cache
 
         Args:
-            config: Application configuration with Polygon API settings
+            config: Application configuration with Massive API settings
             aggregate_cache: Cache for storing/retrieving aggregates
         """
         self._config: PortfolioMonitorConfig = config
@@ -43,18 +43,18 @@ class PolygonDataProvider(DataProvider):
 
         # Time delay before considering data not real-time (default 15 minutes)
         # Add a 1-minute margin to the configured delay to ensure we're getting truly fresh data
-        base_delay = timedelta(seconds=config.polygon_delay)
+        base_delay = timedelta(seconds=config.massive_delay)
         self._delay: timedelta = base_delay
-        self._polygon_client: PolygonRESTClient = PolygonRESTClient(
-            config.polygon_api_key,
-            connect_timeout=config.polygon_request_timeout,
-            read_timeout=config.polygon_request_timeout,
+        self._massive_client: MassiveRESTClient = MassiveRESTClient(
+            config.massive_api_key,
+            connect_timeout=config.massive_request_timeout,
+            read_timeout=config.massive_request_timeout,
         )
         # urllib3 PoolManager defaults maxsize=1 per pool; increase to match concurrency limit
-        self._polygon_client.client.connection_pool_kw["maxsize"] = config.polygon_max_concurrent
-        self._rate_limit_sleep: float = 12.1  # Sleep time when rate limited (slightly over 12 seconds per Polygon docs)
+        self._massive_client.client.connection_pool_kw["maxsize"] = config.massive_max_concurrent
+        self._rate_limit_sleep: float = 12.1  # Sleep time when rate limited (slightly over 12 seconds per Massive docs)
         self._max_retries: int = 5
-        self._api_semaphore: asyncio.Semaphore = asyncio.Semaphore(config.polygon_max_concurrent)
+        self._api_semaphore: asyncio.Semaphore = asyncio.Semaphore(config.massive_max_concurrent)
         self._api_unavailable_until: datetime | None = None
         self._connectivity_failure_count: int = 0
         self._connectivity_unavailable_window: timedelta = timedelta(seconds=60)
@@ -73,7 +73,7 @@ class PolygonDataProvider(DataProvider):
             if self._connectivity_failure_count >= 2:
                 self._api_unavailable_until = datetime.now(ZoneInfo("UTC")) + self._connectivity_unavailable_window
                 logger.warning(
-                    "Polygon API unreachable (DNS/connection failure) — pausing all requests for %ds",
+                    "Massive API unreachable (DNS/connection failure) — pausing all requests for %ds",
                     int(self._connectivity_unavailable_window.total_seconds()),
                 )
             delay = min(5.0 * (2 ** attempt), 60.0)
@@ -94,7 +94,7 @@ class PolygonDataProvider(DataProvider):
         self._connectivity_failure_count = 0
         self._api_unavailable_until = None
 
-    @logfire.instrument("polygon.get_aggregate {symbol.ticker}")
+    @logfire.instrument("massive.get_aggregate {symbol.ticker}")
     async def get_aggregate(
         self, symbol: AssetSymbol, *, cache_write: bool = False
     ) -> Aggregate | None:
@@ -131,14 +131,14 @@ class PolygonDataProvider(DataProvider):
             aggs = None
             for attempt in range(self._max_retries):
                 if self._api_is_unavailable():
-                    logger.warning("Skipping Polygon fetch for %s — API marked unavailable", symbol)
+                    logger.warning("Skipping Massive fetch for %s — API marked unavailable", symbol)
                     return current
                 try:
                     logger.debug("Fetching aggregate for %s from API (attempt %d)", symbol, attempt + 1)
                     async with self._api_semaphore:
-                        with logfire.span("polygon.api.get_aggs {symbol.ticker}", symbol=symbol):
+                        with logfire.span("massive.api.get_aggs {symbol.ticker}", symbol=symbol):
                             aggs = await asyncio.to_thread(
-                                self._polygon_client.get_aggs,
+                                self._massive_client.get_aggs,
                                 ticker=symbol.lookup_symbol,
                                 multiplier=1,
                                 timespan="minute",
@@ -150,7 +150,7 @@ class PolygonDataProvider(DataProvider):
                     break
                 except RequestError as e:
                     if self._is_server_error(e):
-                        logger.warning("Polygon 5xx for %s — skipping retries, falling back to cache", symbol)
+                        logger.warning("Massive 5xx for %s — skipping retries, falling back to cache", symbol)
                         break
                     if attempt < self._max_retries - 1:
                         await self._on_request_error(e, attempt)
@@ -168,7 +168,7 @@ class PolygonDataProvider(DataProvider):
                         and agg.close is not None
                         and agg.volume is not None
                     ):
-                        timestamp = _polygon_timestamp_to_datetime(agg.timestamp)
+                        timestamp = _massive_timestamp_to_datetime(agg.timestamp)
                         aggregate = Aggregate(
                             symbol,
                             timestamp,
@@ -207,13 +207,13 @@ class PolygonDataProvider(DataProvider):
 
         return None
 
-    @logfire.instrument("polygon.get_previous_close {symbol.ticker}")
+    @logfire.instrument("massive.get_previous_close {symbol.ticker}")
     async def get_previous_close(
         self, symbol: AssetSymbol, *, cache_write: bool = False
     ) -> Aggregate | None:
         """Fetch the previous trading day's OHLCV aggregate for a symbol.
 
-        Checks the aggregate cache first; only calls Polygon if not found.
+        Checks the aggregate cache first; only calls Massive if not found.
 
         Returns:
             Aggregate with timespan of one trading session, or None on error.
@@ -234,9 +234,9 @@ class PolygonDataProvider(DataProvider):
         try:
             logger.debug("Fetching previous close for %s on %s from API", symbol, prev_close_dt.date())
             async with self._api_semaphore:
-                with logfire.span("polygon.api.daily_open_close {symbol.ticker}", symbol=symbol):
+                with logfire.span("massive.api.daily_open_close {symbol.ticker}", symbol=symbol):
                     result = await asyncio.to_thread(
-                        self._polygon_client.get_daily_open_close_agg,
+                        self._massive_client.get_daily_open_close_agg,
                         ticker=symbol.lookup_symbol,
                         date=prev_close_dt.date(),
                     )
@@ -273,18 +273,18 @@ class PolygonDataProvider(DataProvider):
             await self._aggregate_cache.add(aggregate)
         return aggregate
 
-    @logfire.instrument("polygon.get_open_close {symbol.ticker}")
+    @logfire.instrument("massive.get_open_close {symbol.ticker}")
     async def get_open_close(
         self, symbol: AssetSymbol, date: datetime | None = None, *, cache_write: bool = False
     ) -> DailyOpenCloseAggregate | None:
         """Fetch the daily open/close aggregate for a symbol on the given date.
 
-        Checks the aggregate cache first; only calls Polygon if not found.
+        Checks the aggregate cache first; only calls Massive if not found.
 
         Args:
             symbol: Asset symbol
             date: The trading date to query; defaults to today (UTC).
-            cache_write: If True, write the Polygon result back to the cache.
+            cache_write: If True, write the Massive result back to the cache.
 
         Returns:
             DailyOpenCloseAggregate or None on error / no data.
@@ -308,9 +308,9 @@ class PolygonDataProvider(DataProvider):
         try:
             logger.debug("Fetching open/close for %s on %s from API", symbol, target)
             async with self._api_semaphore:
-                with logfire.span("polygon.api.daily_open_close {symbol.ticker}", symbol=symbol):
+                with logfire.span("massive.api.daily_open_close {symbol.ticker}", symbol=symbol):
                     result = await asyncio.to_thread(
-                        self._polygon_client.get_daily_open_close_agg,
+                        self._massive_client.get_daily_open_close_agg,
                         ticker=symbol.lookup_symbol,
                         date=target,
                     )
@@ -351,7 +351,7 @@ class PolygonDataProvider(DataProvider):
             await self._aggregate_cache.add_open_close(aggregate)
         return aggregate
 
-    @logfire.instrument("polygon.get_daily_range {symbol.ticker}")
+    @logfire.instrument("massive.get_daily_range {symbol.ticker}")
     async def get_daily_range(
         self,
         symbol: AssetSymbol,
@@ -362,7 +362,7 @@ class PolygonDataProvider(DataProvider):
     ) -> list[DailyOpenCloseAggregate]:
         """Fetch a range of daily OHLCV aggregates.
 
-        Checks the aggregate cache first. Falls back to Polygon get_aggs(timespan='day')
+        Checks the aggregate cache first. Falls back to Massive get_aggs(timespan='day')
         when fewer than 50 cached entries are found (indicating the bulk fetch hasn't
         run yet). Writes to cache when cache_write=True.
         """
@@ -378,9 +378,9 @@ class PolygonDataProvider(DataProvider):
         try:
             logger.debug("Fetching daily range for %s from %s to %s from API", symbol, from_.date(), to.date())
             async with self._api_semaphore:
-                with logfire.span("polygon.api.get_aggs_daily {symbol.ticker}", symbol=symbol):
+                with logfire.span("massive.api.get_aggs_daily {symbol.ticker}", symbol=symbol):
                     aggs = await asyncio.to_thread(
-                        self._polygon_client.get_aggs,
+                        self._massive_client.get_aggs,
                         ticker=symbol.lookup_symbol,
                         multiplier=1,
                         timespan="day",
@@ -424,7 +424,7 @@ class PolygonDataProvider(DataProvider):
         logfire_set_attribute("result_count", len(result))
         return result
 
-    @logfire.instrument("polygon.get_range {symbol.ticker}")
+    @logfire.instrument("massive.get_range {symbol.ticker}")
     async def get_range(
         self,
         symbol: AssetSymbol,
@@ -558,7 +558,7 @@ class PolygonDataProvider(DataProvider):
 
         return ranges
 
-    @logfire.instrument("polygon._fetch_range {symbol.ticker}")
+    @logfire.instrument("massive._fetch_range {symbol.ticker}")
     async def _fetch_range(
         self,
         symbol: AssetSymbol,
@@ -592,14 +592,14 @@ class PolygonDataProvider(DataProvider):
             # Fetch data from API with retry
             for attempt in range(self._max_retries):
                 if self._api_is_unavailable():
-                    logger.warning("Skipping Polygon fetch for %s — API marked unavailable", symbol)
+                    logger.warning("Skipping Massive fetch for %s — API marked unavailable", symbol)
                     return result
                 try:
                     logger.debug("Fetching range for %s from API (attempt %d): %s to %s (span: %s)", symbol, attempt + 1, from_, to, effective_span)
                     async with self._api_semaphore:
-                        with logfire.span("polygon.api.get_aggs {symbol.ticker}", symbol=symbol):
+                        with logfire.span("massive.api.get_aggs {symbol.ticker}", symbol=symbol):
                             aggs = await asyncio.to_thread(
-                                self._polygon_client.get_aggs,
+                                self._massive_client.get_aggs,
                                 ticker=symbol.lookup_symbol,
                                 multiplier=effective_span.multiplier,
                                 timespan=str(effective_span.timespan),
@@ -610,7 +610,7 @@ class PolygonDataProvider(DataProvider):
                     break
                 except RequestError as e:
                     if self._is_server_error(e):
-                        logger.warning("Polygon 5xx for %s — skipping retries, falling back to cache", symbol)
+                        logger.warning("Massive 5xx for %s — skipping retries, falling back to cache", symbol)
                         break
                     if attempt < self._max_retries - 1:
                         await self._on_request_error(e, attempt)
@@ -627,7 +627,7 @@ class PolygonDataProvider(DataProvider):
                         and agg.close is not None
                         and agg.volume is not None
                     ):
-                        timestamp = _polygon_timestamp_to_datetime(agg.timestamp)
+                        timestamp = _massive_timestamp_to_datetime(agg.timestamp)
                         aggregate = Aggregate(
                             symbol,
                             timestamp,
@@ -651,5 +651,5 @@ class PolygonDataProvider(DataProvider):
         return result
 
 
-def _polygon_timestamp_to_datetime(timestamp: int | float) -> datetime:
+def _massive_timestamp_to_datetime(timestamp: int | float) -> datetime:
     return datetime.fromtimestamp(timestamp / 1000, ZoneInfo("UTC"))

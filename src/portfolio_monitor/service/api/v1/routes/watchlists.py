@@ -71,7 +71,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
         if wl is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         # Always fetch the freshest available price via get_aggregate.
-        # entry.current_price is a runtime field driven by the server-side Polygon WS
+        # entry.current_price is a runtime field driven by the server-side Massive WS
         # feed; it only updates while a client has that ticker subscribed, so it can
         # be arbitrarily stale.  get_aggregate returns the most recent bar from the
         # REST-backed aggregate cache (or falls back to entry.current_price if None).

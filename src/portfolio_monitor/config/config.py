@@ -18,12 +18,12 @@ class PortfolioMonitorConfig(AppConfig):
         converter=Path,
     )
 
-    # Polygon.io settings
-    polygon_api_key = Bind[str]("polygon.api_key")
-    polygon_delay = BindDefault[int]("polygon.delay", default=15 * 60)
-    polygon_prime_limit = BindDefault[int]("polygon.prime_limit", default=120)
-    polygon_max_concurrent = BindDefault[int]("polygon.max_concurrent", default=10)
-    polygon_request_timeout = BindDefault[float]("polygon.request_timeout", default=10.0)
+    # Massive.com settings
+    massive_api_key = Bind[str]("massive.api_key")
+    massive_delay = BindDefault[int]("massive.delay", default=15 * 60)
+    massive_prime_limit = BindDefault[int]("massive.prime_limit", default=120)
+    massive_max_concurrent = BindDefault[int]("massive.max_concurrent", default=10)
+    massive_request_timeout = BindDefault[float]("massive.request_timeout", default=10.0)
 
     # Control interface settings
     host = BindDefault[str]("portfolio_monitor.host", default="127.0.0.1")

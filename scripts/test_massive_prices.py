@@ -1,8 +1,8 @@
 """
-Standalone script to test Polygon price fetching for all portfolio and watchlist symbols.
+Standalone script to test Massive price fetching for all portfolio and watchlist symbols.
 
 Usage:
-    .venv/bin/python scripts/test_polygon_prices.py
+    .venv/bin/python scripts/test_massive_prices.py
 
 Tests get_aggregate() and get_previous_close() for every symbol found in the DB,
 reporting timing and failures per symbol so you can see what's hanging.
@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from portfolio_monitor.config import PortfolioMonitorConfig
-from portfolio_monitor.data import AggregateCache, PolygonDataProvider
+from portfolio_monitor.data import AggregateCache, MassiveDataProvider
 from portfolio_monitor.data.database import AppDatabase
 
 CONFIG_PATH = Path("config/config.yaml")
@@ -26,7 +26,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 # Show provider-level warnings without all the noise
-logging.getLogger("portfolio_monitor.data.polygon").setLevel(logging.DEBUG)
+logging.getLogger("portfolio_monitor.data.massive").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -70,7 +70,7 @@ async def main() -> None:
     cache.initialize()
     await cache.load()
 
-    provider = PolygonDataProvider(config, cache)
+    provider = MassiveDataProvider(config, cache)
 
     print()
     print(f"{'Symbol':<12} {'Type':<10} {'Method':<18} {'Result':<12} {'Time':>7}")

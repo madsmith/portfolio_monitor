@@ -7,8 +7,9 @@ from appconf import OmegaConfigLoader
 import uvicorn
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import AggregateUpdated, MemoryOnlyAggregateCache, PolygonDataProvider
+from portfolio_monitor.data import AggregateUpdated, MemoryOnlyAggregateCache, MassiveDataProvider
 from portfolio_monitor.data.database import AppDatabase
+from portfolio_monitor.data.massive import MassiveDataProvider
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.service import PortfolioService
@@ -117,7 +118,7 @@ async def run_dev_service(config: DevConfig) -> None:
     
     seed_price_provider = SeedPriceProvider(
         portfolios=portfolios,
-        data_provider=PolygonDataProvider(config=config, aggregate_cache=aggregate_cache),
+        data_provider=MassiveDataProvider(config=config, aggregate_cache=aggregate_cache),
     )
     await seed_price_provider.load()
     seed_aggregates = seed_price_provider.get_aggregates()
@@ -128,7 +129,7 @@ async def run_dev_service(config: DevConfig) -> None:
         tick_interval=config.tick_interval,
     )
 
-    # 6. DevDataProvider (mirrors DataProvider API without Polygon)
+    # 6. DevDataProvider (mirrors DataProvider API without Massive)
     dev_data_provider = DevDataProvider(
         aggregate_cache=aggregate_cache,
         price_generator=synthetic_source.generator,

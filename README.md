@@ -28,7 +28,7 @@ Rules can be scoped to a specific asset or applied globally across all tracked s
 ## Requirements
 
 - Python 3.12–3.13
-- [Polygon.io](https://polygon.io) API key (market data)
+- [Massive.com](https://massive.com) API key (market data)
 - Node.js (frontend build)
 
 ## Installation
@@ -63,8 +63,8 @@ portfolio_monitor:
     username: "${private.portfolio_monitor.dashboard.username}"
     password: "${private.portfolio_monitor.dashboard.password}"
 
-polygon:
-  api_key: "${private.polygon.api_key}"
+massive:
+  api_key: "${private.massive.api_key}"
 ```
 
 Minimal `config/config_private.yaml`:
@@ -76,8 +76,8 @@ portfolio_monitor:
     username: "admin"
     password: "your-password"
 
-polygon:
-  api_key: "your-polygon-api-key"
+massive:
+  api_key: "your-massive-api-key"
 ```
 
 Portfolios and watchlists are managed through the web dashboard or CLI and stored in the SQLite datastore.

@@ -51,7 +51,7 @@ NexusPortfolioMonitor/
 
 ### `data/` — Market data access
 - `provider.py` — `DataProvider` protocol (interface)
-- `polygon.py` — `PolygonDataProvider`: Polygon.io REST client, cache-first fetching, rate-limit + connectivity backoff, `_api_unavailable_until` circuit
+- `massive.py` — `MassiveDataProvider`: Massive REST client, cache-first fetching, rate-limit + connectivity backoff, `_api_unavailable_until` circuit
 - `aggregate_cache.py` — `AggregateCache` (SQLite + in-memory SortedDict); `MemoryOnlyAggregateCache`; `Aggregate` / `DailyOpenCloseAggregate` dataclasses
 - `market_info.py` — `MarketInfo`: session windows, close times, market-closed checks; crypto = 24h UTC; stocks = 6h30m closing 21:00 UTC
 - `timespan.py` — `AggregateTimespan` enum (minute, hour, day…)
@@ -112,7 +112,7 @@ Alert routing: `AlertRouter` accepts `account_store` + `default_admin_username`;
 
 ### `service/dev/` — Development mode
 - `config.py` — `DevConfig` extends `PortfolioMonitorConfig`
-- `seed_price_provider.py` — `SeedPriceProvider`: fetches previous-close from Polygon per asset; `get_prices() -> dict[str, float]`
+- `seed_price_provider.py` — `SeedPriceProvider`: fetches previous-close from Massive (formerly Polygon) per asset; `get_prices() -> dict[str, float]`
 - `synthetic_source.py` — `SyntheticDataSource`: generates fake ticks from seed prices
 - `price_generator.py` — random-walk price generator
 - `service.py` — dev service wiring

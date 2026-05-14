@@ -104,7 +104,7 @@ class MonitorService:
 
     @logfire.instrument("monitor.tick")
     async def _tick(self, now: datetime, update_interval: timedelta) -> datetime:
-        # TODO: add option to offset data by configurable delay to support limited access to realtime data (e.g. 15-minute delayed data from Polygon free tier)
+        # TODO: add option to offset data by configurable delay to support limited access to realtime data (e.g. 15-minute delayed data from Massive free tier)
         next_update = now + update_interval
 
         # Determine which symbols are due for an update

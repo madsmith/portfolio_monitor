@@ -91,7 +91,7 @@ class Aggregate(OHLCV):
 class DailyOpenCloseAggregate(OHLCV):
     """Daily OHLCV aggregate enriched with pre-market and after-hours prices.
 
-    close may be None during an active session (Polygon omits it until the day ends).
+    close may be None during an active session (Massive omits it until the day ends).
     """
     close: float | None  # type: ignore[assignment]  # override base; None during active session
     pre_market: float | None

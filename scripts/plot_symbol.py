@@ -16,13 +16,13 @@ import matplotlib.dates as mdates
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.data.aggregate_cache import MemoryOnlyAggregateCache
-from portfolio_monitor.data.provider import PolygonDataProvider
+from portfolio_monitor.data.provider import MassiveDataProvider
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 
 
 async def fetch_and_plot(symbol: AssetSymbol, config: PortfolioMonitorConfig) -> None:
     cache = MemoryOnlyAggregateCache()
-    provider = PolygonDataProvider(config, cache)
+    provider = MassiveDataProvider(config, cache)
 
     now = datetime.now(ZoneInfo("UTC"))
     from_ = now - timedelta(hours=24)

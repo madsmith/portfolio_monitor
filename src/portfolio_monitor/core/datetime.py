@@ -11,7 +11,7 @@ _EASTERN = ZoneInfo("America/New_York")
 def eastern_midnight(date_str: str) -> datetime:
     """Return midnight Eastern for a YYYY-MM-DD string.
 
-    Polygon daily bars are timestamped at midnight Eastern (04:00 or 05:00 UTC
+    Massive daily bars are timestamped at midnight Eastern (04:00 or 05:00 UTC
     depending on DST). Storing as UTC midnight causes off-by-one date display
     when converting back to Eastern for rendering.
     """

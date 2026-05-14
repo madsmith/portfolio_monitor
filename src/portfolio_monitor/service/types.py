@@ -35,7 +35,7 @@ class AssetSymbol:
 
     @property
     def is_base_currency(self) -> bool:
-        """True for USD cash — no Polygon lookup exists for C:USDUSD."""
+        """True for USD cash — no Massive lookup exists for C:USDUSD."""
         return self.asset_type == AssetTypes.Currency and self.ticker == "USD"
 
     @property

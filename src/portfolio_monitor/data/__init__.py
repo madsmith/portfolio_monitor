@@ -8,7 +8,7 @@ from .aggregate_cache import (
 )
 from .events import AggregateUpdated
 from .market_info import MarketInfo, MarketStatus
-from .polygon import PolygonDataProvider
+from .massive import MassiveDataProvider
 from .provider import DataProvider
 from .timespan import AggregateTimespan, Timespan
 
@@ -23,6 +23,6 @@ __all__ = [
     "MarketStatus",
     "MemoryOnlyAggregateCache",
     "OHLCV",
-    "PolygonDataProvider",
+    "MassiveDataProvider",
     "Timespan",
 ]

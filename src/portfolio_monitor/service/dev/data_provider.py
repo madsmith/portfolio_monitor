@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class DevDataProvider(DataProvider):
-    """DataProvider substitute that uses synthetic prices instead of Polygon.
+    """DataProvider substitute that uses synthetic prices instead of Massive.
 
     Mirrors the public API of DataProvider so it can be passed to
     DetectionService and any future API endpoints that query market data.
@@ -37,7 +37,7 @@ class DevDataProvider(DataProvider):
     async def get_previous_close(
         self, symbol: AssetSymbol, *, cache_write: bool = False
     ) -> Aggregate | None:
-        """Return the seed aggregate (Polygon previous close) for the symbol."""
+        """Return the seed aggregate (Massive previous close) for the symbol."""
         seed = self._seed_aggregates.get(symbol.ticker)
         if seed is not None:
             return seed

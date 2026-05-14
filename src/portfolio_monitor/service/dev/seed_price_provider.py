@@ -1,6 +1,6 @@
 import logging
 
-from portfolio_monitor.data import Aggregate, PolygonDataProvider
+from portfolio_monitor.data import Aggregate, MassiveDataProvider
 from portfolio_monitor.portfolio import Portfolio
 from portfolio_monitor.service.types import AssetSymbol
 
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class SeedPriceProvider:
-    """Fetches previous-close prices from Polygon to seed synthetic simulation.
+    """Fetches previous-close prices from Massive to seed synthetic simulation.
 
     Call load() once (async) before passing to SyntheticDataSource.
     Any symbol whose fetch fails is omitted; SyntheticDataSource will
@@ -18,10 +18,10 @@ class SeedPriceProvider:
     def __init__(
         self,
         portfolios: list[Portfolio],
-        data_provider: PolygonDataProvider,
+        data_provider: MassiveDataProvider,
     ) -> None:
         self._portfolios: list[Portfolio] = portfolios
-        self._data_provider: PolygonDataProvider = data_provider
+        self._data_provider: MassiveDataProvider = data_provider
         self._prices: dict[str, float] = {}
         self._aggregates: dict[str, Aggregate] = {}
 
@@ -32,7 +32,7 @@ class SeedPriceProvider:
             for portfolio in self._portfolios
             for asset in portfolio.assets()
         }
-        logger.info("Fetching seed prices for %d symbols from Polygon...", len(symbols))
+        logger.info("Fetching seed prices for %d symbols from Massive...", len(symbols))
         for symbol in symbols:
             try:
                 agg = await self._data_provider.get_previous_close(symbol)
