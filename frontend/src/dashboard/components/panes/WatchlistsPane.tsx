@@ -609,6 +609,21 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deletingWl, setDeletingWl] = useState(false);
 
+  // Pancake menu (narrow view)
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClick(ev: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(ev.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
+
   // Sync summaries whenever the parent re-fetches (e.g. after navigation)
   useEffect(() => {
     setSummaries(initialWatchlists);
@@ -794,32 +809,92 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
 
         <div className="flex-1" />
 
-        {selectedId && !creating && (
-          <>
-            {editing && (
-              deleteConfirm ? (
-                <>
-                  <Button variant="danger" onClick={handleDeleteWatchlist} disabled={deletingWl}>
-                    {deletingWl ? "Deleting…" : "Confirm delete"}
-                  </Button>
-                  <Button variant="ghost" onClick={() => setDeleteConfirm(false)}>Cancel</Button>
-                </>
-              ) : (
-                <Button variant="dangerGhost" onClick={() => setDeleteConfirm(true)}>Delete list</Button>
-              )
-            )}
-            <Button
-              variant={editing ? "primary" : "ghost"}
-              onClick={() => { setEditing((e) => !e); setDeleteConfirm(false); }}
-            >
-              {editing ? "Done" : "Edit"}
-            </Button>
-          </>
-        )}
+        {/* Wide: inline action buttons */}
+        <div className="hidden sm:flex items-center gap-2">
+          {selectedId && !creating && (
+            <>
+              {editing && (
+                deleteConfirm ? (
+                  <>
+                    <Button variant="danger" onClick={handleDeleteWatchlist} disabled={deletingWl}>
+                      {deletingWl ? "Deleting…" : "Confirm delete"}
+                    </Button>
+                    <Button variant="ghost" onClick={() => setDeleteConfirm(false)}>Cancel</Button>
+                  </>
+                ) : (
+                  <Button variant="dangerGhost" onClick={() => setDeleteConfirm(true)}>Delete list</Button>
+                )
+              )}
+              <Button
+                variant={editing ? "primary" : "ghost"}
+                onClick={() => { setEditing((e) => !e); setDeleteConfirm(false); }}
+              >
+                {editing ? "Done" : "Edit"}
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" onClick={() => { setCreating(true); setEditing(false); setSelectedId(""); }}>
+            + New
+          </Button>
+        </div>
 
-        <Button variant="ghost" onClick={() => { setCreating(true); setEditing(false); setSelectedId(""); }}>
-          + New
-        </Button>
+        {/* Narrow: pancake menu */}
+        <div className="relative sm:hidden" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            className="flex flex-col justify-center items-center gap-[4px] w-8 h-8 rounded border border-[#2a2d3a] hover:border-[#404868] transition-colors cursor-pointer"
+            aria-label="Menu"
+          >
+            <span className="block w-4 h-px bg-slate-400" />
+            <span className="block w-4 h-px bg-slate-400" />
+            <span className="block w-4 h-px bg-slate-400" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-[#1a1d2a] border border-[#404868] rounded-md shadow-lg py-1 flex flex-col">
+              <button
+                className="px-4 py-2 text-sm text-slate-300 hover:bg-[#252a40] text-left cursor-pointer transition-colors"
+                onClick={() => { setCreating(true); setEditing(false); setSelectedId(""); setMenuOpen(false); }}
+              >
+                New watchlist
+              </button>
+              {selectedId && !creating && (
+                <>
+                  <button
+                    className="px-4 py-2 text-sm text-slate-300 hover:bg-[#252a40] text-left cursor-pointer transition-colors"
+                    onClick={() => { setEditing((e) => !e); setDeleteConfirm(false); setMenuOpen(false); }}
+                  >
+                    {editing ? "Done editing" : "Edit watchlist"}
+                  </button>
+                  {editing && !deleteConfirm && (
+                    <button
+                      className="px-4 py-2 text-sm text-red-400 hover:bg-[#252a40] text-left cursor-pointer transition-colors"
+                      onClick={() => { setDeleteConfirm(true); setMenuOpen(false); }}
+                    >
+                      Delete list…
+                    </button>
+                  )}
+                  {editing && deleteConfirm && (
+                    <>
+                      <button
+                        className="px-4 py-2 text-sm text-red-400 hover:bg-[#252a40] text-left cursor-pointer transition-colors disabled:opacity-40"
+                        onClick={() => { handleDeleteWatchlist(); setMenuOpen(false); }}
+                        disabled={deletingWl}
+                      >
+                        {deletingWl ? "Deleting…" : "Confirm delete"}
+                      </button>
+                      <button
+                        className="px-4 py-2 text-sm text-slate-400 hover:bg-[#252a40] text-left cursor-pointer transition-colors"
+                        onClick={() => { setDeleteConfirm(false); setMenuOpen(false); }}
+                      >
+                        Cancel delete
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* New watchlist inline form */}
