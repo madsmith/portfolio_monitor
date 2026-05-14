@@ -5,6 +5,7 @@ let _wsLogging = false;
 (window as any).ws_toggle_logging = () => {
   _wsLogging = !_wsLogging;
   console.log(`[ws] logging ${_wsLogging ? "enabled" : "disabled"}`);
+  return _wsLogging;
 };
 const wsLog = (...args: unknown[]) => { if (_wsLogging) console.log("[ws]", ...args); };
 
