@@ -243,6 +243,9 @@ class MassiveDataProvider(DataProvider):
         except RequestError:
             logger.warning("Error fetching previous close for %s, will retry next tick", symbol)
             return None
+        except BadResponse as e:
+            logger.warning("Error fetching previous close for %s: %s", symbol, e)
+            return None
         except Exception:
             logger.exception("Error fetching previous close for %s", symbol)
             return None
