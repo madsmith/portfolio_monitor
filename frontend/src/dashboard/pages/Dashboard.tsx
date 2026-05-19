@@ -65,6 +65,21 @@ export default function Dashboard() {
   const wsRef = useRef<PortfolioWebSocket | null>(null);
   const [alertWsEvent, setAlertWsEvent] = useState<AlertWsMessage | null>(null);
 
+  // Ticks at the top of each UTC hour so prevClose is re-fetched when the trading day rolls over.
+  const [utcHour, setUtcHour] = useState(() => new Date().toISOString().slice(0, 13));
+  useEffect(() => {
+    function scheduleNext() {
+      const now = new Date();
+      const msUntilNextHour = (60 - now.getMinutes()) * 60_000 - now.getSeconds() * 1000 - now.getMilliseconds() + 1000;
+      return setTimeout(() => {
+        setUtcHour(new Date().toISOString().slice(0, 13));
+        timerRef.current = scheduleNext();
+      }, msUntilNextHour);
+    }
+    const timerRef = { current: scheduleNext() };
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
   // Promise caches — deduplicate requests within the current UTC hour. Keyed by
   // "<id>:<YYYY-MM-DDTHH>" so stale data is discarded at the top of each hour.
   const detailCacheRef = useRef<Record<string, Promise<PortfolioDetail>>>({});
@@ -174,9 +189,10 @@ export default function Dashboard() {
       })
       .finally(() => { if (active) setPortfoliosLoading(false); });
     return () => { active = false; };
-  }, [navigate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [navigate, utcHour]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch previous-close prices for the active portfolio
+  // Fetch previous-close prices for the active portfolio. Re-runs each UTC hour so a
+  // long-running browser session picks up the new trading day's reference close.
   useEffect(() => {
     if (!detail) { setPrevClose({}); return; }
     let active = true;
@@ -187,7 +203,7 @@ export default function Dashboard() {
       if (chg !== null) setPortfolioTodayChange((prev) => ({ ...prev, [detail.id]: chg }));
     });
     return () => { active = false; };
-  }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [detail?.id, utcHour]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load detail whenever the active portfolio changes
   useEffect(() => {
