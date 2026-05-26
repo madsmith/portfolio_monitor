@@ -9,9 +9,10 @@ const GREEN_FILL  = "#4d9060";
 const RED_FILL    = "#9c4040";
 const GREEN_LINE  = "#3fb950";
 const RED_LINE    = "#f85149";
-const BASIS_COLOR = "#52566e";
-const GRID_COLOR  = "#2a2d3a";
-const AXIS_COLOR  = "#475569";
+const BASIS_COLOR         = "#52566e";
+const GRID_COLOR          = "#2a2d3a";
+const AXIS_COLOR          = "#475569";
+const CURRENT_VALUE_COLOR = "#5a6490";
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -203,8 +204,23 @@ function PortfolioPerformanceChart({
 }) {
   const svgRef  = useRef<SVGSVGElement>(null);
   const [svgWidth, setSvgWidth] = useState(800);
-  const [viewWindow, setViewWindow] = useState<[number, number] | null>(null);
+  const [viewWindow, setViewWindowRaw] = useState<[number, number] | null>(() => {
+    try {
+      const stored = sessionStorage.getItem(`perf-window-${chartId}`);
+      if (stored) return JSON.parse(stored) as [number, number];
+    } catch { /* ignore */ }
+    return null;
+  });
   const [hoverMs,    setHoverMs]    = useState<number | null>(null);
+
+  function setViewWindow(w: [number, number] | null) {
+    if (w === null) {
+      sessionStorage.removeItem(`perf-window-${chartId}`);
+    } else {
+      try { sessionStorage.setItem(`perf-window-${chartId}`, JSON.stringify(w)); } catch { /* ignore */ }
+    }
+    setViewWindowRaw(w);
+  }
 
   const dragRef  = useRef<{ startX: number; fromMs: number; toMs: number; isPan: boolean } | null>(null);
   const pinchRef = useRef<{ midFrac: number; dist: number; fromMs: number; toMs: number } | null>(null);
@@ -486,6 +502,7 @@ function PortfolioPerformanceChart({
   const DAY = 24 * 3_600_000;
   const PRESETS: { label: string; ms: number | null }[] = [
     { label: "1D", ms: DAY },
+    { label: "3D", ms: 3 * DAY },
     { label: "1W", ms: 7 * DAY },
     { label: "1M", ms: 30 * DAY },
     { label: "3M", ms: 91 * DAY },
@@ -584,6 +601,18 @@ function PortfolioPerformanceChart({
               </text>
             );
           })}
+
+          {/* Current value reference line */}
+          {(() => {
+            const currentY = yScale(values[values.length - 1]);
+            if (currentY < MARGIN.top || currentY > MARGIN.top + plotH) return null;
+            return (
+              <line
+                x1={MARGIN.left} y1={currentY} x2={MARGIN.left + plotW} y2={currentY}
+                stroke={CURRENT_VALUE_COLOR} strokeWidth={1} opacity={0.6}
+              />
+            );
+          })()}
 
           {/* Axis border lines */}
           <line
