@@ -231,50 +231,62 @@ class MassiveDataProvider(DataProvider):
             return cached
 
         logfire_set_attribute("source", "api")
-        try:
-            logger.debug("Fetching previous close for %s on %s from API", symbol, prev_close_dt.date())
-            async with self._api_semaphore:
-                with logfire.span("massive.api.daily_open_close {symbol.ticker}", symbol=symbol):
-                    result = await asyncio.to_thread(
-                        self._massive_client.get_daily_open_close_agg,
-                        ticker=symbol.lookup_symbol,
-                        date=prev_close_dt.date(),
+        # Step back up to 3 extra business days to skip market holidays (NOT_FOUND).
+        candidate_dt = prev_close_dt
+        for _ in range(3):
+            try:
+                logger.debug("Fetching previous close for %s on %s from API", symbol, candidate_dt.date())
+                async with self._api_semaphore:
+                    with logfire.span("massive.api.daily_open_close {symbol.ticker}", symbol=symbol):
+                        result = await asyncio.to_thread(
+                            self._massive_client.get_daily_open_close_agg,
+                            ticker=symbol.lookup_symbol,
+                            date=candidate_dt.date(),
+                        )
+            except RequestError:
+                logger.warning("Error fetching previous close for %s, will retry next tick", symbol)
+                return None
+            except BadResponse as e:
+                if "NOT_FOUND" in str(e):
+                    logger.debug(
+                        "Previous close NOT_FOUND for %s on %s (likely holiday) — stepping back",
+                        symbol, candidate_dt.date(),
                     )
-        except RequestError:
-            logger.warning("Error fetching previous close for %s, will retry next tick", symbol)
-            return None
-        except BadResponse as e:
-            logger.warning("Error fetching previous close for %s: %s", symbol, e)
-            return None
-        except Exception:
-            logger.exception("Error fetching previous close for %s", symbol)
-            return None
+                    candidate_dt = MarketInfo.get_previous_market_close(symbol, candidate_dt)
+                    continue
+                logger.warning("Error fetching previous close for %s: %s", symbol, e)
+                return None
+            except Exception:
+                logger.exception("Error fetching previous close for %s", symbol)
+                return None
 
-        if not isinstance(result, DailyOpenCloseAgg):
-            logger.warning("Unexpected previous close response type for %s: %s", symbol, type(result))
-            return None
-        if result.status != "OK":
-            logger.warning("Previous close status not OK for %s: %s", symbol, result.status)
-            return None
-        if None in (result.open, result.high, result.low, result.close, result.volume):
-            logger.warning("Incomplete previous close data for %s: %s", symbol, result)
-            return None
+            if not isinstance(result, DailyOpenCloseAgg):
+                logger.warning("Unexpected previous close response type for %s: %s", symbol, type(result))
+                return None
+            if result.status != "OK":
+                logger.warning("Previous close status not OK for %s: %s", symbol, result.status)
+                return None
+            if None in (result.open, result.high, result.low, result.close, result.volume):
+                logger.warning("Incomplete previous close data for %s: %s", symbol, result)
+                return None
 
-        date_open = eastern_midnight(result.from_)
-        aggregate = Aggregate(
-            symbol,
-            date_open,
-            result.open,
-            result.high,
-            result.low,
-            result.close,
-            result.volume,
-            MarketInfo.get_market_day_timespan(symbol),
-        )
-        if cache_write:
-            logger.debug("Caching previous close aggregate for %s: %s", symbol, aggregate)
-            await self._aggregate_cache.add(aggregate)
-        return aggregate
+            date_open = eastern_midnight(result.from_)
+            aggregate = Aggregate(
+                symbol,
+                date_open,
+                result.open,
+                result.high,
+                result.low,
+                result.close,
+                result.volume,
+                MarketInfo.get_market_day_timespan(symbol),
+            )
+            if cache_write:
+                logger.debug("Caching previous close aggregate for %s: %s", symbol, aggregate)
+                await self._aggregate_cache.add(aggregate)
+            return aggregate
+
+        return None
 
     @logfire.instrument("massive.get_open_close {symbol.ticker}")
     async def get_open_close(
