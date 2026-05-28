@@ -11,7 +11,7 @@ frontend/dist/
 
 # Ignore private config
 config/alerts.yaml
-cofnig/alerts_dev.yaml
+config/alerts_dev.yaml
 config_private.yaml
 config/portfolios
 config/device*identity.json
