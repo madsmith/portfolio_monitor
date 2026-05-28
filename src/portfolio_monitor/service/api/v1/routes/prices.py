@@ -68,7 +68,7 @@ def previous_close_handler(data_provider: DataProvider):
             return JSONResponse({"error": "invalid asset type"}, status_code=400)
         logfire_set_attribute("ticker", symbol.ticker)
         logfire_set_attribute("asset_type", symbol.asset_type.value)
-        aggregate = await data_provider.get_previous_close(symbol)
+        aggregate = await data_provider.get_previous_close(symbol, cache_write=True)
         if aggregate is None:
             return JSONResponse({"error": "price unavailable"}, status_code=404)
         return JSONResponse({
