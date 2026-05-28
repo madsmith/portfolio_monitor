@@ -1,5 +1,5 @@
 import { SPARK_GREEN, SPARK_RED } from "./Sparkline";
-import { fmtVol } from "../lib/formatters";
+import { fmtVol } from "../../lib/formatters";
 
 function fmtShortDate(iso: string): string {
   const d = new Date(iso + "T00:00:00Z");

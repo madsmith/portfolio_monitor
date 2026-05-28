@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type PriceAggregate } from "../../api/client";
 import type { IntradayWindow } from "../../lib/chartSettings";
-import { Sparkline } from "../Sparkline";
+import { Sparkline } from "../graphs/Sparkline";
 import { PctBadge } from "./PctBadge";
 import type { PerfRow } from "./PerfChartViews";
 

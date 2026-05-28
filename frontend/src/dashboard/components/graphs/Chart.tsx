@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type DailyOpenClose, type PriceAggregate } from "../api/client";
-import { fmtPrice } from "../lib/formatters";
+import { api, type DailyOpenClose, type PriceAggregate } from "../../api/client";
+import { fmtPrice } from "../../lib/formatters";
 
 const PERIODS = [
   { label: "1H", last: "1h", span: "1m",  refreshMs:      60_000, trendMaxMs: null,         compactGapMs: 4 * 60 * 60_000 },

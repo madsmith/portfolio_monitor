@@ -1,7 +1,7 @@
 import type { PortfolioSummary } from "../../api/client";
 import { fmtMoney, fmtPct, fmtChg, plColor, type TodayChange } from "../../lib/formatters";
 import { DataTable, type ColDef } from "../DataTable";
-import { PortfolioPerformanceCharts } from "../PortfolioPerformanceChart";
+import { PortfolioPerformanceCharts } from "../graphs/PortfolioPerformanceChart";
 
 export function OverviewPane({
   portfolios,

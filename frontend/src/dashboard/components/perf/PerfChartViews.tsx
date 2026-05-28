@@ -4,8 +4,8 @@ import { fmtVol } from "../../lib/formatters";
 import type { MomentumWindow } from "../../lib/chartSettings";
 import type { PeriodPrices } from "../../lib/perfUtils";
 import { sliceDays, momentumSeries, pctChange } from "../../lib/perfUtils";
-import { Sparkline } from "../Sparkline";
-import { VolumeBars } from "../VolumeBars";
+import { Sparkline } from "../graphs/Sparkline";
+import { VolumeBars } from "../graphs/VolumeBars";
 import { PctBadge } from "./PctBadge";
 
 export type PerfRow = {

@@ -10,7 +10,7 @@ import { AssetMenu } from "../AssetMenu";
 import { Button, CancelButton, ConfirmButton } from "../buttons";
 import { DropdownSelector } from "../inputs";
 import { fmtChg, fmtPrice, fmtPct, plColor, prevCloseKey } from "../../lib/formatters";
-import { Chart } from "../Chart";
+import { Chart } from "../graphs/Chart";
 import { DataTable, type ColDef } from "../DataTable";
 import { type PortfolioWebSocket } from "../../api/ws";
 

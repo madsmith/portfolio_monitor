@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type PerformanceSnapshot, type PortfolioSummary } from "../api/client";
-import { fmtMoney } from "../lib/formatters";
+import { api, type PerformanceSnapshot, type PortfolioSummary } from "../../api/client";
+import { fmtMoney } from "../../lib/formatters";
 
 const MARGIN = { top: 16, right: 60, bottom: 24, left: 12 };
 const HEIGHT = 200;

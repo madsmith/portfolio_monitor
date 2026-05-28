@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { api, getRole, getUsername, type Asset, type Lot, type LotInput, type PortfolioDetail, type PortfolioUserPermission, type PortfolioUsers } from "../../api/client";
 import { fmtMoney, fmtPrice, fmtPct, fmtQty, fmtDate, fmtChg, plColor, lotPlColor, prevCloseKey, computeTodayChange } from "../../lib/formatters";
 import { DataTable, type ColDef } from "../DataTable";
-import { Chart } from "../Chart";
+import { Chart } from "../graphs/Chart";
+import { CompositionPieChart } from "../graphs/CompositionPieChart";
 import { AssetMenu } from "../AssetMenu";
 import { Button } from "../buttons/Button";
 
@@ -776,6 +777,7 @@ export function PortfolioDetailPane({
 }) {
   const navigate = useNavigate();
   const [defaultPeriodLabel, setDefaultPeriodLabel] = useState("4H");
+  const [compositionOpen, setCompositionOpen] = useState(false);
   const [editing, setEditing] = useState(initialEditing);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -821,6 +823,22 @@ export function PortfolioDetailPane({
           );
           return acc;
         }, [])}
+      </div>
+
+      {/* Composition expander */}
+      <div className="mb-4 border border-[#2a2d3a] rounded-md overflow-hidden">
+        <button
+          onClick={() => setCompositionOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-3 py-1.5 text-[0.65rem] uppercase tracking-wide text-slate-500 hover:text-slate-300 hover:bg-[#131928] transition-colors cursor-pointer"
+        >
+          <span>Composition</span>
+          <span className="text-slate-600">{compositionOpen ? "▲" : "▼"}</span>
+        </button>
+        {compositionOpen && (
+          <div className="px-3 border-t border-[#2a2d3a]">
+            <CompositionPieChart assets={[...detail.stocks, ...detail.currencies, ...detail.crypto]} />
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between mb-3">

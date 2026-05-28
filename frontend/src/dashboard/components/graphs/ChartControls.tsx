@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { type ChartSettings, type IntradayWindow, type MomentumWindow } from "../lib/chartSettings";
+import { type ChartSettings, type IntradayWindow, type MomentumWindow } from "../../lib/chartSettings";
 
 const RANGES = [
   { label: "1W", days:   7 },

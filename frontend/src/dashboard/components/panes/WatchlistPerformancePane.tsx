@@ -7,7 +7,7 @@ import { PERIODS, type PeriodKey, type PeriodPrices, daysAgoDate, smoothedClose,
 import { PerfCell } from "../perf/PctBadge";
 import { type PerfRow, SparklineView, MomentumView, VolumeView } from "../perf/PerfChartViews";
 import { IntradayView } from "../perf/IntradayView";
-import { ChartControlsButton } from "../ChartControls";
+import { ChartControlsButton } from "../graphs/ChartControls";
 
 type EntryPerf = {
   ticker: string;
