@@ -72,21 +72,23 @@ class MonitorService:
     async def _run(self) -> None:
         update_interval = timedelta(seconds=60)
 
-        # Build initial symbol set from portfolios
-        self._symbols = {
-            asset.symbol: AssetUpdateRecord(asset.symbol)
-            for portfolio in self._portfolio_service.get_all_portfolios()
-            for asset in portfolio.assets()
-        }
+        # Merge portfolio symbols into the existing symbol set. Pre-registered
+        # symbols (e.g. from watchlists) are preserved; portfolios fill in the rest.
+        for portfolio in self._portfolio_service.get_all_portfolios():
+            for asset in portfolio.assets():
+                if asset.symbol not in self._symbols:
+                    self._symbols[asset.symbol] = AssetUpdateRecord(asset.symbol)
 
         try:
             while self.running:
-                now: datetime = datetime.now(ZoneInfo("UTC"))
-                next_update = await self._tick(now, update_interval)
+                tick_start: datetime = datetime.now(ZoneInfo("UTC"))
+                next_update = await self._tick(tick_start, update_interval)
 
+                # Re-capture time after tick completes so sleep accounts for
+                # however long the tick itself took.
                 sleep_seconds = max(
-                    (next_update - now).total_seconds(),
-                    update_interval.total_seconds() / 2,
+                    (next_update - datetime.now(ZoneInfo("UTC"))).total_seconds(),
+                    0,
                 )
                 logger.debug(
                     "Monitor sleeping %.1f seconds (%d symbols tracked)",
@@ -127,13 +129,14 @@ class MonitorService:
             return_exceptions=True,
         )
 
+        fetch_time = datetime.now(ZoneInfo("UTC"))
         for record, result in zip(due_records, results):
             if isinstance(result, Exception):
                 logger.warning("Error fetching aggregate for %s: %s", record.symbol, result)
                 continue
             if result:
-                record.time_updated = result.date_open + result.timespan
-                next_update = min(next_update, record.time_updated + update_interval)
+                record.time_updated = fetch_time
+                next_update = min(next_update, fetch_time + update_interval)
                 await self._bus.publish(AggregateUpdated(symbol=record.symbol, aggregate=result))
 
         return next_update

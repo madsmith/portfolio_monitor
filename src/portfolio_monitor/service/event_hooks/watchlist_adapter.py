@@ -56,5 +56,6 @@ class WatchlistAdapter:
         self._alert_adapter.apply_rules_to_symbol(event.symbol, event.owner)
 
     async def on_entry_removed(self, event: WatchlistEntryRemoved) -> None:
+        self._monitor.unregister_symbol(event.symbol)
         self._alert_adapter.remove_rules_from_symbol(event.symbol, event.owner)
 

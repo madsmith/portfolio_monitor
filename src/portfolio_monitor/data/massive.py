@@ -107,16 +107,28 @@ class MassiveDataProvider(DataProvider):
         Returns:
             Most recent Aggregate or None if not available
         """
+        now: datetime = datetime.now(ZoneInfo("UTC"))
+        # Floor to the current minute boundary. Used for aggregate timestamps
+        # and fetch ranges — from_time = now_binned - 1m targets the last
+        # completed bar without double-subtracting a minute.
+        now_binned: datetime = now.replace(second=0, microsecond=0)
+
         if symbol.is_base_currency:
-            now = datetime.now(ZoneInfo("UTC"))
-            return Aggregate(symbol, now, 1.0, 1.0, 1.0, 1.0, 0.0, timedelta(minutes=1))
+            return Aggregate(symbol, now_binned, 1.0, 1.0, 1.0, 1.0, 0.0, timedelta(minutes=1))
 
         # Try to get from cache first
         current: Aggregate | None = await self._aggregate_cache.get_current(symbol)
-        now: datetime = datetime.now(ZoneInfo("UTC"))
 
         # Check if we have recent data in cache
-        if current and (now - current.date_open) < self._delay:
+        logfire_set_attribute("cache_hit", current is not None)
+        logfire_set_attribute("cache_age_minutes", (now - current.date_open).total_seconds() / 60 if current else None)
+        logfire_set_attribute("cache_age_value", current.date_open.timestamp() if current else None)
+        logfire_set_attribute("system_time", now.timestamp())
+        logfire_set_attribute("system_time_binned", now_binned.timestamp())
+        # Bars are stamped at their open time, so a fresh bar is structurally
+        # ~1–2 minutes old against wall-clock now. Add one minute to the delay
+        # threshold to account for this so short delay configs aren't defeated.
+        if current and (now - current.date_open) < self._delay + timedelta(minutes=1):
             logger.debug("Fetching aggregate for %s from cache", symbol)
             logfire_set_attribute("source", "cache")
             return current
@@ -125,8 +137,8 @@ class MassiveDataProvider(DataProvider):
         # Otherwise fetch from API
         try:
             # Get the most recent 1-minute bar
-            to_time = now
-            from_time = now - timedelta(minutes=1)
+            to_time = now_binned
+            from_time = now_binned - timedelta(minutes=1)
 
             aggs = None
             for attempt in range(self._max_retries):
@@ -183,6 +195,7 @@ class MassiveDataProvider(DataProvider):
                             logger.debug("Caching aggregate for %s: %s", symbol, aggregate)
                             await self._aggregate_cache.add(aggregate)
                         last_aggregate = aggregate
+                logfire_set_attribute("aggregate_timestamp", last_aggregate.date_open.timestamp() if last_aggregate else None)
                 return last_aggregate
         except Exception as e:
             logger.exception(f"Error fetching recent aggregate for {symbol}: {e}")
