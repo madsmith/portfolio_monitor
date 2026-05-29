@@ -21,6 +21,7 @@ tmp/
 config/settings.yaml
 config/sessions.yaml
 .env
+.env*
 
 config/aggregate_cache.db
 config/app_data.db
