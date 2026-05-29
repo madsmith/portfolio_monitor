@@ -183,7 +183,7 @@ class AlertsModule(DatabaseModule):
 
     def get_rule(self, id: str) -> AlertRule | None:
         row = self._conn.execute(
-            "SELECT id, owner, ticker, asset_type, kind, args, enabled FROM alert_rules WHERE id = ?",
+            "SELECT id, owner, ticker, asset_type, kind, args, enabled, muted_until FROM alert_rules WHERE id = ?",
             (id,),
         ).fetchone()
         return self._row_to_rule(row) if row else None
