@@ -449,6 +449,7 @@ class AggregateCache:
         """Spawn a background task to drain pending queues if one is not already running."""
         async with self._spawn_lock:
             if not self._update_in_progress.is_set():
+                logfire.info("Spawning aggregate cache update task")
                 # Set synchronously under the lock so concurrent callers
                 # reaching this point before the task starts don't spawn a second one.
                 self._update_in_progress.set()
@@ -459,6 +460,8 @@ class AggregateCache:
                 task.set_name(f"AggregateCache._process_updates-{id(task)}")
                 self._background_tasks.add(task)
                 task.add_done_callback(self._background_tasks.discard)
+            else:
+                logfire.info("Aggregate cache update task already running")
 
     async def _process_updates(self) -> None:
         """Drain both pending queues to SQLite."""
