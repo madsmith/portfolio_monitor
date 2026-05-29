@@ -120,7 +120,11 @@ def price_history_handler(data_provider: DataProvider):
             if to_time.tzinfo is None:
                 to_time = to_time.replace(tzinfo=ZoneInfo("UTC"))
         else:
-            to_time = datetime.now(ZoneInfo("UTC"))
+            now = datetime.now(ZoneInfo("UTC"))
+            # Bin to the start of the last *completed* minute. The current minute's
+            # bar doesn't exist on Massive yet, so using the current minute boundary
+            # as `to` would cause a permanent cache miss (expected ts never satisfies).
+            to_time = now.replace(second=0, microsecond=0) - timedelta(minutes=1)
 
         from_time = to_time - delta
         aggregates = await data_provider.get_range(symbol, from_time, to_time, cache_write=True, span=span)
