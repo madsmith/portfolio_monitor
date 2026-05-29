@@ -8,6 +8,9 @@ from portfolio_monitor.service.alerts.delivery.openclaw_agent_http import (
 from portfolio_monitor.service.alerts.delivery.openclaw_gateway_ws import (
     OpenClawGatewayWsDelivery,
 )
+from portfolio_monitor.service.alerts.delivery.openclaw_websocket import (
+    OpenClawWsDelivery,
+)
 
 __all__ = [
     "AlertDelivery",
@@ -17,4 +20,5 @@ __all__ = [
     "MatrixDelivery",
     "OpenClawAgentHttpDelivery",
     "OpenClawGatewayWsDelivery",
+    "OpenClawWsDelivery",
 ]

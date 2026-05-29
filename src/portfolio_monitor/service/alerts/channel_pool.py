@@ -5,6 +5,7 @@ from typing import Any
 from portfolio_monitor.service.alerts.delivery.base import AlertDelivery
 from portfolio_monitor.service.alerts.delivery.logging import LoggingAlertDelivery
 from portfolio_monitor.service.alerts.delivery.matrix import MatrixDelivery
+from portfolio_monitor.service.alerts.delivery.openclaw_websocket import OpenClawWsDelivery
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,11 @@ class ChannelPool:
                 return None
         elif channel_type == "logging":
             return LoggingAlertDelivery()
-        # openclaw_http / openclaw_ws: deferred
+        elif channel_type == "openclaw_ws":
+            try:
+                return OpenClawWsDelivery.from_channel_params(config)
+            except (KeyError, TypeError, ValueError):
+                logger.error("Invalid OpenClaw WS channel config: %s", list(config))
+                return None
         logger.warning("No delivery factory for channel type %r", channel_type)
         return None

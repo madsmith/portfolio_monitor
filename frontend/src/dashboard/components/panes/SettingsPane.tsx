@@ -11,7 +11,7 @@ import {
   type DetectorInfo,
 } from "../../api/client";
 import { Button } from "../buttons";
-import { DropdownSelector, ToggleSlider } from "../inputs";
+import { DropdownSelector, Input, ToggleSlider } from "../inputs";
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -21,29 +21,6 @@ function SectionSubheading({ children }: { children: React.ReactNode }) {
   return <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wider mb-2">{children}</h3>;
 }
 
-function TextInput({
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  className = "",
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  type?: string;
-  className?: string;
-}) {
-  return (
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className={`bg-[#0f1117] border border-[#404868] rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-slate-400 ${className}`}
-    />
-  );
-}
 
 function TypeBadge({ type }: { type: string }) {
   return (
@@ -78,8 +55,8 @@ function PasswordModal({ username, onClose }: { username: string; onClose: () =>
         <h3 className="text-sm font-semibold text-slate-200 mb-4">Reset password — {username}</h3>
         {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
         <div className="space-y-3 mb-4">
-          <TextInput type="password" placeholder="New password" value={password} onChange={setPassword} className="w-full" />
-          <TextInput type="password" placeholder="Confirm password" value={confirm} onChange={setConfirm} className="w-full" />
+          <Input type="password" placeholder="New password" value={password} onChange={setPassword} className="w-full" />
+          <Input type="password" placeholder="Confirm password" value={confirm} onChange={setConfirm} className="w-full" />
         </div>
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -214,8 +191,8 @@ function AccountsSection() {
         <p className="text-xs text-slate-400 font-medium mb-3">New account</p>
         {createError && <p className="text-red-400 text-xs mb-2">{createError}</p>}
         <div className="flex gap-2 flex-wrap">
-          <TextInput placeholder="Username" value={newUsername} onChange={setNewUsername} className="w-40" />
-          <TextInput type="password" placeholder="Password" value={newPassword} onChange={setNewPassword} className="w-40" />
+          <Input placeholder="Username" value={newUsername} onChange={setNewUsername} className="w-40" />
+          <Input type="password" placeholder="Password" value={newPassword} onChange={setNewPassword} className="w-40" />
           <DropdownSelector
             value={newRole}
             onChange={setNewRole}
@@ -235,7 +212,10 @@ function AccountsSection() {
 // Channel config form (shared between add and edit)
 // ---------------------------------------------------------------------------
 
-const CHANNEL_TYPES = [{ value: "matrix", label: "Matrix" }];
+const CHANNEL_TYPES = [
+  { value: "matrix", label: "Matrix" },
+  { value: "openclaw_ws", label: "OpenClaw WebSocket" },
+];
 
 function ChannelConfigForm({
   initial,
@@ -252,12 +232,39 @@ function ChannelConfigForm({
 }) {
   const [name, setName] = useState(initial.name);
   const [type, setType] = useState(initial.type || "matrix");
+
+  // Matrix fields
   const [homeserver, setHomeserver] = useState(String(initial.config["homeserver"] ?? ""));
   const [accessToken, setAccessToken] = useState(String(initial.config["access_token"] ?? ""));
   const [showToken, setShowToken] = useState(false);
 
+  // OpenClaw WS fields (connection only)
+  const [ocHost, setOcHost] = useState(String(initial.config["host"] ?? "127.0.0.1"));
+  const [ocPort, setOcPort] = useState(String(initial.config["port"] ?? "18789"));
+  const [ocGatewayToken, setOcGatewayToken] = useState(String(initial.config["gateway_token"] ?? ""));
+  const [ocGatewayPassword, setOcGatewayPassword] = useState(String(initial.config["gateway_password"] ?? ""));
+  const [showOcAuth, setShowOcAuth] = useState(false);
+  const [ocAuthMode, setOcAuthMode] = useState<"token" | "password">(
+    initial.config["gateway_password"] ? "password" : "token"
+  );
+  const [ocDeviceIdentityFile, setOcDeviceIdentityFile] = useState(
+    String(initial.config["device_identity_file"] ?? "./config/device_identity.json")
+  );
+
   function buildConfig(): Record<string, unknown> {
-    if (type === "matrix") return { homeserver: homeserver.trim(), access_token: accessToken.trim() };
+    if (type === "matrix") {
+      return { homeserver: homeserver.trim(), access_token: accessToken.trim() };
+    }
+    if (type === "openclaw_ws") {
+      const cfg: Record<string, unknown> = {
+        host: ocHost.trim(),
+        port: parseInt(ocPort, 10) || 0,
+      };
+      if (ocAuthMode === "token") cfg["gateway_token"] = ocGatewayToken.trim();
+      else cfg["gateway_password"] = ocGatewayPassword.trim();
+      if (ocDeviceIdentityFile.trim()) cfg["device_identity_file"] = ocDeviceIdentityFile.trim();
+      return cfg;
+    }
     return {};
   }
 
@@ -267,11 +274,11 @@ function ChannelConfigForm({
       <div className="flex gap-3 flex-wrap items-end">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-500 uppercase tracking-wide">Name</label>
-          <TextInput value={name} onChange={setName} placeholder="e.g. Bitforged Matrix" className="w-48" />
+          <Input value={name} onChange={setName} placeholder="e.g. Bitforged Matrix" className="w-48" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-500 uppercase tracking-wide">Type</label>
-          <DropdownSelector value={type} onChange={setType} options={CHANNEL_TYPES} className="w-36" />
+          <DropdownSelector value={type} onChange={setType} options={CHANNEL_TYPES} className="w-44" />
         </div>
       </div>
 
@@ -279,12 +286,12 @@ function ChannelConfigForm({
         <div className="flex gap-3 flex-wrap items-end">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] text-slate-500 uppercase tracking-wide">Homeserver</label>
-            <TextInput value={homeserver} onChange={setHomeserver} placeholder="https://matrix.example.com" className="w-64" />
+            <Input value={homeserver} onChange={setHomeserver} placeholder="https://matrix.example.com" className="w-64" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] text-slate-500 uppercase tracking-wide">Access Token</label>
             <div className="flex gap-1">
-              <TextInput
+              <Input
                 type={showToken ? "text" : "password"}
                 value={accessToken}
                 onChange={setAccessToken}
@@ -301,6 +308,59 @@ function ChannelConfigForm({
             </div>
           </div>
         </div>
+      )}
+
+      {type === "openclaw_ws" && (
+        <>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-slate-500 uppercase tracking-wide">Host</label>
+              <Input value={ocHost} onChange={setOcHost} placeholder="localhost" className="w-44" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-slate-500 uppercase tracking-wide">Port</label>
+              <Input value={ocPort} onChange={setOcPort} placeholder="8080" className="w-20" />
+            </div>
+          </div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-slate-500 uppercase tracking-wide">Auth</label>
+              <DropdownSelector
+                value={ocAuthMode}
+                onChange={(v) => setOcAuthMode(v as "token" | "password")}
+                options={[{ value: "token", label: "Token" }, { value: "password", label: "Password" }]}
+                className="w-28"
+              />
+            </div>
+            <div className="flex flex-col gap-1 flex-1">
+              <label className="text-[10px] text-slate-500 uppercase tracking-wide">
+                {ocAuthMode === "token" ? "Gateway Token" : "Gateway Password"}
+              </label>
+              <div className="flex gap-1">
+                <Input
+                  type={showOcAuth ? "text" : "password"}
+                  value={ocAuthMode === "token" ? ocGatewayToken : ocGatewayPassword}
+                  onChange={ocAuthMode === "token" ? setOcGatewayToken : setOcGatewayPassword}
+                  placeholder={ocAuthMode === "token" ? "tok_…" : "password"}
+                  className="w-52 font-mono text-xs"
+                />
+                <button
+                  onClick={() => setShowOcAuth((v) => !v)}
+                  className="px-2 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                  title={showOcAuth ? "Hide" : "Show"}
+                >
+                  {showOcAuth ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div className="flex flex-col gap-1 flex-1">
+              <label className="text-[10px] text-slate-500 uppercase tracking-wide">Device Identity File <span className="normal-case">(optional)</span></label>
+              <Input value={ocDeviceIdentityFile} onChange={setOcDeviceIdentityFile} placeholder="/etc/portfolio-monitor/device.json" className="w-full min-w-[240px] font-mono text-xs" />
+            </div>
+          </div>
+        </>
       )}
 
       <div className="flex gap-2 pt-1">
@@ -489,6 +549,7 @@ const SCOPE_OPTIONS = [
 
 function targetPlaceholder(type: string): string {
   if (type === "matrix") return "@you:matrix.server.com";
+  if (type === "openclaw_ws") return "agent-id";
   return "Target";
 }
 
@@ -522,9 +583,57 @@ function AlertConfigsSection() {
   // add/edit form state
   const [formChannelId, setFormChannelId] = useState("");
   const [formTarget, setFormTarget] = useState("");
+  const [formOcExtraPrompt, setFormOcExtraPrompt] = useState("");
+  const [formOcSessionKey, setFormOcSessionKey] = useState("");
+  const [formOcThinking, setFormOcThinking] = useState("");
+  const [formOcBootstrapMode, setFormOcBootstrapMode] = useState("");
+  const [formOcRunKind, setFormOcRunKind] = useState("");
+  const [formOcDeliver, setFormOcDeliver] = useState(false);
+  const [formOcAdvancedOpen, setFormOcAdvancedOpen] = useState(false);
   const [formMode, setFormMode] = useState<string>("default");
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState("");
+
+  function formChannelType(): string {
+    return available.find((c) => c.id === formChannelId)?.type ?? "";
+  }
+
+  function encodeTarget(): string {
+    if (formChannelType() === "openclaw_ws") {
+      const obj: Record<string, unknown> = { agentId: formTarget.trim() };
+      if (formOcSessionKey.trim()) obj.sessionKey = formOcSessionKey.trim();
+      if (formOcExtraPrompt.trim()) obj.extraPrompt = formOcExtraPrompt.trim();
+      if (formOcThinking) obj.thinking = formOcThinking;
+      if (formOcBootstrapMode) obj.bootstrapContextMode = formOcBootstrapMode;
+      if (formOcRunKind) obj.bootstrapContextRunKind = formOcRunKind;
+      if (formOcDeliver) obj.deliver = true;
+      // only encode as JSON if there's anything beyond agentId
+      if (Object.keys(obj).length > 1) return JSON.stringify(obj);
+      return formTarget.trim();
+    }
+    return formTarget;
+  }
+
+  function decodeTarget(type: string, raw: string): {
+    target: string; ocExtraPrompt: string; ocSessionKey: string; ocThinking: string;
+    ocBootstrapMode: string; ocRunKind: string; ocDeliver: boolean;
+  } {
+    if (type === "openclaw_ws" && raw.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(raw);
+        return {
+          target: parsed.agentId ?? "",
+          ocExtraPrompt: parsed.extraPrompt ?? "",
+          ocSessionKey: parsed.sessionKey ?? "",
+          ocThinking: parsed.thinking ?? "",
+          ocBootstrapMode: parsed.bootstrapContextMode ?? "",
+          ocRunKind: parsed.bootstrapContextRunKind ?? "",
+          ocDeliver: Boolean(parsed.deliver ?? false),
+        };
+      } catch { /* fall through */ }
+    }
+    return { target: raw, ocExtraPrompt: "", ocSessionKey: "", ocThinking: "", ocBootstrapMode: "", ocRunKind: "", ocDeliver: false };
+  }
 
   useEffect(() => {
     Promise.all([api.getAvailableChannels(), api.getMyAlerts(), api.getDetectors()])
@@ -539,10 +648,21 @@ function AlertConfigsSection() {
       .finally(() => setLoading(false));
   }, []);
 
+  function resetOcAdvanced() {
+    setFormOcExtraPrompt("");
+    setFormOcSessionKey("");
+    setFormOcThinking("");
+    setFormOcBootstrapMode("");
+    setFormOcRunKind("");
+    setFormOcDeliver(false);
+    setFormOcAdvancedOpen(false);
+  }
+
   function openAdd() {
     const firstId = available[0]?.id ?? "";
     setFormChannelId(firstId);
     setFormTarget("");
+    resetOcAdvanced();
     setFormMode("default");
     setFormError("");
     setEditId(null);
@@ -550,8 +670,17 @@ function AlertConfigsSection() {
   }
 
   function openEdit(sub: AlertSubscription) {
+    const chType = available.find((c) => c.id === sub.channel_config_id)?.type ?? "";
+    const { target, ocExtraPrompt, ocSessionKey, ocThinking, ocBootstrapMode, ocRunKind, ocDeliver } = decodeTarget(chType, sub.target);
     setFormChannelId(sub.channel_config_id);
-    setFormTarget(sub.target);
+    setFormTarget(target);
+    setFormOcExtraPrompt(ocExtraPrompt);
+    setFormOcSessionKey(ocSessionKey);
+    setFormOcThinking(ocThinking);
+    setFormOcBootstrapMode(ocBootstrapMode);
+    setFormOcRunKind(ocRunKind);
+    setFormOcDeliver(ocDeliver);
+    setFormOcAdvancedOpen(!!(ocExtraPrompt || ocSessionKey || ocThinking || ocBootstrapMode || ocRunKind || ocDeliver));
     setFormMode(sub.mode);
     setFormError("");
     setAdding(false);
@@ -562,9 +691,11 @@ function AlertConfigsSection() {
     if (!formChannelId) { setFormError("Select a channel"); return; }
     setFormSaving(true); setFormError("");
     try {
-      const created = await api.addSubscription({ channel_config_id: formChannelId, target: formTarget, mode: formMode });
+      const target = encodeTarget();
+      const created = await api.addSubscription({ channel_config_id: formChannelId, target, mode: formMode });
       setSubs((prev) => [...prev, created]);
       setFormTarget("");
+      setFormOcExtraPrompt("");
       setFormMode("default");
     } catch { setFormError("Failed to add"); }
     finally { setFormSaving(false); }
@@ -574,8 +705,9 @@ function AlertConfigsSection() {
     if (!editId) return;
     setFormSaving(true); setFormError("");
     try {
-      await api.updateSubscription(editId, { target: formTarget, mode: formMode });
-      setSubs((prev) => prev.map((s) => s.id === editId ? { ...s, target: formTarget, mode: formMode as AlertSubscription["mode"] } : s));
+      const target = encodeTarget();
+      await api.updateSubscription(editId, { target, mode: formMode });
+      setSubs((prev) => prev.map((s) => s.id === editId ? { ...s, target, mode: formMode as AlertSubscription["mode"] } : s));
       setEditId(null);
     } catch { setFormError("Failed to save"); }
     finally { setFormSaving(false); }
@@ -788,10 +920,67 @@ function AlertConfigsSection() {
                       <DropdownSelector value={formMode} onChange={setFormMode} options={MODE_OPTIONS} className="w-28" />
                     </div>
                     <div className="flex flex-col gap-1 flex-1">
-                      <label className="text-[10px] text-slate-500 uppercase tracking-wide">Target</label>
-                      <TextInput value={formTarget} onChange={setFormTarget} placeholder={targetPlaceholder(ch?.type ?? "")} className="w-full min-w-[200px]" />
+                      <label className="text-[10px] text-slate-500 uppercase tracking-wide">{ch?.type === "openclaw_ws" ? "Agent ID" : "Target"}</label>
+                      <Input value={formTarget} onChange={setFormTarget} placeholder={targetPlaceholder(ch?.type ?? "")} className="w-full min-w-[200px]" />
                     </div>
                   </div>
+                  {ch?.type === "openclaw_ws" && (
+                    <div>
+                      <button
+                        onClick={() => setFormOcAdvancedOpen((v) => !v)}
+                        className="text-[10px] text-slate-500 hover:text-slate-300 uppercase tracking-wide transition-colors cursor-pointer"
+                      >
+                        Advanced {formOcAdvancedOpen ? "▾" : "▸"}
+                      </button>
+                      {formOcAdvancedOpen && (
+                        <div className="mt-2 space-y-2 pl-2 border-l border-[#404868]">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] text-slate-500 uppercase tracking-wide">Session Key</label>
+                            <Input value={formOcSessionKey} onChange={setFormOcSessionKey} placeholder="portfolio-alerts" className="w-full font-mono text-xs" />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] text-slate-500 uppercase tracking-wide">System Prompt</label>
+                            <Input value={formOcExtraPrompt} onChange={setFormOcExtraPrompt} placeholder="Focus on high-volatility alerts only." className="w-full" rows={3} />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] text-slate-500 uppercase tracking-wide">Thinking</label>
+                            <DropdownSelector
+                              value={formOcThinking || ""}
+                              onChange={setFormOcThinking}
+                              options={[{ value: "", label: "Default" }, { value: "off", label: "Off" }, { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }]}
+                              className="w-28"
+                            />
+                          </div>
+                          <div className="flex gap-3 flex-wrap items-end">
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] text-slate-500 uppercase tracking-wide">Bootstrap</label>
+                              <DropdownSelector
+                                value={formOcBootstrapMode || ""}
+                                onChange={setFormOcBootstrapMode}
+                                options={[{ value: "", label: "Default" }, { value: "lightweight", label: "Lightweight" }, { value: "full", label: "Full" }]}
+                                className="w-32"
+                              />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] text-slate-500 uppercase tracking-wide">Run Kind</label>
+                              <DropdownSelector
+                                value={formOcRunKind || ""}
+                                onChange={setFormOcRunKind}
+                                options={[{ value: "", label: "Default" }, { value: "cron", label: "Cron" }, { value: "heartbeat", label: "Heartbeat" }]}
+                                className="w-32"
+                              />
+                            </div>
+                            <div className="flex flex-col gap-1 justify-end">
+                              <label className="text-[10px] text-slate-500 uppercase tracking-wide">Deliver reply</label>
+                              <div className="flex items-center h-[34px]">
+                                <ToggleSlider enabled={formOcDeliver} onChange={setFormOcDeliver} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <Button variant="primary" onClick={handleUpdate} disabled={formSaving}>{formSaving ? "Saving…" : "Save"}</Button>
                     <Button variant="ghost" onClick={() => setEditId(null)}>Cancel</Button>
@@ -805,7 +994,11 @@ function AlertConfigsSection() {
                       <TypeBadge type={sub.channel_type} />
                     </div>
                     <span className="text-xs text-slate-500">{sub.mode}</span>
-                    {sub.target && <span className="text-xs text-slate-400 truncate">{sub.target}</span>}
+                    {sub.target && (
+                      <span className="text-xs text-slate-400 truncate">
+                        {decodeTarget(sub.channel_type, sub.target).target}
+                      </span>
+                    )}
                   </div>
                   {confirmDelete === sub.id ? (
                     <div className="flex items-center gap-2 shrink-0">
@@ -837,15 +1030,72 @@ function AlertConfigsSection() {
                 <DropdownSelector value={formMode} onChange={setFormMode} options={MODE_OPTIONS} className="w-28" />
               </div>
               <div className="flex flex-col gap-1 flex-1">
-                <label className="text-[10px] text-slate-500 uppercase tracking-wide">Target</label>
-                <TextInput
+                <label className="text-[10px] text-slate-500 uppercase tracking-wide">{formChannelType() === "openclaw_ws" ? "Agent ID" : "Target"}</label>
+                <Input
                   value={formTarget}
                   onChange={setFormTarget}
-                  placeholder={targetPlaceholder(available.find((c) => c.id === formChannelId)?.type ?? "")}
+                  placeholder={targetPlaceholder(formChannelType())}
                   className="w-full min-w-[200px]"
                 />
               </div>
             </div>
+            {formChannelType() === "openclaw_ws" && (
+              <div>
+                <button
+                  onClick={() => setFormOcAdvancedOpen((v) => !v)}
+                  className="text-[10px] text-slate-500 hover:text-slate-300 uppercase tracking-wide transition-colors cursor-pointer"
+                >
+                  Advanced {formOcAdvancedOpen ? "▾" : "▸"}
+                </button>
+                {formOcAdvancedOpen && (
+                  <div className="mt-2 space-y-2 pl-2 border-l border-[#404868]">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-slate-500 uppercase tracking-wide">Session Key</label>
+                      <Input value={formOcSessionKey} onChange={setFormOcSessionKey} placeholder="portfolio-alerts" className="w-full font-mono text-xs" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-slate-500 uppercase tracking-wide">System Prompt</label>
+                      <Input value={formOcExtraPrompt} onChange={setFormOcExtraPrompt} placeholder="Focus on high-volatility alerts only." className="w-full" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-slate-500 uppercase tracking-wide">Thinking</label>
+                      <DropdownSelector
+                        value={formOcThinking || ""}
+                        onChange={setFormOcThinking}
+                        options={[{ value: "", label: "Default" }, { value: "off", label: "Off" }, { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }]}
+                        className="w-28"
+                      />
+                    </div>
+                    <div className="flex gap-3 flex-wrap items-end">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] text-slate-500 uppercase tracking-wide">Bootstrap</label>
+                        <DropdownSelector
+                          value={formOcBootstrapMode || ""}
+                          onChange={setFormOcBootstrapMode}
+                          options={[{ value: "", label: "Default" }, { value: "lightweight", label: "Lightweight" }, { value: "full", label: "Full" }]}
+                          className="w-32"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] text-slate-500 uppercase tracking-wide">Run Kind</label>
+                        <DropdownSelector
+                          value={formOcRunKind || ""}
+                          onChange={setFormOcRunKind}
+                          options={[{ value: "", label: "Default" }, { value: "cron", label: "Cron" }, { value: "heartbeat", label: "Heartbeat" }]}
+                          className="w-32"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 justify-end">
+                        <label className="text-[10px] text-slate-500 uppercase tracking-wide">Deliver reply</label>
+                        <div className="flex items-center h-[34px]">
+                          <ToggleSlider enabled={formOcDeliver} onChange={setFormOcDeliver} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex gap-2">
               <Button variant="primary" onClick={handleAdd} disabled={formSaving}>{formSaving ? "Adding…" : "Add"}</Button>
               <Button variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
@@ -870,7 +1120,7 @@ function AlertConfigsSection() {
                 <>
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] text-slate-500 uppercase tracking-wide">Ticker</label>
-                    <TextInput value={addRuleTicker} onChange={setAddRuleTicker} placeholder="AAPL" className="w-24 uppercase" />
+                    <Input value={addRuleTicker} onChange={setAddRuleTicker} placeholder="AAPL" className="w-24 uppercase" />
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] text-slate-500 uppercase tracking-wide">Type</label>
@@ -893,7 +1143,7 @@ function AlertConfigsSection() {
                       className="w-full"
                     />
                   ) : (
-                    <TextInput value={addRuleArgs[arg.name] ?? ""} onChange={(v) => setAddRuleArgs((prev) => ({ ...prev, [arg.name]: v }))} className="w-full" />
+                    <Input value={addRuleArgs[arg.name] ?? ""} onChange={(v) => setAddRuleArgs((prev) => ({ ...prev, [arg.name]: v }))} className="w-full" />
                   )}
                 </div>
               ))}
