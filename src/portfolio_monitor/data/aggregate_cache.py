@@ -460,9 +460,7 @@ class AggregateCache:
                 task.set_name(f"AggregateCache._process_updates-{id(task)}")
                 self._background_tasks.add(task)
                 task.add_done_callback(self._background_tasks.discard)
-            else:
-                logfire.info("Aggregate cache update task already running")
-
+    
     async def _process_updates(self) -> None:
         """Drain both pending queues to SQLite."""
         async with self._process_lock:
