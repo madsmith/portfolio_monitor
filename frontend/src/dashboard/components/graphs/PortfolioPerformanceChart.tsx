@@ -5,6 +5,42 @@ import { fmtMoney } from "../../lib/formatters";
 const MARGIN = { top: 16, right: 60, bottom: 24, left: 12 };
 const HEIGHT = 200;
 
+// Wheel-sequence classification: continuous wheel events (gaps < SEQUENCE_GAP_MS)
+// belong to the same gesture. The first event in a sequence decides whether the
+// gesture is a page-scroll (started outside any chart) or a chart-zoom (started
+// inside a chart). The classification sticks until the gesture ends — so a
+// page scroll that drifts over the chart keeps scrolling instead of being
+// hijacked, and a deliberate chart-zoom started inside the chart isn't blocked
+// just because the user was scrolling the page a moment earlier.
+const SEQUENCE_GAP_MS = 150;
+const PAGE_MOVEMENT_GRACE_MS = 1500;
+let lastWheelAt = 0;
+let lastPageScrollAt = 0;
+let currentSequenceIsPageScroll = false;
+let wheelListenerInstalled = false;
+
+function ensureWheelClassifier() {
+  if (wheelListenerInstalled || typeof window === "undefined") return;
+  wheelListenerInstalled = true;
+  window.addEventListener("wheel", (e: WheelEvent) => {
+    const now = performance.now();
+    const target = e.target;
+    const insideChart = target instanceof Element && !!target.closest("[data-perf-chart]");
+    if (now - lastWheelAt > SEQUENCE_GAP_MS) {
+      // New gesture. Page-scroll if it started outside any chart, OR if the
+      // page is still in motion from a recent scroll (covers the case where
+      // a chart drifts under the cursor mid-scroll, including trackpad
+      // momentum scrolling where wheel events may pause briefly).
+      const pageInMotion = now - lastPageScrollAt < PAGE_MOVEMENT_GRACE_MS;
+      currentSequenceIsPageScroll = !insideChart || pageInMotion;
+    }
+    lastWheelAt = now;
+  }, { capture: true, passive: true });
+  window.addEventListener("scroll", () => {
+    lastPageScrollAt = performance.now();
+  }, { capture: true, passive: true });
+}
+
 const GREEN_FILL  = "#4d9060";
 const RED_FILL    = "#9c4040";
 const GREEN_LINE  = "#3fb950";
@@ -211,6 +247,13 @@ function PortfolioPerformanceChart({
     } catch { /* ignore */ }
     return null;
   });
+  const [yZoom, setYZoomRaw] = useState<number>(() => {
+    try {
+      const stored = sessionStorage.getItem(`perf-yzoom-${chartId}`);
+      if (stored) return JSON.parse(stored) as number;
+    } catch { /* ignore */ }
+    return 0;
+  });
   const [hoverMs,    setHoverMs]    = useState<number | null>(null);
 
   function setViewWindow(w: [number, number] | null) {
@@ -222,9 +265,19 @@ function PortfolioPerformanceChart({
     setViewWindowRaw(w);
   }
 
-  const dragRef  = useRef<{ startX: number; fromMs: number; toMs: number; isPan: boolean } | null>(null);
+  function setYZoom(z: number) {
+    const clamped = Math.max(0, Math.min(1, z));
+    try { sessionStorage.setItem(`perf-yzoom-${chartId}`, JSON.stringify(clamped)); } catch { /* ignore */ }
+    setYZoomRaw(clamped);
+  }
+
+  type DragState =
+    | { kind: "pan"; startX: number; fromMs: number; toMs: number }
+    | { kind: "hover" }
+    | { kind: "yzoom"; startY: number; startZoom: number };
+  const dragRef  = useRef<DragState | null>(null);
   const pinchRef = useRef<{ midFrac: number; dist: number; fromMs: number; toMs: number } | null>(null);
-  const [inPanZone, setInPanZone] = useState(false);
+  const [hoverZone, setHoverZone] = useState<"none" | "pan" | "yzoom">("none");
 
   // Measure rendered SVG width so pixel coordinates are accurate
   useEffect(() => {
@@ -244,6 +297,9 @@ function PortfolioPerformanceChart({
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
   }, []);
+
+  // Install the shared wheel-sequence classifier (no-op after first chart).
+  useEffect(() => { ensureWheelClassifier(); }, []);
 
   // Register non-passive touch handlers so e.preventDefault() suppresses page scroll
   type TouchHandlers = { start: (e: TouchEvent) => void; move: (e: TouchEvent) => void; end: () => void };
@@ -310,11 +366,18 @@ function PortfolioPerformanceChart({
     MARGIN.left + ((ms - clampFrom) / (clampTo - clampFrom)) * plotW;
 
   const allY = [...visValues, ...visBases];
-  const yMin = Math.min(...allY, 0);
-  const yMax = Math.max(...allY, 0);
-  const yPad = (yMax - yMin || 1) * 0.08;
-  const yLo  = yMin - yPad;
-  const yHi  = yMax + yPad;
+  const dataMin = Math.min(...visValues);
+  const dataMax = Math.max(...allY);
+  const yMaxBase = Math.max(dataMax, 0);
+  // yZoom=0 → wide range: yLo at 0, yHi well above dataMax.
+  // yZoom=1 → tight range hugging the data: yLo just below dataMin, yHi just above dataMax.
+  const span     = Math.max(dataMax - dataMin, 1);
+  const yHiOut   = yMaxBase + (yMaxBase || 1) * 0.08;
+  const yHiIn    = dataMax + span * 0.01;
+  const yLoOut   = Math.min(0, dataMin);
+  const yLoIn    = dataMin - span * 0.04;
+  const yHi      = yHiOut + yZoom * (yHiIn - yHiOut);
+  const yLo      = yLoOut + yZoom * (yLoIn - yLoOut);
 
   const yScale = (v: number) =>
     MARGIN.top + plotH - ((v - yLo) / (yHi - yLo)) * plotH;
@@ -352,10 +415,19 @@ function PortfolioPerformanceChart({
 
   // Update zoom handler ref (always current values)
   zoomRef.current = (e: WheelEvent) => {
+    // If this wheel gesture started as a page scroll, let it pass through.
+    if (currentSequenceIsPageScroll) return;
     e.preventDefault();
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const relX    = e.clientX - rect.left - MARGIN.left;
+    const relXAbs = e.clientX - rect.left;
+    const relYAbs = e.clientY - rect.top;
+    if (zoneAt(relXAbs, relYAbs) === "yzoom") {
+      const step = e.deltaY > 0 ? -0.1 : 0.1;
+      setYZoom(yZoom + step);
+      return;
+    }
+    const relX    = relXAbs - MARGIN.left;
     const fraction = Math.max(0, Math.min(1, relX / plotW));
     const curFrom  = viewWindow?.[0] ?? dataFromMs;
     const curTo    = viewWindow?.[1] ?? dataToMs;
@@ -375,6 +447,16 @@ function PortfolioPerformanceChart({
 
   // Y threshold separating hover zone (top 80%) from pan zone (bottom 20%)
   const panZoneY = MARGIN.top + plotH * 0.8;
+
+  // Returns which interaction zone a pointer at (relX, relY) hits.
+  // relX/relY are relative to the SVG element's top-left.
+  function zoneAt(relX: number, relY: number): "yzoom" | "pan" | "hover" {
+    if (relX > MARGIN.left + plotW && relY >= MARGIN.top && relY <= MARGIN.top + plotH) {
+      return "yzoom";
+    }
+    if (relY > panZoneY) return "pan";
+    return "hover";
+  }
 
   // Touch interaction — always current via ref so handlers see latest state
   touchRef.current = {
@@ -400,13 +482,17 @@ function PortfolioPerformanceChart({
       if (e.touches.length !== 1) return;
       const clientX = e.touches[0].clientX;
       const clientY = e.touches[0].clientY;
+      const relX    = clientX - rect.left;
       const relY    = clientY - rect.top;
-      const isPan   = relY > panZoneY;
-      dragRef.current = { startX: clientX, fromMs, toMs, isPan };
-      if (!isPan) {
-        const relX = clientX - rect.left - MARGIN.left;
-        const frac = Math.max(0, Math.min(1, relX / plotW));
-        setHoverMs(clampFrom + frac * (clampTo - clampFrom));
+      const zone    = zoneAt(relX, relY);
+      if (zone === "yzoom") {
+        dragRef.current = { kind: "yzoom", startY: clientY, startZoom: yZoom };
+      } else if (zone === "pan") {
+        dragRef.current = { kind: "pan", startX: clientX, fromMs, toMs };
+      } else {
+        dragRef.current = { kind: "hover" };
+        const fx = Math.max(0, Math.min(1, (relX - MARGIN.left) / plotW));
+        setHoverMs(clampFrom + fx * (clampTo - clampFrom));
       }
     },
     move(e: TouchEvent) {
@@ -435,12 +521,17 @@ function PortfolioPerformanceChart({
 
       if (e.touches.length !== 1) return;
       const clientX = e.touches[0].clientX;
-      if (dragRef.current?.isPan) {
-        const dx    = clientX - dragRef.current.startX;
-        const msPx  = (dragRef.current.toMs - dragRef.current.fromMs) / plotW;
+      const clientY = e.touches[0].clientY;
+      const drag = dragRef.current;
+      if (drag?.kind === "yzoom") {
+        const dy = clientY - drag.startY;
+        setYZoom(drag.startZoom + dy / plotH);
+      } else if (drag?.kind === "pan") {
+        const dx    = clientX - drag.startX;
+        const msPx  = (drag.toMs - drag.fromMs) / plotW;
         const shift = -dx * msPx;
-        const winSz = dragRef.current.toMs - dragRef.current.fromMs;
-        const nFrom = Math.max(dataFromMs, Math.min(dataToMs - winSz, dragRef.current.fromMs + shift));
+        const winSz = drag.toMs - drag.fromMs;
+        const nFrom = Math.max(dataFromMs, Math.min(dataToMs - winSz, drag.fromMs + shift));
         setViewWindow([nFrom, nFrom + winSz]);
       } else {
         const relX = clientX - rect.left - MARGIN.left;
@@ -458,21 +549,29 @@ function PortfolioPerformanceChart({
   // Interaction handlers
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
-    const relY  = e.clientY - rect.top;
-    const isPan = relY > panZoneY;
-    setInPanZone(isPan);
-    if (dragRef.current?.isPan) {
-      const dx    = e.clientX - dragRef.current.startX;
-      const msPx  = (dragRef.current.toMs - dragRef.current.fromMs) / plotW;
-      const shift = -dx * msPx;
-      const winSz = dragRef.current.toMs - dragRef.current.fromMs;
-      const nFrom = Math.max(dataFromMs, Math.min(dataToMs - winSz, dragRef.current.fromMs + shift));
-      setViewWindow([nFrom, nFrom + winSz]);
+    const relX = e.clientX - rect.left;
+    const relY = e.clientY - rect.top;
+    const drag = dragRef.current;
+    if (drag?.kind === "yzoom") {
+      const dy = e.clientY - drag.startY;
+      setYZoom(drag.startZoom + dy / plotH);
+      setHoverZone("yzoom");
       return;
     }
-    if (!isPan) {
-      const relX = e.clientX - rect.left - MARGIN.left;
-      const frac = Math.max(0, Math.min(1, relX / plotW));
+    if (drag?.kind === "pan") {
+      const dx    = e.clientX - drag.startX;
+      const msPx  = (drag.toMs - drag.fromMs) / plotW;
+      const shift = -dx * msPx;
+      const winSz = drag.toMs - drag.fromMs;
+      const nFrom = Math.max(dataFromMs, Math.min(dataToMs - winSz, drag.fromMs + shift));
+      setViewWindow([nFrom, nFrom + winSz]);
+      setHoverZone("pan");
+      return;
+    }
+    const zone = zoneAt(relX, relY);
+    setHoverZone(zone === "hover" ? "none" : zone);
+    if (zone === "hover") {
+      const frac = Math.max(0, Math.min(1, (relX - MARGIN.left) / plotW));
       setHoverMs(clampFrom + frac * (clampTo - clampFrom));
     } else {
       setHoverMs(null);
@@ -480,21 +579,34 @@ function PortfolioPerformanceChart({
   }
 
   function handleMouseDown(e: React.MouseEvent<SVGSVGElement>) {
-    const rect  = e.currentTarget.getBoundingClientRect();
-    const relY  = e.clientY - rect.top;
-    const isPan = relY > panZoneY;
-    dragRef.current = { startX: e.clientX, fromMs, toMs, isPan };
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    const relY = e.clientY - rect.top;
+    const zone = zoneAt(relX, relY);
+    if (zone === "yzoom") {
+      dragRef.current = { kind: "yzoom", startY: e.clientY, startZoom: yZoom };
+    } else if (zone === "pan") {
+      dragRef.current = { kind: "pan", startX: e.clientX, fromMs, toMs };
+    } else {
+      dragRef.current = { kind: "hover" };
+    }
     e.preventDefault();
   }
 
   function handleMouseLeave() {
     dragRef.current = null;
     setHoverMs(null);
-    setInPanZone(false);
+    setHoverZone("none");
   }
 
-  function handleDoubleClick() {
-    setViewWindow(null);
+  function handleDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const zone = zoneAt(e.clientX - rect.left, e.clientY - rect.top);
+    if (zone === "yzoom") {
+      setYZoom(0);
+    } else {
+      setViewWindow(null);
+    }
   }
 
   const clipId = `perf-clip-${chartId}`;
@@ -551,6 +663,7 @@ function PortfolioPerformanceChart({
       <div className="relative">
         <svg
           ref={svgRef}
+          data-perf-chart
           width="100%"
           height={HEIGHT}
           onMouseMove={handleMouseMove}
@@ -558,7 +671,11 @@ function PortfolioPerformanceChart({
           onMouseUp={() => { dragRef.current = null; }}
           onMouseLeave={handleMouseLeave}
           onDoubleClick={handleDoubleClick}
-          className={inPanZone ? "cursor-ew-resize" : "cursor-crosshair"}
+          className={
+            hoverZone === "yzoom" ? "cursor-ns-resize"
+            : hoverZone === "pan" ? "cursor-ew-resize"
+            : "cursor-crosshair"
+          }
         >
           <defs>
             <clipPath id={clipId}>
@@ -710,7 +827,7 @@ function PortfolioPerformanceChart({
 
       {/* Scroll/zoom hint */}
       <div className="text-[10px] text-slate-700 mt-0.5">
-        Scroll to zoom · Drag to pan · Double-click to reset · Touch &amp; drag on mobile
+        Scroll to zoom · Drag to pan · Drag Y axis to zoom Y · Double-click to reset
       </div>
     </div>
   );
