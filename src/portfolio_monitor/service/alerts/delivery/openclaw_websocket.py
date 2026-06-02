@@ -202,7 +202,7 @@ class OpenClawWsDelivery:
 
         frame: dict[str, Any] = {
             "type": "req",
-            "id": f"alert-{idempotency_key}",
+            "id": f"alert-{alert.id}",
             "method": "agent",
             "params": params,
         }
@@ -279,8 +279,8 @@ class OpenClawWsDelivery:
         scopes = ["operator.read", "operator.write"]
 
         connect_params: dict[str, Any] = {
-            "minProtocol": 3,
-            "maxProtocol": 3,
+            "minProtocol": 4,
+            "maxProtocol": 4,
             "client": {
                 "id": client_id,
                 "displayName": "Portfolio Monitor",

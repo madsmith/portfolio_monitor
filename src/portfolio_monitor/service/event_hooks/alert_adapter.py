@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from portfolio_monitor.core.events import EventBus
 from portfolio_monitor.data.database.alerts import AlertsModule
@@ -210,12 +211,12 @@ class AlertConfigAdapter:
         """
         all_symbols: set[AssetSymbol] = set()
         for portfolio in self._portfolio_service.get_all_portfolios():
-            if portfolio.owner != owner:
+            if portfolio.owner != owner and not portfolio.can("read", owner):
                 continue
             for asset in portfolio.assets():
                 all_symbols.add(asset.symbol)
         for wl in self._watchlist_service.get_all_watchlists():
-            if wl.owner != owner:
+            if wl.owner != owner and not wl.can("read", owner):
                 continue
             for entry in wl.entries:
                 all_symbols.add(entry.symbol)
