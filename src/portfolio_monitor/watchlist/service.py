@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from portfolio_monitor.core import Currency
 from portfolio_monitor.core.events import EventBus
+from portfolio_monitor.core.permissions import PermissionMap
 from portfolio_monitor.data import AggregateUpdated
 from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.service.types import AssetSymbol
@@ -103,6 +104,21 @@ class WatchlistService:
         self._watchlists_module.delete(id)
         self._rebuild_tracked()
         return True
+
+    def update_permissions(
+        self,
+        id: str,
+        permissions: dict[str, dict[str, bool]],
+        auth: "AuthContext",
+    ) -> Watchlist | None:
+        wl = self._find_by_id(id)
+        if wl is None:
+            return None
+        if not auth.is_admin and wl.owner != auth.username:
+            return None
+        wl.permissions = PermissionMap.from_yaml(permissions) if permissions else None
+        self._save(wl)
+        return wl
 
     # ------------------------------------------------------------------
     # Entry CRUD

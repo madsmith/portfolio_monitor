@@ -17,7 +17,7 @@ from .routes.me import me_handler
 from .routes.market_info import market_close_handler, market_hours_handler, market_open_handler
 from .routes.portfolios import create_portfolio_handler, delete_portfolio_handler, portfolio_edit_handlers, portfolio_handler, portfolio_performance_handler, portfolio_users_handler, portfolios_handler
 from .routes.prices import current_price_handler, daily_range_handler, open_close_handler, previous_close_handler, price_history_handler
-from .routes.watchlists import watchlists_handler
+from .routes.watchlists import watchlists_handler, watchlist_users_handler
 from .ws import WebSocketManager
 
 
@@ -96,6 +96,7 @@ class APIv1ServiceApp(Router):
             remove_wl_entry,
             update_wl_entry,
         ) = watchlists_handler(ctx.watchlist_service, ctx.data_provider)
+        get_watchlist_users, update_watchlist_users = watchlist_users_handler(ctx.watchlist_service)
 
         ws_manager = WebSocketManager(
             bus=ctx.bus,
@@ -150,6 +151,8 @@ class APIv1ServiceApp(Router):
                 Route("/watchlist/{id}/entries", require_auth(add_wl_entry), methods=["POST"]),
                 Route("/watchlist/{id}/entries/{ticker}", require_auth(remove_wl_entry), methods=["DELETE"]),
                 Route("/watchlist/{id}/entries/{ticker}", require_auth(update_wl_entry), methods=["PUT"]),
+                Route("/watchlist/{id}/users", require_auth(get_watchlist_users), methods=["GET"]),
+                Route("/watchlist/{id}/users", require_auth(update_watchlist_users), methods=["PUT"]),
                 Route("/price/{type}/{ticker}", require_auth(current_price_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/previous-close", require_auth(previous_close_handler(ctx.data_provider)), methods=["GET"]),
                 Route("/price/{type}/{ticker}/history", require_auth(price_history_handler(ctx.data_provider)), methods=["GET"]),

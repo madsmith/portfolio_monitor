@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   api,
+  getRole,
+  getUsername,
   type WatchlistDetail,
   type WatchlistEntry,
   type WatchlistSummary,
+  type WatchlistUserPermission,
+  type WatchlistUsers,
 } from "../../api/client";
 import { AssetMenu } from "../AssetMenu";
 import { Button, CancelButton, ConfirmButton } from "../buttons";
@@ -13,6 +17,121 @@ import { fmtChg, fmtPrice, fmtPct, plColor, prevCloseKey } from "../../lib/forma
 import { Chart } from "../graphs/Chart";
 import { DataTable, type ColDef } from "../DataTable";
 import { type PortfolioWebSocket } from "../../api/ws";
+
+// ---------------------------------------------------------------------------
+// WatchlistUsersSection — shown in edit mode for owners and admins
+// ---------------------------------------------------------------------------
+
+function WatchlistUsersSection({ watchlistId }: { watchlistId: string }) {
+  const [data, setData] = useState<WatchlistUsers | null>(null);
+  const [accounts, setAccounts] = useState<{ username: string }[]>([]);
+  const [draft, setDraft] = useState<Record<string, WatchlistUserPermission>>({});
+  const [addUsername, setAddUsername] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api.getWatchlistUsers(watchlistId).then(d => {
+      setData(d);
+      setDraft(d.permissions);
+    });
+    api.getUsers().then(setAccounts);
+  }, [watchlistId]);
+
+  const available = accounts.filter(a => a.username !== data?.owner && !(a.username in draft));
+
+  const handleAdd = useCallback(() => {
+    if (!addUsername) return;
+    setDraft(prev => ({ ...prev, [addUsername]: { read: true, write: false } }));
+    setAddUsername("");
+    setSaved(false);
+  }, [addUsername]);
+
+  const handleRemove = useCallback((username: string) => {
+    setDraft(prev => { const next = { ...prev }; delete next[username]; return next; });
+    setSaved(false);
+  }, []);
+
+  const handleToggle = useCallback((username: string, flag: "read" | "write") => {
+    setDraft(prev => ({ ...prev, [username]: { ...prev[username], [flag]: !prev[username][flag] } }));
+    setSaved(false);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      await api.updateWatchlistUsers(watchlistId, draft);
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }, [watchlistId, draft]);
+
+  if (!data) return null;
+
+  const users = Object.entries(draft);
+
+  return (
+    <div className="mt-5 border border-[#404868] rounded-md overflow-hidden">
+      <div className="px-3 py-2 bg-[#131928] border-b border-[#404868] flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-slate-400 font-medium">Users</span>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="text-xs px-2 py-0.5 rounded border border-[#5060a0] bg-[#252a40] text-slate-100 hover:bg-[#2e345a] transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
+        </button>
+      </div>
+
+      <div className="divide-y divide-[#2a2d3a]">
+        <div className="px-3 py-2 flex items-center gap-3 text-xs text-slate-400">
+          <span className="w-36 truncate font-medium text-slate-300">{data.owner}</span>
+          <span className="text-slate-500 italic">owner</span>
+        </div>
+
+        {users.map(([username, perm]) => (
+          <div key={username} className="px-3 py-2 flex items-center gap-3 text-xs">
+            <span className="w-36 truncate text-slate-300">{username}</span>
+            <label className="flex items-center gap-1 text-slate-400 cursor-pointer select-none">
+              <input type="checkbox" checked={perm.read} onChange={() => handleToggle(username, "read")} className="accent-sky-500" />
+              Read
+            </label>
+            <label className="flex items-center gap-1 text-slate-400 cursor-pointer select-none">
+              <input type="checkbox" checked={perm.write} onChange={() => handleToggle(username, "write")} className="accent-sky-500" />
+              Write
+            </label>
+            <button
+              onClick={() => handleRemove(username)}
+              className="ml-auto text-slate-600 hover:text-red-400 transition-colors cursor-pointer"
+              title="Remove"
+            >✕</button>
+          </div>
+        ))}
+
+        {available.length > 0 && (
+          <div className="px-3 py-2 flex items-center gap-2">
+            <select
+              value={addUsername}
+              onChange={e => setAddUsername(e.target.value)}
+              className="text-xs bg-[#1a1f2e] border border-[#404868] rounded px-2 py-1 text-slate-300 focus:outline-none focus:border-[#5060a0]"
+            >
+              <option value="">Add user…</option>
+              {available.map(a => <option key={a.username} value={a.username}>{a.username}</option>)}
+            </select>
+            <button
+              onClick={handleAdd}
+              disabled={!addUsername}
+              className="text-xs px-2 py-1 rounded border border-[#404868] bg-transparent text-slate-400 hover:border-[#5060a0] hover:text-slate-200 transition-colors disabled:opacity-40 cursor-pointer"
+            >
+              Add
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -981,6 +1100,9 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
               autoFocusEntry={(() => { const v = focusEntryOnOpen.current; focusEntryOnOpen.current = false; return v; })()}
             />
           </div>
+          {editing && (getRole() === "admin" || getUsername() === detail.owner) && (
+            <WatchlistUsersSection watchlistId={detail.id} />
+          )}
           </>
         ) : null}
     </div>

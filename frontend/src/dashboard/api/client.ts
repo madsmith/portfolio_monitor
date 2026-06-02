@@ -112,6 +112,12 @@ export type PortfolioUsers = {
   permissions: Record<string, PortfolioUserPermission>;
 };
 
+export type WatchlistUserPermission = { read: boolean; write: boolean };
+export type WatchlistUsers = {
+  owner: string;
+  permissions: Record<string, WatchlistUserPermission>;
+};
+
 export type AlertRuleExclusion = {
   ticker: string;
   asset_type: string;
@@ -316,6 +322,11 @@ export const api = {
     authGet(`/api/v1/portfolio/${id}/users`),
   updatePortfolioUsers: (id: string, permissions: Record<string, PortfolioUserPermission>): Promise<{ ok: boolean }> =>
     authPut(`/api/v1/portfolio/${id}/users`, { permissions }),
+
+  getWatchlistUsers: (id: string): Promise<WatchlistUsers> =>
+    authGet(`/api/v1/watchlist/${encodeURIComponent(id)}/users`),
+  updateWatchlistUsers: (id: string, permissions: Record<string, WatchlistUserPermission>): Promise<{ ok: boolean }> =>
+    authPut(`/api/v1/watchlist/${encodeURIComponent(id)}/users`, { permissions }),
 
   getAccounts: (): Promise<AccountSummary[]> =>
     authGet("/api/v1/accounts"),

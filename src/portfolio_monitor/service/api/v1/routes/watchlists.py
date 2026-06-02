@@ -175,3 +175,31 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataP
         remove_entry,
         update_entry,
     )
+
+
+def watchlist_users_handler(watchlist_service: WatchlistService):
+    async def get_watchlist_users(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        wl_id = request.path_params["id"]
+        wl = watchlist_service.get_watchlist(wl_id, auth)
+        if wl is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({
+            "owner": wl.owner,
+            "permissions": wl.permissions.to_dict() if wl.permissions else {},
+        })
+
+    async def update_watchlist_users(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        wl_id = request.path_params["id"]
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid body"}, status_code=400)
+        permissions: dict = body.get("permissions", {})
+        wl = watchlist_service.update_permissions(wl_id, permissions, auth)
+        if wl is None:
+            return JSONResponse({"error": "not found or forbidden"}, status_code=403)
+        return JSONResponse({"ok": True})
+
+    return get_watchlist_users, update_watchlist_users
