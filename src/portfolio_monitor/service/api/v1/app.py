@@ -135,7 +135,7 @@ class APIv1ServiceApp(Router):
                 Route("/accounts/{username}/password", require_auth(reset_password), methods=["PUT"]),
                 Route("/portfolios", require_auth(portfolios_handler(ctx.portfolio_service)), methods=["GET"]),
                 Route("/portfolios", require_auth(create_portfolio), methods=["POST"]),
-                Route("/portfolio/{id}", require_auth(portfolio_handler(ctx.portfolio_service)), methods=["GET"]),
+                Route("/portfolio/{id}", require_auth(portfolio_handler(ctx.portfolio_service, ctx.data_provider)), methods=["GET"]),
                 Route("/portfolio/{id}", require_auth(delete_portfolio), methods=["DELETE"]),
                 Route("/portfolio/{id}/performance", require_auth(get_portfolio_performance), methods=["GET"]),
                 Route("/portfolio/{id}/users", require_auth(get_portfolio_users), methods=["GET"]),

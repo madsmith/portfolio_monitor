@@ -80,19 +80,12 @@ export default function Dashboard() {
     return () => clearTimeout(timerRef.current);
   }, []);
 
-  // Promise caches — deduplicate requests within the current UTC hour. Keyed by
-  // "<id>:<YYYY-MM-DDTHH>" so stale data is discarded at the top of each hour.
-  const detailCacheRef = useRef<Record<string, Promise<PortfolioDetail>>>({});
+  // prevClose is stable within a UTC hour, so cache it to avoid redundant requests.
+  // Keyed by "<id>:<YYYY-MM-DDTHH>" so stale data is discarded at the top of each hour.
   const prevCloseCacheRef = useRef<Record<string, Promise<Record<string, number>>>>({});
 
   function hourKey(id: string): string {
     return `${id}:${new Date().toISOString().slice(0, 13)}`;
-  }
-
-  function cachedDetail(id: string): Promise<PortfolioDetail> {
-    const key = hourKey(id);
-    detailCacheRef.current[key] ??= api.getPortfolio(id);
-    return detailCacheRef.current[key];
   }
 
   function cachedPrevClose(d: PortfolioDetail): Promise<Record<string, number>> {
@@ -172,7 +165,7 @@ export default function Dashboard() {
         if (!active) return;
         setPortfolios(list);
         for (const p of list) {
-          cachedDetail(p.id).then((d) => {
+          api.getPortfolio(p.id).then((d: PortfolioDetail) => {
             if (!active) return;
             cachedPrevClose(d).then((closes) => {
               if (!active) return;
@@ -211,7 +204,7 @@ export default function Dashboard() {
     let active = true;
     setDetailLoading(true);
     setDetailError(null);
-    cachedDetail(activeId)
+    api.getPortfolio(activeId)
       .then((d) => { if (active) setDetail(d); })
       .catch((e: Error) => {
         if (!active) return;
@@ -398,9 +391,7 @@ export default function Dashboard() {
               prevClose={prevClose}
               initialEditing={detail?.id === newlyCreatedId}
               onMutated={(updated) => {
-                const key = hourKey(updated.id);
-                detailCacheRef.current[key] = Promise.resolve(updated);
-                delete prevCloseCacheRef.current[key];
+                delete prevCloseCacheRef.current[hourKey(updated.id)];
                 setDetail(updated);
                 cachedPrevClose(updated).then(setPrevClose).catch(() => {});
                 const symbols = [...updated.stocks, ...updated.currencies, ...updated.crypto]

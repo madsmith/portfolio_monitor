@@ -1,9 +1,11 @@
+import asyncio
 import logfire
 from datetime import datetime, timedelta, timezone
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core import Currency
+from portfolio_monitor.data import DataProvider
 from portfolio_monitor.data.database.performance import PortfolioPerformanceModule
 from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.portfolio import Asset, Lot, Portfolio
@@ -29,19 +31,31 @@ def _lot_dict(lot: Lot, lot_idx: int | None = None) -> dict:
     return d
 
 
-def _asset_dict(asset: Asset) -> dict:
-    pl_pct = asset.profit_loss_percentage
+def _asset_dict(asset: Asset, price_override: float | None = None) -> dict:
     indexed = list(enumerate(asset.lots))
     sorted_indexed = sorted(indexed, key=lambda x: (x[1].date is None, x[1].date), reverse=True)
+    if price_override is not None:
+        current_price: float | None = price_override
+        qty = float(asset.total_quantity)
+        current_value: float | None = price_override * qty
+        cost = float(asset.cost_basis._value) if asset.cost_basis is not None else None
+        profit_loss: float | None = (current_value - cost) if cost is not None else None
+        pl_pct: float | None = (profit_loss / cost * 100) if cost is not None and cost != 0 else None
+    else:
+        current_price = _currency_val(asset.current_price)
+        current_value = _currency_val(asset.current_value)
+        profit_loss = _currency_val(asset.profit_loss)
+        raw_pct = asset.profit_loss_percentage
+        pl_pct = float(raw_pct) if raw_pct is not None else None
     return {
         "ticker": asset.symbol.ticker,
         "asset_type": asset.asset_type,
         "total_quantity": str(asset.total_quantity),
         "cost_basis": _currency_val(asset.cost_basis),
-        "current_price": _currency_val(asset.current_price),
-        "current_value": _currency_val(asset.current_value),
-        "profit_loss": _currency_val(asset.profit_loss),
-        "profit_loss_percentage": float(pl_pct) if pl_pct is not None else None,
+        "current_price": current_price,
+        "current_value": current_value,
+        "profit_loss": profit_loss,
+        "profit_loss_percentage": pl_pct,
         "lots": [_lot_dict(lot, idx) for idx, lot in sorted_indexed],
     }
 
@@ -58,13 +72,35 @@ def _portfolio_summary(p: Portfolio) -> dict:
     }
 
 
-def _portfolio_detail(p: Portfolio) -> dict:
+def _portfolio_detail(p: Portfolio, prices: dict[str, float] | None = None) -> dict:
+    def asset(a: Asset) -> dict:
+        return _asset_dict(a, prices.get(a.symbol.ticker) if prices else None)
+    all_assets = [asset(a) for a in [*p.stocks, *p.currencies, *p.crypto]]
+    if prices:
+        total_value = sum(a["current_value"] for a in all_assets if a["current_value"] is not None)
+        total_cost = float(p.total_cost_basis._value) if p.total_cost_basis is not None else None
+        total_pl = (total_value - total_cost) if total_cost is not None else None
+        pl_pct = (total_pl / total_cost * 100) if total_cost is not None and total_cost != 0 else None
+    else:
+        raw_pct = p.profit_loss_percentage
+        total_value = _currency_val(p.total_value)  # type: ignore[assignment]
+        total_cost = _currency_val(p.total_cost_basis)  # type: ignore[assignment]
+        total_pl = _currency_val(p.total_profit_loss)  # type: ignore[assignment]
+        pl_pct = float(raw_pct) if raw_pct is not None else None
+    stocks = [a for a in all_assets if a["asset_type"] == "stock"]
+    currencies = [a for a in all_assets if a["asset_type"] == "currency"]
+    crypto = [a for a in all_assets if a["asset_type"] == "crypto"]
     return {
-        **_portfolio_summary(p),
+        "id": p.id,
+        "name": p.name,
         "owner": p.owner,
-        "stocks": [_asset_dict(a) for a in p.stocks],
-        "currencies": [_asset_dict(a) for a in p.currencies],
-        "crypto": [_asset_dict(a) for a in p.crypto],
+        "total_value": total_value,
+        "total_cost_basis": total_cost,
+        "total_profit_loss": total_pl,
+        "profit_loss_percentage": pl_pct,
+        "stocks": stocks,
+        "currencies": currencies,
+        "crypto": crypto,
     }
 
 
@@ -104,7 +140,7 @@ def delete_portfolio_handler(portfolio_service: PortfolioService):
     return delete_portfolio
 
 
-def portfolio_handler(portfolio_service: PortfolioService):
+def portfolio_handler(portfolio_service: PortfolioService, data_provider: DataProvider):
     @logfire.instrument("api.portfolios.get")
     async def get_portfolio(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
@@ -114,7 +150,16 @@ def portfolio_handler(portfolio_service: PortfolioService):
         portfolio = portfolio_service.get_portfolio(portfolio_id, auth)
         if portfolio is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return JSONResponse(_portfolio_detail(portfolio))
+        assets = list(portfolio.assets())
+        with logfire.span("portfolio.get.prices", asset_count=len(assets)):
+            aggs = await asyncio.gather(*[data_provider.get_aggregate(a.symbol) for a in assets])
+        prices: dict[str, float] = {
+            a.symbol.ticker: float(agg.close)
+            for a, agg in zip(assets, aggs)
+            if agg is not None
+        }
+        logfire_set_attribute("fetched_count", len(prices))
+        return JSONResponse(_portfolio_detail(portfolio, prices))
 
     return get_portfolio
 
