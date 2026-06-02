@@ -540,6 +540,7 @@ function WatchlistTable({
 }) {
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [chartTickers, setChartTickers] = useState<Set<string>>(new Set());
+  const [defaultPeriodLabel, setDefaultPeriodLabel] = useState("4H");
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
 
   // Inline cell editing
@@ -670,7 +671,7 @@ function WatchlistTable({
             {!editing && chartTickers.has(e.ticker) && (
               <tr className="border-b border-[#2a2d3a] last:border-b-0">
                 <td colSpan={columns.length} className="px-4 py-3 bg-[#0c0f18]">
-                  <Chart ticker={e.ticker} assetType={e.asset_type} />
+                  <Chart ticker={e.ticker} assetType={e.asset_type} defaultPeriodLabel={defaultPeriodLabel} onPeriodChange={setDefaultPeriodLabel} />
                 </td>
               </tr>
             )}
