@@ -49,6 +49,8 @@ class PortfolioHeader(BaseModel):
     name: str
     total_value: float | None
     total_cost_basis: float | None
+    day_change: float | None
+    day_change_pct: float | None
     total_profit_loss: float | None
     profit_loss_pct: float | None
 
@@ -70,8 +72,8 @@ def render_portfolio_detail(output: PortfolioDetailOutput) -> None:
     print(
         f"Value: {fmt_value(h.total_value, 'currency')}  "
         f"Cost basis: {fmt_value(h.total_cost_basis, 'currency')}  "
-        f"P&L: {fmt_value(h.total_profit_loss, 'change')}  "
-        f"({fmt_value(h.profit_loss_pct, 'percent')})"
+        f"Day: {fmt_value(h.day_change, 'change')} ({fmt_value(h.day_change_pct, 'percent')})  "
+        f"P&L: {fmt_value(h.total_profit_loss, 'change')} ({fmt_value(h.profit_loss_pct, 'percent')})"
     )
 
     for label, assets in [("Stocks", output.stocks), ("Currencies", output.currencies), ("Crypto", output.crypto)]:
@@ -220,10 +222,23 @@ def _show_one(client: APIClient, portfolio_id: str, json_out: bool = False) -> N
         total_cost_basis=portfolio["total_cost_basis"],
         total_profit_loss=portfolio["total_profit_loss"],
         profit_loss_pct=portfolio["profit_loss_percentage"],
+        day_change=None,
+        day_change_pct=None,
     )
     stocks = _build_asset_rows(client, portfolio.get("stocks", []), "stock")
     currencies = _build_asset_rows(client, portfolio.get("currencies", []), "currency")
     crypto = _build_asset_rows(client, portfolio.get("crypto", []), "crypto")
+
+    day_change_total = sum(r.day_change for r in [*stocks, *currencies, *crypto] if r.day_change is not None)
+    prev_total = sum(
+        (r.current_value or 0) - (r.day_change or 0)
+        for r in [*stocks, *currencies, *crypto]
+        if r.day_change is not None
+    )
+    has_day = any(r.day_change is not None for r in [*stocks, *currencies, *crypto])
+    header.day_change = day_change_total if has_day else None
+    header.day_change_pct = (day_change_total / prev_total * 100) if (has_day and prev_total) else None
+
     output = PortfolioDetailOutput(header=header, stocks=stocks, currencies=currencies, crypto=crypto)
 
     if json_out:
