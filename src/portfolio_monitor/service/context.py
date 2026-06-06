@@ -4,7 +4,7 @@ from starlette.requests import Request
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import DataProvider
+from portfolio_monitor.data import MarketData
 from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.account import AccountStore
@@ -39,6 +39,6 @@ class PortfolioMonitorContext:
     portfolio_service: PortfolioService
     watchlist_service: WatchlistService
     bus: EventBus
-    data_provider: DataProvider
+    data_provider: MarketData
     account_store: AccountStore
     session_store: SessionStore

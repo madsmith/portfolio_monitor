@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Generator
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import AggregateUpdated, DataProvider
+from portfolio_monitor.data import AggregateUpdated, MarketData
 from portfolio_monitor.detectors.base import Alert, Detector
 from portfolio_monitor.detectors.engine import AlertChange, DeviationEngine
 from portfolio_monitor.detectors.events import AlertCleared, AlertFired, AlertUpdated
@@ -24,12 +24,12 @@ class DetectionService:
         self,
         bus: EventBus,
         detection_engine: DeviationEngine,
-        data_provider: DataProvider | None = None,
+        data_provider: MarketData,
         max_alert_history: int = 1000,
     ) -> None:
         self._bus: EventBus = bus
         self._detection_engine: DeviationEngine = detection_engine
-        self._data_provider: DataProvider | None = data_provider
+        self._data_provider: MarketData = data_provider
 
         # Keyed by alert id for O(1) updates; preserves insertion order (Python 3.7+)
         self._alert_log: dict[str, Alert] = {}
@@ -54,8 +54,6 @@ class DetectionService:
         sample_interval: timedelta = timedelta(minutes=1),
     ) -> None:
         """Prime all detectors for the given symbols."""
-        if self._data_provider is None:
-            raise RuntimeError("Cannot prime without a DataProvider")
         logger.info("Priming detection engine for %d symbols", len(symbols))
         await self._detection_engine.prime(
             symbols, self._data_provider, current_time, sample_interval
@@ -74,7 +72,7 @@ class DetectionService:
         Used when a rule is added at runtime. Warms up the detector's internal
         history buffers without propagating any alerts accumulated during replay.
         """
-        if self._data_provider is None or not detectors:
+        if not detectors:
             return
 
         def to_timedelta(age: timedelta | int) -> timedelta:
@@ -86,9 +84,7 @@ class DetectionService:
             "Priming %d detector(s) for %s: fetching %d minutes of history",
             len(detectors), symbol, int(max_age.total_seconds() / 60),
         )
-        aggs = await self._data_provider.get_range(
-            symbol, from_, current_time, cache_write=True, cache_read=False
-        )
+        aggs = await self._data_provider.get_range(symbol, from_, current_time)
         for agg in aggs:
             for detector in detectors:
                 detector.update(agg)

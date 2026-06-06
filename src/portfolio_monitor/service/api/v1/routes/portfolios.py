@@ -5,7 +5,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core import Currency
-from portfolio_monitor.data import DataProvider
+from portfolio_monitor.data import MarketData
 from portfolio_monitor.data.database.performance import PortfolioPerformanceModule
 from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.portfolio import Asset, Lot, Portfolio
@@ -140,7 +140,7 @@ def delete_portfolio_handler(portfolio_service: PortfolioService):
     return delete_portfolio
 
 
-def portfolio_handler(portfolio_service: PortfolioService, data_provider: DataProvider):
+def portfolio_handler(portfolio_service: PortfolioService, data_provider: MarketData):
     @logfire.instrument("api.portfolios.get")
     async def get_portfolio(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)

@@ -13,7 +13,7 @@ from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.alerts.models import AlertRule as ServiceAlertRule
 from portfolio_monitor.service.alerts.events import AlertRuleAdded, AlertRuleRemoved, AlertRuleUpdated
 from portfolio_monitor.service.alerts.user_alert_manager import UserAlertManager
-from portfolio_monitor.service.monitor import MonitorService
+from portfolio_monitor.data import MarketData
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 from portfolio_monitor.watchlist.service import WatchlistService
 
@@ -35,7 +35,7 @@ class AlertConfigAdapter:
         portfolio_service: PortfolioService,
         watchlist_service: WatchlistService,
         alerts_module: AlertsModule,
-        monitor: MonitorService,
+        monitor: MarketData,
     ) -> None:
         self._engine: DeviationEngine = engine
         self._alert_manager: UserAlertManager = alert_manager
@@ -43,7 +43,7 @@ class AlertConfigAdapter:
         self._portfolio_service: PortfolioService = portfolio_service
         self._watchlist_service: WatchlistService = watchlist_service
         self._alerts_module: AlertsModule = alerts_module
-        self._monitor: MonitorService = monitor
+        self._monitor: MarketData = monitor
         # rule id → [(symbol, detector_id, detector)] for cleanup on remove/update
         self._rule_detectors: dict[str, list[tuple[AssetSymbol, str, Detector]]] = {}
 

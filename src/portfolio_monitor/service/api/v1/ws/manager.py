@@ -7,7 +7,7 @@ from pydantic import TypeAdapter, ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import Aggregate, DataProvider
+from portfolio_monitor.data import Aggregate, MarketData
 from portfolio_monitor.data.database.alerts import AlertsModule
 from portfolio_monitor.portfolio.events import PriceUpdated
 from portfolio_monitor.service.alerts.events import AlertStatusEvent, UserAlertDeletedEvent
@@ -78,12 +78,12 @@ class WebSocketManager:
         self,
         bus: EventBus,
         session_store: SessionStore,
-        data_provider: DataProvider,
+        data_provider: MarketData,
         alerts_module: AlertsModule | None = None,
     ) -> None:
         self._bus: EventBus = bus
         self._session_store: SessionStore = session_store
-        self._data_provider: DataProvider = data_provider
+        self._data_provider: MarketData = data_provider
         self._alerts_module: AlertsModule | None = alerts_module
         self._connections: dict[WebSocket, set[AssetSymbol]] = {}
         self._user_sockets: dict[str, set[WebSocket]] = defaultdict(set)

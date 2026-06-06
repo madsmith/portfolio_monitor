@@ -7,9 +7,9 @@ from appconf import OmegaConfigLoader
 import uvicorn
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import AggregateUpdated, MemoryOnlyAggregateCache, MassiveDataProvider
+from portfolio_monitor.data import AggregateUpdated, MemoryOnlyAggregateCache
 from portfolio_monitor.data.database import AppDatabase
-from portfolio_monitor.data.massive import MassiveDataProvider
+from portfolio_monitor.data.providers import MassiveProvider
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
 from portfolio_monitor.portfolio.service import PortfolioService
@@ -21,7 +21,6 @@ from portfolio_monitor.service.alerts import (
 )
 from portfolio_monitor.service.api.app import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
-from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.account import AccountStore
 from portfolio_monitor.session import SessionStore
 from portfolio_monitor.service.types import AssetSymbol
@@ -118,7 +117,7 @@ async def run_dev_service(config: DevConfig) -> None:
     
     seed_price_provider = SeedPriceProvider(
         portfolios=portfolios,
-        data_provider=MassiveDataProvider(config=config, aggregate_cache=aggregate_cache),
+        data_provider=MassiveProvider(config),
     )
     await seed_price_provider.load()
     seed_aggregates = seed_price_provider.get_aggregates()
@@ -203,11 +202,9 @@ async def run_dev_service(config: DevConfig) -> None:
     # 10. Production API server (auth workflow, dashboard, API endpoints)
     session_store = SessionStore(db, config.dashboard_username or "default")
     watchlist_service = WatchlistService(bus=bus, db=db)
-    monitor_service = MonitorService(bus=bus, data_provider=dev_data_provider, portfolio_service=portfolio_service)
     for wl in watchlist_service.get_all_watchlists():
         for entry in wl.entries:
-            monitor_service.register_symbol(entry.symbol)
-    WatchlistAdapter(detection_engine, alert_manager, monitor_service, detection_service, dev_data_provider, alert_adapter=alert_adapter).wire(bus)
+            dev_data_provider.register_symbol(entry.symbol)
     alert_adapter = AlertConfigAdapter(
         engine=detection_engine,
         alert_manager=alert_manager,
@@ -215,9 +212,11 @@ async def run_dev_service(config: DevConfig) -> None:
         portfolio_service=portfolio_service,
         watchlist_service=watchlist_service,
         alerts_module=db.alerts,
+        monitor=dev_data_provider,
     )
     alert_adapter.wire(bus)
     alert_adapter.load_all()
+    WatchlistAdapter(detection_engine, alert_manager, dev_data_provider, detection_service, alert_adapter=alert_adapter, bus=bus)
 
     alert_manager.suppressed_detectors = {
         detector.name()

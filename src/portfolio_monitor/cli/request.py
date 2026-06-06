@@ -101,7 +101,7 @@ def _request(
     check_auth: bool = True,
 ) -> httpx.Response:
     try:
-        response = httpx.request(method, url, headers=headers, params=params, json=json)
+        response = httpx.request(method, url, headers=headers, params=params, json=json, timeout=30.0)
     except httpx.ConnectError:
         print(f"error: could not connect to {url}", file=sys.stderr)
         sys.exit(1)

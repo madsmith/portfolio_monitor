@@ -1,6 +1,7 @@
 import logging
 
-from portfolio_monitor.data import Aggregate, MassiveDataProvider
+from portfolio_monitor.data import Aggregate
+from portfolio_monitor.data.rest_provider import RESTProvider
 from portfolio_monitor.portfolio import Portfolio
 from portfolio_monitor.service.types import AssetSymbol
 
@@ -18,10 +19,10 @@ class SeedPriceProvider:
     def __init__(
         self,
         portfolios: list[Portfolio],
-        data_provider: MassiveDataProvider,
+        data_provider: RESTProvider,
     ) -> None:
         self._portfolios: list[Portfolio] = portfolios
-        self._data_provider: MassiveDataProvider = data_provider
+        self._data_provider: RESTProvider = data_provider
         self._prices: dict[str, float] = {}
         self._aggregates: dict[str, Aggregate] = {}
 

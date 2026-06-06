@@ -21,7 +21,8 @@ from uvicorn.server import Server
 
 from portfolio_monitor.config import PortfolioMonitorConfig
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import Aggregate, AggregateCache, AggregateUpdated, MarketInfo, MassiveDataProvider
+from portfolio_monitor.data import Aggregate, AggregateCache, AggregateUpdated, MarketData, MarketInfo
+from portfolio_monitor.data.providers import MassiveProvider
 from portfolio_monitor.data.database import AppDatabase
 from portfolio_monitor.detectors import DeviationEngine
 from portfolio_monitor.detectors.service import DetectionService
@@ -35,7 +36,6 @@ from portfolio_monitor.service.alerts import (
 from portfolio_monitor.service.event_hooks import AlertConfigAdapter, WatchlistAdapter
 from portfolio_monitor.service.api import create_api_app
 from portfolio_monitor.service.context import PortfolioMonitorContext
-from portfolio_monitor.service.monitor import MonitorService
 from portfolio_monitor.service.performance import PortfolioSnapshotService
 from portfolio_monitor.account import AccountStore
 from portfolio_monitor.session import SessionStore
@@ -66,14 +66,13 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         # Create event bus
         bus = EventBus()
 
-        # Wire aggregate cache to persist on AggregateUpdated
-        async def _persist_aggregate(event: AggregateUpdated) -> None:
-            await aggregate_cache.add(event.aggregate)
-
-        bus.subscribe(AggregateUpdated, _persist_aggregate)
-
-        # Create data provider
-        data_provider = MassiveDataProvider(config, aggregate_cache)
+        # Create MarketData hub with Massive as the REST provider
+        market_data = MarketData(
+            bus=bus,
+            aggregate_cache=aggregate_cache,
+            config=config,
+            rest_providers=[MassiveProvider(config)],
+        )
 
         # Initialize stores and services backed by AppDatabase
         account_store = AccountStore(db)
@@ -88,7 +87,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         detection_service = DetectionService(
             bus=bus,
             detection_engine=detection_engine,
-            data_provider=data_provider,
+            data_provider=market_data,
         )
         channel_pool = ChannelPool()
         alert_manager = UserAlertManager(
@@ -98,21 +97,19 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         )
         alert_manager.add_implicit_delivery(DashboardBufferDelivery(db.alerts, bus))
 
-        monitor = MonitorService(
-            bus=bus,
-            data_provider=data_provider,
-            portfolio_service=portfolio_service,
-        )
-        # Pre-register watchlist symbols in monitor so they're polled from startup
+        # Seed all portfolio and watchlist symbols into MarketData
+        for portfolio in portfolio_service.get_all_portfolios():
+            for asset in portfolio.assets():
+                market_data.register_symbol(asset.symbol)
         for wl in watchlist_service.get_all_watchlists():
             for entry in wl.entries:
-                monitor.register_symbol(entry.symbol)
+                market_data.register_symbol(entry.symbol)
 
         async def _on_asset_added(event: AssetAdded) -> None:
-            monitor.register_symbol(event.symbol)
+            market_data.register_symbol(event.symbol)
 
         async def _on_asset_removed(event: AssetRemoved) -> None:
-            monitor.unregister_symbol(event.symbol)
+            market_data.unregister_symbol(event.symbol)
 
         bus.subscribe(AssetAdded, _on_asset_added)
         bus.subscribe(AssetRemoved, _on_asset_removed)
@@ -124,7 +121,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
             portfolio_service=portfolio_service,
             watchlist_service=watchlist_service,
             alerts_module=db.alerts,
-            monitor=monitor,
+            monitor=market_data,
         )
         alert_adapter.wire(bus)
         alert_adapter.load_all()
@@ -138,12 +135,12 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         # TODO(openclaw): openclaw delivery will be a channel type in the DB config
         # alert_manager.add_target(LoggingAlertDelivery())
 
-        WatchlistAdapter(detection_engine, alert_manager, monitor, detection_service, data_provider, alert_adapter=alert_adapter).wire(bus)
+        WatchlistAdapter(detection_engine, alert_manager, market_data, detection_service, alert_adapter=alert_adapter, bus=bus)
 
     # Prime services (suppress alerts during warmup — detectors aren't ready yet)
     with logfire.span("service.startup.prime"), detection_service.suppressed():
         all_watchlist_symbols = list({e.symbol for wl in watchlist_service.get_all_watchlists() for e in wl.entries})
-        await prime(config, bus, portfolio_service, data_provider, detection_service, extra_symbols=all_watchlist_symbols)
+        await prime(config, bus, portfolio_service, market_data, detection_service, extra_symbols=all_watchlist_symbols)
 
     snapshot_service = PortfolioSnapshotService(portfolio_service, db.performance)
 
@@ -154,7 +151,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
         portfolio_service=portfolio_service,
         watchlist_service=watchlist_service,
         bus=bus,
-        data_provider=data_provider,
+        data_provider=market_data,
         account_store=account_store,
         session_store=session_store,
     )
@@ -199,7 +196,7 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
     vite: ViteProcess | None = None
     try:
         await alert_manager.connect_all()
-        await monitor.start()
+        await market_data.start()
         await snapshot_service.start()
         if cp_server is not None:
             serve_task = asyncio.gather(api_server.serve(), cp_server.serve())
@@ -230,10 +227,9 @@ async def run_service(config: PortfolioMonitorConfig, *, is_live: bool = True, i
             logger.error("Error stopping snapshot service: %s", e)
 
         try:
-            if monitor.running:
-                await monitor.stop()
+            await market_data.stop()
         except Exception as e:
-            logger.error("Error stopping monitor: %s", e)
+            logger.error("Error stopping market data: %s", e)
 
         try:
             await alert_manager.disconnect_all()
@@ -250,7 +246,7 @@ async def prime(
     config: PortfolioMonitorConfig,
     bus: EventBus,
     portfolio_service: PortfolioService,
-    data_provider: MassiveDataProvider,
+    data_provider: MarketData,
     detection_service: DetectionService,
     extra_symbols: list[AssetSymbol] | None = None,
 ) -> None:
@@ -275,7 +271,7 @@ async def prime(
             for symbol in all_symbols:
                 await _deep_prime(symbol, data_provider)
 
-async def _deep_prime(symbol: AssetSymbol, data_provider: MassiveDataProvider) -> None:
+async def _deep_prime(symbol: AssetSymbol, data_provider: MarketData) -> None:
     """Deep prime a symbol by fetching all data from Massive."""
     # Load all aggregates for this symbol from current "last" price to prior last close
     current_aggregate: Aggregate = await data_provider.get_aggregate(symbol)
@@ -292,7 +288,7 @@ async def _deep_prime(symbol: AssetSymbol, data_provider: MassiveDataProvider) -
     
     prior_close_time = MarketInfo.get_market_close(symbol, close_time - timedelta(days=2))
     
-    _ = await data_provider.get_range(symbol, prior_close_time, close_time, cache_write=True)
+    _ = await data_provider.get_range(symbol, prior_close_time, close_time)
 
 
 def generate_auth_key(config_path: Path) -> None:

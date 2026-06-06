@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal, Sequence
 
-from portfolio_monitor.data import Aggregate, DataProvider
+from portfolio_monitor.data import Aggregate, MarketData
 from portfolio_monitor.detectors.base import Alert, Detector
 from portfolio_monitor.detectors.registry import DetectorRegistry
 from portfolio_monitor.service.types import AssetSymbol
@@ -184,7 +184,7 @@ class DeviationEngine:
     async def prime(
         self,
         symbols: list[AssetSymbol],
-        data_provider: DataProvider,
+        data_provider: MarketData,
         current_time: datetime,
         sample_interval: timedelta,
     ) -> None:
@@ -217,7 +217,7 @@ class DeviationEngine:
                 symbol,
                 int(max_age.total_seconds() / 60),
             )
-            aggs = await data_provider.get_range(symbol, from_, current_time, cache_write=True, cache_read=False)
+            aggs = await data_provider.get_range(symbol, from_, current_time)
             for agg in aggs:
                 for detector in detectors:
                     detector.update(agg)

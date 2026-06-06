@@ -18,6 +18,15 @@ class PortfolioMonitorConfig(AppConfig):
         converter=Path,
     )
 
+    # MarketData settings
+    market_data_max_current_age = BindDefault[int]("market_data.max_current_age", default=(5 * 60))
+    market_data_max_contiguous_gap = BindDefault[int]("market_data.max_contiguous_gap", default=300)
+    market_data_poll_interval = BindDefault[int]("market_data.poll_interval", default=60)
+
+    # Alpaca Markets settings
+    alpaca_api_key = BindDefault[str]("alpaca.api_key", default="")
+    alpaca_secret_key = BindDefault[str]("alpaca.secret_key", default="")
+
     # Massive.com settings
     massive_api_key = Bind[str]("massive.api_key")
     massive_delay = BindDefault[int]("massive.delay", default=15 * 60)

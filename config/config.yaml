@@ -25,4 +25,11 @@ portfolio_monitor:
 
 massive:
   api_key: "${private.massive.api_key}"
-  request_timeout: 10.0  # seconds per HTTP request (connect + read); lower = faster failure on degraded feeds
+  request_timeout: 25.0  # seconds per HTTP request (connect + read); lower = faster failure on degraded feeds
+
+databento:
+  api_key: "${private.databento.api_key}"
+
+alpaca:
+  api_key: "${private.alpaca.api_key}"
+  secret_key: "${private.alpaca.secret_key}"

@@ -6,7 +6,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from portfolio_monitor.core import parse_date, parse_period
-from portfolio_monitor.data import AggregateTimespan, DataProvider, DailyOpenCloseAggregate, MarketInfo, MarketStatus
+from portfolio_monitor.data import AggregateTimespan, DailyOpenCloseAggregate, MarketData, MarketInfo, MarketStatus
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
 from portfolio_monitor.utils import logfire_set_attribute
 
@@ -31,7 +31,7 @@ def _agg_response(symbol: AssetSymbol, aggregate) -> dict:
     }
 
 
-def current_price_handler(data_provider: DataProvider):
+def current_price_handler(data_provider: MarketData):
     @logfire.instrument("api.prices.current")
     async def get_current_price(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)
@@ -60,7 +60,7 @@ def current_price_handler(data_provider: DataProvider):
     return get_current_price
 
 
-def previous_close_handler(data_provider: DataProvider):
+def previous_close_handler(data_provider: MarketData):
     @logfire.instrument("api.prices.previous_close")
     async def get_previous_close(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)
@@ -68,7 +68,7 @@ def previous_close_handler(data_provider: DataProvider):
             return JSONResponse({"error": "invalid asset type"}, status_code=400)
         logfire_set_attribute("ticker", symbol.ticker)
         logfire_set_attribute("asset_type", symbol.asset_type.value)
-        aggregate = await data_provider.get_previous_close(symbol, cache_write=True)
+        aggregate = await data_provider.get_previous_close(symbol)
         if aggregate is None:
             return JSONResponse({"error": "price unavailable"}, status_code=404)
         return JSONResponse({
@@ -84,7 +84,7 @@ def previous_close_handler(data_provider: DataProvider):
     return get_previous_close
 
 
-def price_history_handler(data_provider: DataProvider):
+def price_history_handler(data_provider: MarketData):
     @logfire.instrument("api.prices.history")
     async def get_price_history(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)
@@ -127,7 +127,7 @@ def price_history_handler(data_provider: DataProvider):
             to_time = now.replace(second=0, microsecond=0) - timedelta(minutes=1)
 
         from_time = to_time - delta
-        aggregates = await data_provider.get_range(symbol, from_time, to_time, cache_write=True, span=span)
+        aggregates = await data_provider.get_range(symbol, from_time, to_time, span=span)
 
         if not aggregates:
             if not single_candle:
@@ -159,7 +159,7 @@ def price_history_handler(data_provider: DataProvider):
     return get_price_history
 
 
-def daily_range_handler(data_provider: DataProvider):
+def daily_range_handler(data_provider: MarketData):
     @logfire.instrument("api.prices.daily_range")
     async def get_daily_range(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)
@@ -180,7 +180,7 @@ def daily_range_handler(data_provider: DataProvider):
 
         to_dt = datetime.now(ZoneInfo("UTC"))
 
-        aggregates = await data_provider.get_daily_range(symbol, from_dt, to_dt, cache_write=True)
+        aggregates = await data_provider.get_daily_range(symbol, from_dt, to_dt)
 
         return JSONResponse({
             "symbol": symbol.to_dict(),
@@ -200,7 +200,7 @@ def daily_range_handler(data_provider: DataProvider):
     return get_daily_range
 
 
-def open_close_handler(data_provider: DataProvider):
+def open_close_handler(data_provider: MarketData):
     @logfire.instrument("api.prices.open_close")
     async def get_open_close(request: Request) -> JSONResponse:
         symbol = _parse_symbol(request)

@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import logfire
 
 from portfolio_monitor.core.events import EventBus
-from portfolio_monitor.data import Aggregate, AggregateUpdated, DataProvider, MarketInfo
+from portfolio_monitor.data import Aggregate, AggregateUpdated, MarketInfo
 from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.portfolio.service import PortfolioService
 from portfolio_monitor.service.types import AssetSymbol, AssetUpdateRecord
@@ -20,11 +20,11 @@ class MonitorService:
     def __init__(
         self,
         bus: EventBus,
-        data_provider: DataProvider,
+        data_provider: object,
         portfolio_service: PortfolioService
     ) -> None:
         self._bus: EventBus = bus
-        self._data_provider: DataProvider = data_provider
+        self._data_provider: object = data_provider
         self._portfolio_service: PortfolioService = portfolio_service
 
         self.running: bool = False

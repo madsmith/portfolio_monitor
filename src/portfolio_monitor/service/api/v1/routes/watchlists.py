@@ -5,7 +5,7 @@ import logfire
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from portfolio_monitor.data import DataProvider
+from portfolio_monitor.data import MarketData
 from portfolio_monitor.utils import logfire_set_attribute
 from portfolio_monitor.service.context import AuthContext
 from portfolio_monitor.service.types import AssetSymbol, AssetTypes
@@ -46,7 +46,7 @@ def _watchlist_detail(wl: Watchlist) -> dict:
     }
 
 
-def watchlists_handler(watchlist_service: WatchlistService, data_provider: DataProvider):
+def watchlists_handler(watchlist_service: WatchlistService, data_provider: MarketData):
     @logfire.instrument("api.watchlists.list")
     async def list_watchlists(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)

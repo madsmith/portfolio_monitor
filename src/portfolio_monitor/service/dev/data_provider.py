@@ -1,7 +1,8 @@
 import logging
 from datetime import datetime
 
-from portfolio_monitor.data import Aggregate, AggregateCache, AggregateTimespan, DataProvider, DailyOpenCloseAggregate
+from portfolio_monitor.data import AggregateCache, AggregateTimespan, DailyOpenCloseAggregate
+from portfolio_monitor.data.aggregate_cache import Aggregate
 from portfolio_monitor.service.types import AssetSymbol
 
 from .price_generator import PriceGenerator
@@ -9,11 +10,11 @@ from .price_generator import PriceGenerator
 logger = logging.getLogger(__name__)
 
 
-class DevDataProvider(DataProvider):
-    """DataProvider substitute that uses synthetic prices instead of Massive.
+class DevDataProvider:
+    """Synthetic data provider for dev mode.
 
-    Mirrors the public API of DataProvider so it can be passed to
-    DetectionService and any future API endpoints that query market data.
+    Serves prices from the in-memory cache (populated by the synthetic source)
+    instead of calling real market APIs.
     """
 
     def __init__(
@@ -28,16 +29,16 @@ class DevDataProvider(DataProvider):
         self._symbol_lookup: dict[str, AssetSymbol] = {s.ticker: s for s in symbols}
         self._seed_aggregates: dict[str, Aggregate] = seed_aggregates or {}
 
-    async def get_aggregate(
-        self, symbol: AssetSymbol, *, cache_write: bool = False
-    ) -> Aggregate | None:
-        """Return the most recently cached aggregate for the symbol."""
+    def register_symbol(self, symbol: AssetSymbol) -> None:
+        self._symbol_lookup[symbol.ticker] = symbol
+
+    def unregister_symbol(self, symbol: AssetSymbol) -> None:
+        self._symbol_lookup.pop(symbol.ticker, None)
+
+    async def get_aggregate(self, symbol: AssetSymbol) -> Aggregate | None:
         return await self._cache.get_current(symbol)
 
-    async def get_previous_close(
-        self, symbol: AssetSymbol, *, cache_write: bool = False
-    ) -> Aggregate | None:
-        """Return the seed aggregate (Massive previous close) for the symbol."""
+    async def get_previous_close(self, symbol: AssetSymbol) -> Aggregate | None:
         seed = self._seed_aggregates.get(symbol.ticker)
         if seed is not None:
             return seed
@@ -49,15 +50,8 @@ class DevDataProvider(DataProvider):
         from_: datetime,
         to: datetime,
         *,
-        cache_write: bool = False,
-        cache_read: bool = True,
         span: AggregateTimespan | None = None,
     ) -> list[Aggregate]:
-        """Return cached 1-minute aggregates within the given time range.
-
-        Non-default spans return an empty list — DevDataProvider only holds
-        minute-resolution data and does not downsample.
-        """
         effective_span = span or AggregateTimespan.default()
         if not effective_span.is_cacheable():
             return []
@@ -66,7 +60,6 @@ class DevDataProvider(DataProvider):
     async def get_open_close(
         self, symbol: AssetSymbol, date: datetime | None = None
     ) -> DailyOpenCloseAggregate | None:
-        """Not supported in dev mode — returns None."""
         return None
 
     async def get_daily_range(
@@ -74,8 +67,5 @@ class DevDataProvider(DataProvider):
         symbol: AssetSymbol,
         from_: datetime,
         to: datetime,
-        *,
-        cache_write: bool = False,
     ) -> list[DailyOpenCloseAggregate]:
-        """Not supported in dev mode — returns empty list."""
         return []
