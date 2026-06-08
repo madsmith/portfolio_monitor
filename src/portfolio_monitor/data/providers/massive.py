@@ -61,13 +61,7 @@ class MassiveProvider:
             symbol, now_binned - timedelta(minutes=1), now_binned,
             timespan="minute", limit=1,
         )
-        if aggs:
-            return aggs[-1]
-
-        # Cold-start fallback: fetch current session bars and return the last one.
-        session_open = MarketInfo.get_market_open(symbol, now)
-        bars = await self._fetch_aggs(symbol, session_open, now, timespan="minute")
-        return bars[-1] if bars else None
+        return aggs[-1] if aggs else None
 
     @logfire.instrument("massive.get_previous_close {symbol.ticker}")
     async def get_previous_close(self, symbol: AssetSymbol) -> Aggregate | None:

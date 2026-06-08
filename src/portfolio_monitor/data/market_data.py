@@ -140,13 +140,11 @@ class MarketData:
           1. In-memory latest bar, if within max_current_age.
           2. SQLite cache (most recent stored bar for the symbol).
           3. Pull providers in order — first non-None result wins.
+          4. Cold-start: fetch previous session's 1-min bars and return the last.
 
         Stream providers are expected to keep the in-memory cache warm via
         _on_aggregate callbacks, so for streaming setups the provider fetch
         (step 3) should rarely be needed.
-
-        Returns the stale in-memory bar rather than None if all providers fail,
-        so callers always get the last known value when available.
         """
         latest = self._latest.get(symbol)
         if latest is not None:
@@ -172,7 +170,14 @@ class MarketData:
             except Exception:
                 logger.warning("MarketData: pull provider %s failed for %s", type(provider).__name__, symbol, exc_info=True)
 
-        return latest or cached  # return stale rather than None if all providers fail
+        # Cold-start: no current bar available — fetch the most recent bar from
+        # the previous session (includes post-close bars if present).
+        cold = await self._cold_start_aggregate(symbol)
+        if cold is not None:
+            await self._on_aggregate(symbol, cold)
+            return cold
+
+        return latest or cached  # return stale rather than None if all else fails
 
     @logfire.instrument("market_data.get_range {symbol.ticker}")
     async def get_range(
@@ -349,6 +354,31 @@ class MarketData:
         logger.info("MarketData: stopped")
 
     # ── Internal ──────────────────────────────────────────────────────────────
+
+    async def _cold_start_aggregate(self, symbol: AssetSymbol) -> Aggregate | None:
+        """Fetch the last known 1-min aggregate, including any post-close data.
+
+        Fetches from the previous session's market open through now on the
+        first attempt (capturing regular + post-close aggs). On subsequent
+        attempts steps the window back one session at a time, up to 3 tries,
+        to skip market holidays.
+        """
+        now = datetime.now(ZoneInfo("UTC"))
+        session_timespan = MarketInfo.get_market_day_timespan(symbol)
+        candidate_close = MarketInfo.get_previous_market_close(symbol, now)
+        window_end = now
+
+        for _ in range(3):
+            window_start = candidate_close - session_timespan
+            aggs = await self.get_range(symbol, window_start, window_end)
+            if aggs:
+                logger.debug("MarketData: cold-start for %s — last agg from %s", symbol, aggs[-1].date_open)
+                return aggs[-1]
+            # No aggs — likely a holiday, step window back one more session
+            window_end = window_start
+            candidate_close = MarketInfo.get_previous_market_close(symbol, candidate_close)
+
+        return None
 
     async def _poll_loop(self) -> None:
         """Background task: polls pull providers for symbols not covered by a stream."""

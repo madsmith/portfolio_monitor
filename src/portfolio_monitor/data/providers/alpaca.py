@@ -94,61 +94,54 @@ class AlpacaProvider:
             ),
         )
         bar_list = bars.data.get(symbol.ticker, [])
-        if bar_list:
-            return _bar_to_aggregate(bar_list[-1], symbol)
-
-        # Cold-start fallback: fetch current session bars and return the last one.
-        session_open = MarketInfo.get_market_open(symbol, now)
-        bars = await asyncio.to_thread(
-            self._rest_client.get_stock_bars,
-            StockBarsRequest(
-                symbol_or_symbols=symbol.ticker,
-                timeframe=TimeFrame.Minute,
-                start=session_open,
-                end=now_binned,
-                feed=DataFeed.SIP,
-            ),
-        )
-        bar_list = bars.data.get(symbol.ticker, [])
         return _bar_to_aggregate(bar_list[-1], symbol) if bar_list else None
 
     @logfire.instrument("alpaca.get_previous_close {symbol.ticker}")
     async def get_previous_close(self, symbol: AssetSymbol) -> Aggregate | None:
-        """Return the previous session's closing bar as an Aggregate."""
+        """Return the previous session's closing bar as an Aggregate.
+
+        Steps back up to 3 extra business days to skip market holidays
+        (Alpaca returns an empty list for holiday dates).
+        """
         if symbol.is_base_currency:
             now = datetime.now(ZoneInfo("UTC"))
             return Aggregate(symbol, now, 1.0, 1.0, 1.0, 1.0, 0.0, timedelta(hours=24))
 
         now = datetime.now(ZoneInfo("UTC"))
-        prev_close_dt = MarketInfo.get_previous_market_close(symbol, now)
-        day_start = prev_close_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        bars = await asyncio.to_thread(
-            self._rest_client.get_stock_bars,
-            StockBarsRequest(
-                symbol_or_symbols=symbol.ticker,
-                timeframe=TimeFrame.Day,
-                start=day_start,
-                end=prev_close_dt,
-                feed=DataFeed.SIP,
-            ),
-        )
-        bar_list = bars.data.get(symbol.ticker, [])
-        if not bar_list:
-            return None
-        b = bar_list[-1]
-        date_open = eastern_midnight(
-            b.timestamp.astimezone(ZoneInfo("America/New_York")).date().isoformat()
-        )
-        return Aggregate(
-            symbol=symbol,
-            date_open=date_open,
-            open=float(b.open),
-            high=float(b.high),
-            low=float(b.low),
-            close=float(b.close),
-            volume=float(b.volume),
-            timespan=MarketInfo.get_market_day_timespan(symbol),
-        )
+        candidate_dt = MarketInfo.get_previous_market_close(symbol, now)
+
+        for _ in range(3):
+            day_start = candidate_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            bars = await asyncio.to_thread(
+                self._rest_client.get_stock_bars,
+                StockBarsRequest(
+                    symbol_or_symbols=symbol.ticker,
+                    timeframe=TimeFrame.Day,
+                    start=day_start,
+                    end=candidate_dt,
+                    feed=DataFeed.SIP,
+                ),
+            )
+            bar_list = bars.data.get(symbol.ticker, [])
+            if bar_list:
+                b = bar_list[-1]
+                date_open = eastern_midnight(
+                    b.timestamp.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+                )
+                return Aggregate(
+                    symbol=symbol,
+                    date_open=date_open,
+                    open=float(b.open),
+                    high=float(b.high),
+                    low=float(b.low),
+                    close=float(b.close),
+                    volume=float(b.volume),
+                    timespan=MarketInfo.get_market_day_timespan(symbol),
+                )
+            logger.debug("Previous close empty for %s on %s — stepping back", symbol, candidate_dt.date())
+            candidate_dt = MarketInfo.get_previous_market_close(symbol, candidate_dt)
+
+        return None
 
     @logfire.instrument("alpaca.get_range {symbol.ticker}")
     async def get_range(
