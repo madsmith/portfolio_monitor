@@ -78,17 +78,28 @@ export function computeTodayChange(
   detail: PortfolioDetail,
   prevClose: Record<string, number>,
 ): TodayChange | null {
+  const today = new Date().toISOString().slice(0, 10);
   const allAssets = [...detail.stocks, ...detail.currencies, ...detail.crypto];
   let totalChgValue = 0;
   let prevTotalValue = 0;
   let hasAny = false;
   for (const a of allAssets) {
     const pc = prevClose[prevCloseKey(a)] ?? null;
-    if (pc !== null && a.current_price !== null) {
-      const qty = parseFloat(a.total_quantity);
-      totalChgValue += (a.current_price - pc) * qty;
-      prevTotalValue += pc * qty;
-      hasAny = true;
+    const price = a.current_price;
+    if (price === null) continue;
+    for (const lot of a.lots) {
+      const qty = parseFloat(lot.quantity);
+      const isToday = lot.date !== null && lot.date.slice(0, 10) === today;
+      if (isToday) {
+        if (lot.price === null) continue;
+        totalChgValue += (price - lot.price) * qty;
+        prevTotalValue += lot.price * qty;
+        hasAny = true;
+      } else if (pc !== null) {
+        totalChgValue += (price - pc) * qty;
+        prevTotalValue += pc * qty;
+        hasAny = true;
+      }
     }
   }
   return hasAny && prevTotalValue !== 0

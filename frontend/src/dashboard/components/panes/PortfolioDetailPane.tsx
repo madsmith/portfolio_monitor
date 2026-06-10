@@ -476,9 +476,10 @@ function AddAssetForm({ assetType, portfolioId, onMutated, onCancel }: {
 // ---------------------------------------------------------------------------
 
 type EnrichedAsset = Asset & {
-  dayChgPrice: number | null;
-  dayChgValue: number | null;
-  dayChgPct: number | null;
+  dayChgPrice: number | null;    // per-share market move (current - prevClose)
+  dayChgPct: number | null;      // per-share market move %
+  dayChgValue: number | null;    // portfolio value change adjusted for today's acquisitions
+  dayChgValuePct: number | null; // same, as a percentage
 };
 
 function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, editing, portfolioId, onMutated }: {
@@ -491,7 +492,21 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
   onMutated?: (updated: PortfolioDetail) => void;
 }) {
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
-  const [chartTickers, setChartTickers] = useState<Set<string>>(new Set());
+  const chartStorageKey = portfolioId ? `chart-expanded:portfolio:${portfolioId}` : null;
+  const [chartTickers, setChartTickersRaw] = useState<Set<string>>(() => {
+    if (!portfolioId) return new Set();
+    try {
+      const saved = sessionStorage.getItem(`chart-expanded:portfolio:${portfolioId}`);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+  function setChartTickers(updater: (prev: Set<string>) => Set<string>) {
+    setChartTickersRaw((prev) => {
+      const next = updater(prev);
+      if (chartStorageKey) sessionStorage.setItem(chartStorageKey, JSON.stringify([...next]));
+      return next;
+    });
+  }
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
   const [valueChgMode, setValueChgMode] = useState<"dollar" | "percent">("dollar");
   const [priceColMode, setPriceColMode] = useState<"price" | "qty">("price");
@@ -506,8 +521,16 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
     });
   }
 
-  function toggleChartTicker(ticker: string) {
+  function toggleChartTicker(ticker: string, shiftKey: boolean) {
     setChartTickers((prev) => {
+      if (shiftKey) {
+        const allTickers = assets.map((a) => a.ticker);
+        const opening = !prev.has(ticker);
+        const next = new Set(prev);
+        if (opening) { allTickers.forEach((t) => next.add(t)); }
+        else { allTickers.forEach((t) => next.delete(t)); }
+        return next;
+      }
       const next = new Set(prev);
       next.has(ticker) ? next.delete(ticker) : next.add(ticker);
       return next;
@@ -523,12 +546,44 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
     finally { setDeletingTicker(null); }
   }
 
+  const today = new Date().toISOString().slice(0, 10);
   const enriched: EnrichedAsset[] = assets.map((a) => {
     const pc = prevClose[prevCloseKey(a)] ?? null;
-    const dayChgPrice = a.current_price !== null && pc !== null ? a.current_price - pc : null;
-    const dayChgValue = dayChgPrice !== null ? dayChgPrice * parseFloat(a.total_quantity) : null;
-    const dayChgPct = dayChgPrice !== null && pc !== null && pc !== 0 ? (dayChgPrice / pc) * 100 : null;
-    return { ...a, dayChgPrice, dayChgValue, dayChgPct };
+    const price = a.current_price;
+
+    // Split lots into overnight (held before today) and today's acquisitions.
+    // For overnight lots: day gain = (price - prevClose) * qty
+    // For today's lots:   day gain = (price - lot_price) * qty  (they didn't hold overnight)
+    let dayChgValue: number | null = null;
+    if (price !== null) {
+      let total = 0;
+      let computable = true;
+      for (const lot of a.lots) {
+        const qty = parseFloat(lot.quantity);
+        const isToday = lot.date !== null && lot.date.slice(0, 10) === today;
+        if (isToday) {
+          if (lot.price === null) { computable = false; break; }
+          total += (price - lot.price) * qty;
+        } else {
+          if (pc === null) { computable = false; break; }
+          total += (price - pc) * qty;
+        }
+      }
+      if (computable && a.lots.length > 0) dayChgValue = total;
+      // Fallback for assets with no lots (zero-lot): show null
+    }
+
+    // dayChgPrice/dayChgPct: pure per-share market move vs prev close (Price Chg column)
+    const dayChgPrice = price !== null && pc !== null ? price - pc : null;
+    const dayChgPct = dayChgPrice !== null && pc !== null && pc !== 0
+      ? (dayChgPrice / pc) * 100
+      : null;
+    // dayChgValuePct: portfolio-weighted, lot-adjusted % (Value Chg column)
+    const dayChgValuePct = dayChgValue !== null && pc !== null && pc !== 0
+      ? (dayChgValue / (pc * parseFloat(a.total_quantity))) * 100
+      : null;
+
+    return { ...a, dayChgPrice, dayChgPct, dayChgValue, dayChgValuePct };
   });
 
   const valueHoldMenu = [
@@ -567,7 +622,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
       label: valueGroupMode === "value" ? "Value Chg" : "P&L %",
       align: "right",
       sortValue: valueGroupMode === "value"
-        ? (a) => valueChgMode === "dollar" ? a.dayChgValue : a.dayChgPct
+        ? (a) => valueChgMode === "dollar" ? a.dayChgValue : a.dayChgValuePct
         : (a) => a.profit_loss_percentage,
       badge: valueGroupMode === "value" ? (valueChgMode === "dollar" ? "$" : "%") : undefined,
       onBadge: valueGroupMode === "value" ? () => setValueChgMode((m) => (m === "dollar" ? "percent" : "dollar")) : undefined,
@@ -598,7 +653,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
               ].join(" ")}
             >
               <td className="px-1 sm:px-1.5 py-2 font-semibold text-slate-100">
-                <button onClick={() => toggleChartTicker(a.ticker)} className="hover:text-sky-400 transition-colors cursor-pointer">
+                <button onClick={(e) => toggleChartTicker(a.ticker, e.shiftKey)} className="hover:text-sky-400 transition-colors cursor-pointer">
                   {a.ticker}
                 </button>
               </td>
@@ -642,7 +697,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
               {/* valueChg/P&L% slot */}
               <td className={`px-1 sm:px-1.5 py-2 text-right tabular-nums ${plColor(valueGroupMode === "value" ? a.dayChgValue : a.profit_loss_percentage)}`}>
                 {valueGroupMode === "value"
-                  ? (valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgPct))
+                  ? (valueChgMode === "dollar" ? fmtChg(a.dayChgValue) : fmtPct(a.dayChgValuePct))
                   : fmtPct(a.profit_loss_percentage)}
               </td>
               {/* P&L columns — hidden when valueGroupMode=pl to avoid duplication on large screens */}

@@ -139,7 +139,16 @@ class WebSocketManager:
             return
         match msg:
             case SubscribeAssetSymbolMessage():
-                self._connections[ws].update(s.to_asset_symbol() for s in msg.symbols)
+                existing = self._connections[ws]
+                new_symbols = [s for s in msg.symbols if s.to_asset_symbol() not in existing]
+                existing.update(s.to_asset_symbol() for s in msg.symbols)
+                for sym_param in new_symbols:
+                    agg = await self._data_provider.get_aggregate(sym_param.to_asset_symbol())
+                    if agg is not None:
+                        await ws.send_text(to_socket(PriceUpdateMessage(
+                            symbol=sym_param,
+                            price=float(agg.close),
+                        )))
             case UnsubscribeAssetSymbolMessage():
                 self._connections[ws].difference_update(s.to_asset_symbol() for s in msg.symbols)
             case GetPriceMessage():

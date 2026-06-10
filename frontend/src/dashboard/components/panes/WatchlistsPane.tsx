@@ -410,7 +410,7 @@ function WatchlistRow({
   onCommitCell: (field: CellField, value: string) => void;
   onCancelCell: () => void;
   onToggleExpand: () => void;
-  onToggleChart: () => void;
+  onToggleChart: (shiftKey: boolean) => void;
   onDelete: () => void;
 }) {
   const e = entry;
@@ -420,7 +420,7 @@ function WatchlistRow({
     <tr className={`border-b border-[#2a2d3a] last:border-b-0 transition-colors ${isDeleting ? "opacity-40" : ""}`}>
       <td className="px-1 sm:px-1.5 py-2 font-semibold">
         <button
-          onClick={() => !editing && onToggleChart()}
+          onClick={(e) => !editing && onToggleChart(e.shiftKey)}
           disabled={editing}
           className={`transition-colors ${editing ? "text-slate-100 cursor-default" : "hover:text-sky-400 cursor-pointer text-slate-100"}`}
         >
@@ -510,6 +510,7 @@ function WatchlistRow({
 // ---------------------------------------------------------------------------
 
 function WatchlistTable({
+  watchlistId,
   entries,
   prevClose,
   livePrices,
@@ -524,6 +525,7 @@ function WatchlistTable({
   addSaving,
   autoFocusEntry,
 }: {
+  watchlistId: string;
   entries: WatchlistEntry[];
   prevClose: Record<string, number>;
   livePrices: Record<string, number>;
@@ -539,7 +541,20 @@ function WatchlistTable({
   autoFocusEntry?: boolean;
 }) {
   const [priceChgMode, setPriceChgMode] = useState<"dollar" | "percent">("percent");
-  const [chartTickers, setChartTickers] = useState<Set<string>>(new Set());
+  const chartStorageKey = `chart-expanded:watchlist:${watchlistId}`;
+  const [chartTickers, setChartTickersRaw] = useState<Set<string>>(() => {
+    try {
+      const saved = sessionStorage.getItem(`chart-expanded:watchlist:${watchlistId}`);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+  function setChartTickers(updater: (prev: Set<string>) => Set<string>) {
+    setChartTickersRaw((prev) => {
+      const next = updater(prev);
+      sessionStorage.setItem(chartStorageKey, JSON.stringify([...next]));
+      return next;
+    });
+  }
   const [defaultPeriodLabel, setDefaultPeriodLabel] = useState("4H");
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
 
@@ -560,8 +575,16 @@ function WatchlistTable({
     setExpandedTicker((prev) => (prev === ticker ? null : ticker));
   }
 
-  function toggleChart(ticker: string) {
+  function toggleChart(ticker: string, shiftKey: boolean) {
     setChartTickers((prev) => {
+      if (shiftKey) {
+        const allTickers = entries.map((e) => e.ticker);
+        const opening = !prev.has(ticker);
+        const next = new Set(prev);
+        if (opening) { allTickers.forEach((t) => next.add(t)); }
+        else { allTickers.forEach((t) => next.delete(t)); }
+        return next;
+      }
       const next = new Set(prev);
       next.has(ticker) ? next.delete(ticker) : next.add(ticker);
       return next;
@@ -654,7 +677,7 @@ function WatchlistTable({
               onCommitCell={(field, value) => commitCell(e.ticker, field, value)}
               onCancelCell={() => { cellSavedRef.current = true; setEditingCell(null); }}
               onToggleExpand={() => toggleExpand(e.ticker)}
-              onToggleChart={() => toggleChart(e.ticker)}
+              onToggleChart={(shiftKey) => toggleChart(e.ticker, shiftKey)}
               onDelete={() => onDeleteRow(e.ticker)}
             />
             {isExpanded && (
@@ -1086,6 +1109,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
           </div>
           <div className="border border-[#404868] rounded-md overflow-hidden overflow-x-auto">
             <WatchlistTable
+              watchlistId={detail.id}
               entries={detail.entries}
               prevClose={prevClose}
               livePrices={livePrices}

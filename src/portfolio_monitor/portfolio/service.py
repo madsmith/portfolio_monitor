@@ -148,10 +148,6 @@ class PortfolioService:
         if asset is None or lot_idx < 0 or lot_idx >= len(asset.lots):
             return None
         asset.lots.pop(lot_idx)
-        if not asset.lots:
-            asset_list.remove(asset)
-            self._tracked_symbols.discard(asset.symbol)
-            asyncio.create_task(self._bus.publish(AssetRemoved(symbol=asset.symbol)))
         self._save_portfolio(portfolio)
         return portfolio
 
