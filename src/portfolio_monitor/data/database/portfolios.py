@@ -154,6 +154,9 @@ class PortfoliosModule(DatabaseModule):
 
     def delete(self, portfolio_id: str) -> bool:
         with self._conn:
+            self._conn.execute(
+                "DELETE FROM portfolio_performance WHERE portfolio_id = ?", (portfolio_id,)
+            )
             cursor = self._conn.execute(
                 "DELETE FROM portfolios WHERE id = ?", (portfolio_id,)
             )
