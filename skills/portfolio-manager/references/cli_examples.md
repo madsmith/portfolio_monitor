@@ -22,6 +22,19 @@ portfolio-manager login --username USERNAME --password PASSWORD
 
 ---
 
+## Account
+
+```bash
+portfolio-manager account whoami                        # current authenticated user and role
+portfolio-manager account list                          # usernames (one per line); use these with `share add`
+```
+
+*`list` supports json output with the `--json` flag.*
+
+*`account list` requires portfolio-manager 0.18.0+ (`portfolio-manager --version`).*
+
+---
+
 ## Portfolio
 
 `portfolio-manager portfolio <subcommand> [--json]`
@@ -33,6 +46,13 @@ portfolio-manager portfolio show PORTFOLIO_ID           # show holdings detail f
 
 Portfolio `show` breaks down holdings by Stocks, Currencies, and Crypto sections with per-asset
 price, quantity, value, day change, and P&L.
+
+Portfolios support the same `share` subcommands as watchlists — see [Sharing](#sharing):
+
+```bash
+portfolio-manager portfolio share show PORTFOLIO_ID
+portfolio-manager portfolio share add  PORTFOLIO_ID alice --write
+```
 
 ---
 
@@ -78,6 +98,25 @@ Arbitrary key/value metadata can be attached to a watchlist entry:
 ```bash
 portfolio-manager watchlist meta WATCHLIST_ID --ticker AAPL sector=technology conviction=high
 ```
+
+### Sharing
+
+*Requires portfolio-manager 0.18.0+.* Only the owner (or an admin) can change sharing. Usernames come from `portfolio-manager account list`.
+
+```bash
+portfolio-manager watchlist share show   WATCHLIST_ID            # owner + per-user read/write access
+portfolio-manager watchlist share add    WATCHLIST_ID alice      # grant read-only
+portfolio-manager watchlist share add    WATCHLIST_ID bob --write  # grant read+write (re-run to change level)
+portfolio-manager watchlist share remove WATCHLIST_ID alice      # revoke
+portfolio-manager watchlist share clear  WATCHLIST_ID            # unshare from everyone
+```
+
+Access rules:
+- Watchlists and portfolios are private to their owner (and admins) unless shared.
+- The owner always has full access and is never listed.
+- Only listed users get access; `--write` implies read.
+
+*All `share` subcommands support json output with the `--json` flag.*
 
 ### Entry alerts
 

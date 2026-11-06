@@ -1,7 +1,7 @@
 ---
 name: portfolio-manager
 description: >
-  Manage portfolios and watchlists via the portfolio-manager CLI. Access detailed holdings, P&L, and OHLCV pricing data for securities (including pre/after-hours and historical ranges). Create and maintain watchlists with targets and notes, and configure asset-specific or global price alerts.
+  Manage portfolios and watchlists via the portfolio-manager CLI. Access detailed holdings, P&L, and OHLCV pricing data for securities (including pre/after-hours and historical ranges). Create and maintain watchlists with targets and notes, share watchlists and portfolios with other users, and configure asset-specific or global price alerts.
 metadata:
   {
     "openclaw":
@@ -40,6 +40,8 @@ List portfolios: `portfolio-manager portfolio list`
 List portfolio details: `portfolio-manager portfolio show <portfolio-id>`
 List watchlists: `portfolio-manager watchlist list`
 Show watchlist: `portfolio-manager watchlist show <watchlist-id>`
+Share a watchlist (or portfolio): `portfolio-manager watchlist share add <watchlist-id> <username> [--write]`
+List usernames: `portfolio-manager account list`
 Get current OHLCV: `portfolio-manager price <ticker>`
 Get current OHLCV for crypto: `portfolio-manager price -t crypto <ticker>`
 Get previous session OHLCV: `portfolio-manager price --previous-close <ticker>`
