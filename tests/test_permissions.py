@@ -69,15 +69,20 @@ class TestPermissionMap:
 
 
 class TestImplicitPermissions:
-    def test_default_owner_world_readable(self):
-        wl = Watchlist(name="Global", owner="default")
-        assert wl.can("read", "alice") is True
-        assert wl.can("read", "bob") is True
-        assert wl.can("read", "admin") is True
+    def test_default_owner_not_readable_by_others(self):
+        wl = Watchlist(name="Unowned", owner="default")
+        assert wl.can("read", "alice") is False
+        assert wl.can("read", "bob") is False
+        assert wl.can("read", "admin") is False  # admin bypass lives in the service layer
 
     def test_default_owner_not_writable(self):
-        wl = Watchlist(name="Global", owner="default")
+        wl = Watchlist(name="Unowned", owner="default")
         assert wl.can("write", "alice") is False
+
+    def test_default_string_is_not_an_owner(self):
+        # "default" is a placeholder, so a user literally named "default" gets no access.
+        wl = Watchlist(name="Unowned", owner="default")
+        assert wl.can("read", "default") is False
         assert wl.can("write", "default") is False
 
     def test_named_owner_can_read_and_write(self):
@@ -133,9 +138,8 @@ class TestExplicitPermissions:
         assert wl.can("read", "martin") is True
         assert wl.can("write", "martin") is True
 
-    def test_explicit_overrides_default_owner_rule(self):
-        # "default" owner would normally be world-readable, but an explicit
-        # permissions block takes full control.
+    def test_explicit_grant_on_default_owner(self):
+        # Items with no real owner are only reachable via an explicit grant.
         pm = PermissionMap.from_yaml({"martin": {"read": True, "write": False}})
         wl = Watchlist(name="Restricted Default", owner="default", permissions=pm)
         assert wl.can("read", "martin") is True
@@ -222,9 +226,9 @@ class TestPortfolioPermissions:
         assert p.can("read", "martin") is True
         assert p.can("read", "alice") is False
 
-    def test_from_dict_default_owner_world_readable(self):
-        p = Portfolio.from_dict({"name": "Global Portfolio"}, owner="default")
-        assert p.can("read", "anyone") is True
+    def test_from_dict_default_owner_private(self):
+        p = Portfolio.from_dict({"name": "Unowned Portfolio"}, owner="default")
+        assert p.can("read", "anyone") is False
         assert p.can("write", "anyone") is False
 
     def test_from_dict_with_permissions(self):

@@ -10,6 +10,7 @@ Subcommands:
   note   ID --ticker T TEXT    Set notes on an entry
   target ID --ticker T         Set buy/sell price targets
   meta   ID --ticker T K=V     Set metadata key(s) on an entry
+  share  show|add|remove|clear ID ...   Manage who can access the watchlist
   alert show   ID --ticker T              Show entry alert config
   alert set    ID --ticker T --kind K ... Set an alert on an entry
   alert remove ID --ticker T --kind K     Remove an alert from an entry
@@ -25,6 +26,7 @@ from pydantic import BaseModel
 from portfolio_monitor.cli.display import ColumnMeta, fmt_value, render_table
 from portfolio_monitor.cli.utils import help_on_error
 from portfolio_monitor.cli.request import APIClient, make_client
+from portfolio_monitor.cli.commands.share import add_share_parser, run_share
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +122,9 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
     s.add_argument("id", metavar="WATCHLIST_ID", help="Watchlist ID")
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("pairs", nargs="+", metavar="KEY=VALUE")
+
+    # share
+    add_share_parser(sub, resource="watchlist", id_metavar="WATCHLIST_ID", json_parent=_json_parent)
     p.set_defaults(func=run_watchlist)
 
 
@@ -181,6 +186,8 @@ def run_watchlist(args: argparse.Namespace) -> None:
         _cmd_target(client, args)
     elif cmd == "meta":
         _cmd_meta(client, args)
+    elif cmd == "share":
+        run_share(client, args, base_path="/api/v1/watchlist", resource="watchlist")
     else:
         print(f"Unknown subcommand: {cmd}", file=sys.stderr)
         sys.exit(1)

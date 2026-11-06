@@ -53,9 +53,8 @@ class PortfolioService:
     def get_portfolios(self, auth: "AuthContext") -> list[Portfolio]:
         """Return portfolios visible to *auth*.
 
-        Admins see all portfolios. Normal users see portfolios they can read
-        (implicit: ``default/`` owner is world-readable, ``<name>/`` owner is
-        owner-only; explicit ``permissions:`` blocks override both).
+        Admins see all portfolios. Normal users see portfolios they own or have
+        been granted read access to via an explicit ``permissions`` block.
         """
         if auth.is_admin and auth.username == "admin":
             return self.get_all_portfolios()

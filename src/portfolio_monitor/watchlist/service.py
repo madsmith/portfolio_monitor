@@ -25,8 +25,8 @@ _UNSET = object()  # sentinel for "not provided" optional args
 class WatchlistService:
     """Manages watchlists — CRUD with SQLite persistence and live event publishing.
 
-    Ownership mirrors portfolios: ``default/`` watchlists are global (all users),
-    ``<username>/`` watchlists are visible only to that user and admins.
+    Ownership mirrors portfolios: a watchlist is visible only to its owner and
+    admins, plus any users granted access via its ``permissions`` block.
     """
 
     def __init__(self, bus: EventBus, db: AppDatabase) -> None:

@@ -8,6 +8,7 @@ from portfolio_monitor.cli.utils import help_on_error
 from pydantic import BaseModel
 
 from portfolio_monitor.cli.request import APIClient, make_client
+from portfolio_monitor.cli.commands.share import add_share_parser, run_share
 from portfolio_monitor.cli.display import ColumnMeta, fmt_value, model_to_dict, render_table
 
 _SECTION_TO_TYPE = {"stocks": "stock", "currencies": "currency", "crypto": "crypto"}
@@ -105,6 +106,9 @@ def add_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
     help_on_error(s)
     s.add_argument("id", metavar="PORTFOLIO_ID", help="Portfolio ID")
 
+    # share
+    add_share_parser(sub, resource="portfolio", id_metavar="PORTFOLIO_ID", json_parent=_json_parent)
+
     p.set_defaults(func=run_portfolio)
 
 
@@ -116,6 +120,8 @@ def run_portfolio(args: argparse.Namespace) -> None:
     client = make_client(args)
     if args.portfolio_command == "list":
         _list_all(client, args.json_out)
+    elif args.portfolio_command == "share":
+        run_share(client, args, base_path="/api/v1/portfolio", resource="portfolio")
     else:
         _show_one(client, args.id, args.json_out)
 
