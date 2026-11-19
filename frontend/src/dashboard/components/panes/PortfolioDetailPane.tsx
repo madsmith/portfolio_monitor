@@ -516,7 +516,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
   function toggleTicker(ticker: string) {
     setExpandedTickers((prev) => {
       const next = new Set(prev);
-      next.has(ticker) ? next.delete(ticker) : next.add(ticker);
+      if (next.has(ticker)) next.delete(ticker); else next.add(ticker);
       return next;
     });
   }
@@ -532,7 +532,7 @@ function AssetTable({ assets, prevClose, defaultPeriodLabel, onPeriodChange, edi
         return next;
       }
       const next = new Set(prev);
-      next.has(ticker) ? next.delete(ticker) : next.add(ticker);
+      if (next.has(ticker)) next.delete(ticker); else next.add(ticker);
       return next;
     });
   }
@@ -839,7 +839,13 @@ export function PortfolioDetailPane({
   const canManageUsers = getRole() === "admin" || getUsername() === detail?.owner;
   const isAdmin = getRole() === "admin";
 
-  useEffect(() => { setEditing(initialEditing); setConfirmDelete(false); }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Switching portfolios resets edit/delete UI. Adjusted during render (not in an effect).
+  const [prevDetailId, setPrevDetailId] = useState(detail?.id);
+  if (detail?.id !== prevDetailId) {
+    setPrevDetailId(detail?.id);
+    setEditing(initialEditing);
+    setConfirmDelete(false);
+  }
 
   if (loading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;
   if (error) return <p className="text-red-400 py-2 text-sm">{error}</p>;

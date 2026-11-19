@@ -414,6 +414,9 @@ function PortfolioPerformanceChart({
     : 50;
 
   // Update zoom handler ref (always current values)
+  // Latest-handler ref: read only by native listeners, never during render. Can't move into an
+  // effect because of the early `return null` above (hooks must run unconditionally).
+  // eslint-disable-next-line react-hooks/refs
   zoomRef.current = (e: WheelEvent) => {
     // If this wheel gesture started as a page scroll, let it pass through.
     if (currentSequenceIsPageScroll) return;
@@ -459,6 +462,9 @@ function PortfolioPerformanceChart({
   }
 
   // Touch interaction — always current via ref so handlers see latest state
+  // Latest-handler ref: read only by native listeners, never during render. Can't move into an
+  // effect because of the early `return null` above (hooks must run unconditionally).
+  // eslint-disable-next-line react-hooks/refs
   touchRef.current = {
     start(e: TouchEvent) {
       e.preventDefault();

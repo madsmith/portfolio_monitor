@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
 
 export const SPARK_GREEN = "#4d9060";
 export const SPARK_RED   = "#9c4040";
@@ -86,6 +86,14 @@ function fmtShortDate(iso: string): string {
  *   onHoverFraction  — reports this sparkline's cursor x fraction to the parent group coordinator
  *   showTooltip      — when true, renders the % value + date label at the intercept (only the active sparkline)
  */
+// Cursor x position as a fraction of the SVG's rendered width. Computed in CSS
+// space (clientX / rendered width) so it's independent of the viewBox scale and
+// always in [0, 1].
+function fractionFromClientX(el: SVGSVGElement, clientX: number): number {
+  const rect = el.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+
 export function Sparkline({
   id,
   values,
@@ -150,7 +158,9 @@ export function Sparkline({
     };
   }, []);
 
-  // Always-current callbacks — closed over latest props/state
+  // Always-current callbacks — closed over latest props/state. Assigned in a
+  // layout effect (not during render) so they're in place before any touch.
+  useLayoutEffect(() => {
   touchCbRef.current = onHoverFraction ? {
     handle(e: TouchEvent) {
       if (e.touches.length === 0) return;
@@ -166,6 +176,7 @@ export function Sparkline({
       onHoverFraction(null);
     },
   } : null;
+  });
 
   const W = 400; // internal viewBox width; CSS scales to container
 
@@ -245,13 +256,6 @@ export function Sparkline({
   })() : null;
 
   // Report the cursor's x fraction whenever the mouse moves over this SVG.
-  // Fraction is computed in CSS space (clientX / rendered width) so it's
-  // independent of the SVG viewBox scale and always in [0, 1].
-  function fractionFromClientX(el: SVGSVGElement, clientX: number): number {
-    const rect = el.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  }
-
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     if (!onHoverFraction) return;
     onHoverFraction(fractionFromClientX(e.currentTarget, e.clientX));

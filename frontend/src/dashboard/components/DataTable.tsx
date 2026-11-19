@@ -115,7 +115,7 @@ export function DataTable<T>({
               return (
                 <th
                   key={col.key}
-                  onClick={() => { if (!didLongPressRef.current) col.sortValue && handleSort(col); }}
+                  onClick={() => { if (!didLongPressRef.current && col.sortValue) handleSort(col); }}
                   onTouchStart={(e) => { if (hasHold) startHold(col.key, e.currentTarget); }}
                   onTouchEnd={cancelHold}
                   onTouchCancel={cancelHold}

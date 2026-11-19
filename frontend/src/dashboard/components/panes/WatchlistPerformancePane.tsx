@@ -122,10 +122,17 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
     setIsChart(true);
   }
 
-  useEffect(() => {
-    let active = true;
+  // New watchlist id → back to loading. Adjusted during render (not in an effect);
+  // the initial state already covers the first load.
+  const [prevId, setPrevId] = useState(id);
+  if (id !== prevId) {
+    setPrevId(id);
     setDetailLoading(true);
     setDetailError(null);
+  }
+
+  useEffect(() => {
+    let active = true;
     api.getWatchlist(id)
       .then((d) => { if (active) setDetail(d); })
       .catch(() => { if (active) setDetailError("Failed to load watchlist"); })
@@ -133,8 +140,10 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
     return () => { active = false; };
   }, [id]);
 
-  useEffect(() => {
-    if (!detail) return;
+  // Seed one row per entry whenever a different watchlist's detail arrives.
+  const [perfsForId, setPerfsForId] = useState<string | null>(null);
+  if (detail && detail.id !== perfsForId) {
+    setPerfsForId(detail.id);
     setEntryPerfs(detail.entries.map((e) => ({
       ticker: e.ticker,
       asset_type: e.asset_type,
@@ -143,7 +152,11 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
       days: null,
       error: false,
     })));
+  }
 
+  useEffect(() => {
+    if (!detail) return;
+    let active = true; // drop responses for a previous watchlist
     const maxLookback = Math.max(...PERIODS.map((p) => p.days + p.window));
     const fromDate = daysAgoDate(maxLookback);
 
@@ -153,6 +166,7 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
           const prices = Object.fromEntries(
             PERIODS.map((p) => [p.key, smoothedClose(days, daysAgoDate(p.days), p.window)])
           ) as PeriodPrices;
+          if (!active) return;
           setEntryPerfs((prev) =>
             prev.map((p) =>
               p.ticker === entry.ticker && p.asset_type === entry.asset_type
@@ -162,6 +176,7 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
           );
         })
         .catch(() => {
+          if (!active) return;
           setEntryPerfs((prev) =>
             prev.map((p) =>
               p.ticker === entry.ticker && p.asset_type === entry.asset_type
@@ -171,6 +186,7 @@ export function WatchlistPerformancePane({ id }: { id: string }) {
           );
         });
     }
+    return () => { active = false; };
   }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (detailLoading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;

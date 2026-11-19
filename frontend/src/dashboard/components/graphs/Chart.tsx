@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, type DailyOpenClose, type PriceAggregate } from "../../api/client";
 import { fmtPrice } from "../../lib/formatters";
 
@@ -219,12 +219,14 @@ export function Chart({
     () => PERIODS.find((p) => p.label === defaultPeriodLabel) ?? PERIODS[1]
   );
   const [data, setData] = useState<PriceAggregate[]>([]);
+  // When `data` was received — anchors the time window (not read from the clock during render).
+  const [fetchedAt, setFetchedAt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
-  const [openClose, setOpenClose] = useState<DailyOpenClose | null>(null);
-  const [openCloseLoading, setOpenCloseLoading] = useState(false);
+  // Open/close result tagged with the request it answers; see derivation below.
+  const [openCloseResult, setOpenCloseResult] = useState<{ key: string; value: DailyOpenClose | null } | null>(null);
   const svgRef  = useRef<SVGSVGElement>(null);
   const touchRef = useRef<((e: TouchEvent) => void) | null>(null);
 
@@ -234,7 +236,7 @@ export function Chart({
     function fetchData(initialLoad: boolean) {
       if (initialLoad) { setLoading(true); setError(null); }
       api.getPriceHistory(assetType, ticker, period.last, period.span)
-        .then((r)  => { if (active) { setData(r.aggregates); if (initialLoad) setLoading(false); } })
+        .then((r)  => { if (active) { setData(r.aggregates); setFetchedAt(Date.now()); if (initialLoad) setLoading(false); } })
         .catch(()  => { if (active && initialLoad) { setError("Failed to load price data"); setLoading(false); } });
     }
 
@@ -248,15 +250,22 @@ export function Chart({
       ? (period.last === "1h" || period.last === "4h" || period.last === "1d")
       : (showOpen ?? false);
 
+  // null when the open line is hidden; otherwise identifies the open/close request.
+  const openCloseKey = effectiveShowOpen ? `${assetType}:${ticker}` : null;
+
   useEffect(() => {
-    if (!effectiveShowOpen) { setOpenClose(null); return; }
+    if (!openCloseKey) return;
     let active = true;
-    setOpenCloseLoading(true);
     api.getOpenClose(assetType, ticker)
-      .then((r) => { if (active) { setOpenClose(r); setOpenCloseLoading(false); } })
-      .catch(() => { if (active) { setOpenClose(null); setOpenCloseLoading(false); } });
+      .then((r) => { if (active) setOpenCloseResult({ key: openCloseKey, value: r }); })
+      .catch(() => { if (active) setOpenCloseResult({ key: openCloseKey, value: null }); });
     return () => { active = false; };
-  }, [ticker, assetType, effectiveShowOpen]);
+  }, [ticker, assetType, openCloseKey]);
+
+  // Loading until a result for the *current* request arrives; a result for a
+  // previous ticker is never shown.
+  const openCloseLoading = openCloseKey !== null && openCloseResult?.key !== openCloseKey;
+  const openClose = openCloseKey !== null && openCloseResult?.key === openCloseKey ? openCloseResult.value : null;
 
   // True once the SVG is in the DOM — used to key the touch listener effect.
   const svgShown = !(loading || openCloseLoading) && !error && data.length >= 2;
@@ -279,7 +288,7 @@ export function Chart({
       el.removeEventListener("touchend",    onEnd);
       el.removeEventListener("touchcancel", onEnd);
     };
-  }, [svgShown]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [svgShown]);
 
   const displayAgg = data.length > 0
     ? (hoverIdx !== null ? data[hoverIdx] : data[data.length - 1])
@@ -302,8 +311,8 @@ export function Chart({
   const yMax = rawMax + pad;
 
   // Time domain: full requested window, not just the span of returned data
-  const tMin = Date.now() - parsePeriodMs(period.last);
-  const tMax = Date.now();
+  const tMax = fetchedAt;
+  const tMin = tMax - parsePeriodMs(period.last);
   const tRange = tMax - tMin;
 
   const yScale = (p: number) => PAD.top + PLOT_H - ((p - yMin) / (yMax - yMin)) * PLOT_H;
@@ -386,6 +395,8 @@ export function Chart({
   const currentPrice  = data.length > 0 ? data[data.length - 1].close : null;
 
   // Always-current touch handler — sees latest compactLayout, data, tMin, tRange
+  // Assigned in a layout effect (not during render) so it is in place before any touch.
+  useLayoutEffect(() => {
   touchRef.current = (e: TouchEvent) => {
     if (e.touches.length === 0) return;
     e.preventDefault();
@@ -411,6 +422,7 @@ export function Chart({
       setHoverIdx(nearest);
     }
   };
+  });
 
   return (
     <div className="text-sm select-none">

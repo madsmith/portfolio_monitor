@@ -132,11 +132,19 @@ export function PortfolioPerformancePane({
     setIsChart(true);
   }
 
+  // Seed one row per asset whenever a different portfolio's detail arrives.
+  // Adjusted during render (not in an effect).
+  const [perfsForId, setPerfsForId] = useState<string | null>(null);
+  if (detail && detail.id !== perfsForId) {
+    setPerfsForId(detail.id);
+    const seeded = [...detail.stocks, ...detail.currencies, ...detail.crypto];
+    setAssetPerfs(seeded.map((a) => ({ asset: a, prices: null, days: null, error: false })));
+  }
+
   useEffect(() => {
     if (!detail) return;
+    let active = true; // drop responses for a previous portfolio
     const assets = [...detail.stocks, ...detail.currencies, ...detail.crypto];
-    setAssetPerfs(assets.map((a) => ({ asset: a, prices: null, days: null, error: false })));
-
     const maxLookback = Math.max(...PERIODS.map((p) => p.days + p.window));
     const fromDate = daysAgoDate(maxLookback);
 
@@ -147,6 +155,7 @@ export function PortfolioPerformancePane({
           const prices = Object.fromEntries(
             PERIODS.map((p) => [p.key, smoothedClose(days, daysAgoDate(p.days), p.window)])
           ) as PeriodPrices;
+          if (!active) return;
           setAssetPerfs((prev) =>
             prev.map((p) =>
               p.asset.ticker === asset.ticker && p.asset.asset_type === asset.asset_type
@@ -156,6 +165,7 @@ export function PortfolioPerformancePane({
           );
         })
         .catch(() => {
+          if (!active) return;
           setAssetPerfs((prev) =>
             prev.map((p) =>
               p.asset.ticker === asset.ticker && p.asset.asset_type === asset.asset_type
@@ -165,6 +175,7 @@ export function PortfolioPerformancePane({
           );
         });
     }
+    return () => { active = false; };
   }, [detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="text-slate-500 py-2 text-sm">Loading…</p>;

@@ -94,13 +94,13 @@ export function CompositionPieChart({ assets }: { assets: Asset[] }) {
   if (total === 0 || slices.length === 0) return null;
   slices.forEach((s) => { s.pct = (s.value / total) * 100; });
 
-  let cursor = 0;
-  const paths: PathSlice[] = slices.map((s) => {
-    const start = cursor;
-    const span = (s.value / total) * 360;
-    cursor += span;
-    return { ...s, start, span };
-  });
+  // Each slice starts where the previous one ended (running sum of spans).
+  const spans = slices.map((s) => (s.value / total) * 360);
+  const paths: PathSlice[] = slices.map((s, i) => ({
+    ...s,
+    start: spans.slice(0, i).reduce((acc, x) => acc + x, 0),
+    span: spans[i],
+  }));
 
   const hovSlice = hovered ? slices.find((s) => s.ticker === hovered) : null;
   const showLegend = slices.length > LEGEND_THRESHOLD;

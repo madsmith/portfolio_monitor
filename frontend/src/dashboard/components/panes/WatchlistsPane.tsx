@@ -607,12 +607,16 @@ function WatchlistTable({
   const cellSavedRef = useRef(false);
   const origCellValueRef = useRef("");
 
-  useEffect(() => {
+  // Leaving edit mode collapses rows and drops any in-progress cell edit.
+  // Adjusted during render (not in an effect) to avoid an extra render pass.
+  const [prevEditing, setPrevEditing] = useState(editing);
+  if (editing !== prevEditing) {
+    setPrevEditing(editing);
     if (!editing) {
       setExpandedTicker(null);
       setEditingCell(null);
     }
-  }, [editing]);
+  }
 
   function toggleExpand(ticker: string) {
     setExpandedTicker((prev) => (prev === ticker ? null : ticker));
@@ -629,7 +633,7 @@ function WatchlistTable({
         return next;
       }
       const next = new Set(prev);
-      next.has(ticker) ? next.delete(ticker) : next.add(ticker);
+      if (next.has(ticker)) next.delete(ticker); else next.add(ticker);
       return next;
     });
   }
@@ -817,7 +821,7 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
       const stillExists = initialWatchlists.some((w) => w.id === prev);
       return stillExists ? prev : (initialWatchlists[0]?.id ?? "");
     });
-  }, [initialWatchlists]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialWatchlists]);
 
   // Reset edit state when switching watchlists
   useEffect(() => {

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { api } from "../../api/client";
 import type { AlertEntry, AlertWsMessage } from "../../api/ws";
+import { useAlertList } from "../../lib/alertEvents";
 
 function formatAt(a: AlertEntry): string {
   const at = (a["updated_at"] ?? a["at"]) as string | undefined;
@@ -34,62 +35,19 @@ export function AlertsPane({
   markAllAlertsRead: () => void;
   deleteAlert: (id: string) => void;
 }) {
-  const [alerts, setAlerts] = useState<AlertEntry[]>([]);
-  const [unread, setUnread] = useState(0);
-  const prevEvent = useRef<AlertWsMessage | null>(null);
+  const [{ alerts, unread }, setAlertState] = useAlertList(alertWsEvent);
 
   useEffect(() => {
     api.getRecentAlerts(100).then((res) => {
-      setAlerts(res.alerts as AlertEntry[]);
-      setUnread((res.alerts as AlertEntry[]).filter((a) => !a.read).length);
+      const loaded = res.alerts as AlertEntry[];
+      setAlertState({ alerts: loaded, unread: loaded.filter((a) => !a.read).length });
     }).catch(() => {});
-  }, []);
+  }, [setAlertState]);
 
-  useEffect(() => {
-    if (!alertWsEvent || alertWsEvent === prevEvent.current) return;
-    prevEvent.current = alertWsEvent;
-
-    switch (alertWsEvent.type) {
-      case "alert_event": {
-        const incoming = alertWsEvent.alert;
-        setAlerts((prev) => {
-          const idx = prev.findIndex((a) => a.id === incoming.id);
-          if (idx === -1) return [incoming, ...prev].slice(0, 100);
-          const updated = [...prev];
-          updated[idx] = incoming;
-          return updated;
-        });
-        setUnread(alertWsEvent.unread_count);
-        break;
-      }
-      case "alert_read":
-        setAlerts((prev) =>
-          prev.map((a) => (a.id === alertWsEvent.alert_id ? { ...a, read: true } : a))
-        );
-        setUnread(alertWsEvent.unread_count);
-        break;
-      case "alert_deleted":
-        setAlerts((prev) => prev.filter((a) => a.id !== alertWsEvent.alert_id));
-        setUnread(alertWsEvent.unread_count);
-        break;
-      case "all_alerts_read":
-        setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
-        setUnread(0);
-        break;
-      case "alerts_cleared":
-        setAlerts([]);
-        setUnread(0);
-        break;
-      case "unread_count":
-        setUnread(alertWsEvent.unread_count);
-        break;
-    }
-  }, [alertWsEvent]);
 
   const handleClear = () => {
     api.clearRecentAlerts().catch(() => {});
-    setAlerts([]);
-    setUnread(0);
+    setAlertState({ alerts: [], unread: 0 });
   };
 
   return (

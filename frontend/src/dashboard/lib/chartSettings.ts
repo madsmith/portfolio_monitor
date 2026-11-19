@@ -21,12 +21,14 @@ export function loadChartSettings(): ChartSettings {
   try {
     const raw = sessionStorage.getItem(KEY);
     if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
-  } catch {}
+  } catch {
+    // Storage unavailable or value corrupt — fall back to defaults.
+  }
   return { ...DEFAULTS };
 }
 
 export function saveChartSettings(s: ChartSettings): void {
-  try { sessionStorage.setItem(KEY, JSON.stringify(s)); } catch {}
+  try { sessionStorage.setItem(KEY, JSON.stringify(s)); } catch { /* storage unavailable — settings just won't persist */ }
 }
 
 const RANGE_LABELS: Record<number, string> = {

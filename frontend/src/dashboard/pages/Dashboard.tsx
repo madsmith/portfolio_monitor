@@ -154,7 +154,7 @@ export default function Dashboard() {
       .then((list) => { if (active) setWatchlists(list); })
       .catch(() => {});
     return () => { active = false; };
-  }, [watchlistRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watchlistRefreshKey]);
 
   // Fetch portfolio list once. Also kicks off background detail+prevClose fetches for all
   // portfolios so the overview "Today's Chg" column is populated immediately.
@@ -213,7 +213,7 @@ export default function Dashboard() {
       })
       .finally(() => { if (active) setDetailLoading(false); });
     return () => { active = false; };
-  }, [activeId, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeId, navigate]);
 
   async function handleAddPortfolio() {
     if (!newPortfolioName.trim() || addPortfolioSaving) return;

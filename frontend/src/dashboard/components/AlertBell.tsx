@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { AlertEntry, AlertWsMessage } from "../api/ws";
+import { useAlertList } from "../lib/alertEvents";
 import { ChevronLeftIcon } from "./icons/ChevronLeftIcon";
 import { CheckIcon } from "./icons/CheckIcon";
 import { XIcon } from "./icons/XIcon";
@@ -102,61 +103,26 @@ export function AlertBell({
   markAllAlertsRead: () => void;
   onViewAll: () => void;
 }) {
-  const [alerts, setAlerts] = useState<AlertEntry[]>([]);
-  const [unread, setUnread] = useState(0);
+  const [{ alerts, unread }, setAlertState] = useAlertList(alertWsEvent);
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const prevEvent = useRef<AlertWsMessage | null>(null);
 
   // Load buffered alerts on mount
   useEffect(() => {
     api.getRecentAlerts(50).then((res) => {
-      setAlerts(res.alerts as AlertEntry[]);
-      setUnread((res.alerts as AlertEntry[]).filter((a) => !a.read).length);
+      const loaded = res.alerts as AlertEntry[];
+      setAlertState({ alerts: loaded, unread: loaded.filter((a) => !a.read).length });
     }).catch(() => {});
-  }, []);
+  }, [setAlertState]);
 
-  // Handle incoming WS events
+  // Applying events to the list happens in useAlertList; the sound is a real
+  // side effect, so it stays in an effect.
+  // The ref makes it once per event even when StrictMode re-runs mount effects.
+  const soundedFor = useRef<AlertWsMessage | null>(null);
   useEffect(() => {
-    if (!alertWsEvent || alertWsEvent === prevEvent.current) return;
-    prevEvent.current = alertWsEvent;
-
-    switch (alertWsEvent.type) {
-      case "alert_event": {
-        const incoming = alertWsEvent.alert;
-        if (alertWsEvent.event === "fired") playAlertSound();
-        setAlerts((prev) => {
-          const idx = prev.findIndex((a) => a.id === incoming.id);
-          if (idx === -1) return [incoming, ...prev].slice(0, 100);
-          const updated = [...prev];
-          updated[idx] = incoming;
-          return updated;
-        });
-        setUnread(alertWsEvent.unread_count);
-        break;
-      }
-      case "alert_read":
-        setAlerts((prev) =>
-          prev.map((a) => (a.id === alertWsEvent.alert_id ? { ...a, read: true } : a))
-        );
-        setUnread(alertWsEvent.unread_count);
-        break;
-      case "alert_deleted":
-        setAlerts((prev) => prev.filter((a) => a.id !== alertWsEvent.alert_id));
-        setUnread(alertWsEvent.unread_count);
-        break;
-      case "all_alerts_read":
-        setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
-        setUnread(0);
-        break;
-      case "alerts_cleared":
-        setAlerts([]);
-        setUnread(0);
-        break;
-      case "unread_count":
-        setUnread(alertWsEvent.unread_count);
-        break;
-    }
+    if (alertWsEvent === soundedFor.current) return;
+    soundedFor.current = alertWsEvent;
+    if (alertWsEvent?.type === "alert_event" && alertWsEvent.event === "fired") playAlertSound();
   }, [alertWsEvent]);
 
   // Close on outside click
@@ -176,8 +142,7 @@ export function AlertBell({
   const handleClear = () => {
     api.clearRecentAlerts().catch(() => {});
     // Optimistic — the WS "alerts_cleared" event will confirm
-    setAlerts([]);
-    setUnread(0);
+    setAlertState({ alerts: [], unread: 0 });
     setOpen(false);
   };
 

@@ -33,17 +33,27 @@ export function IntradayView({
 
   const rowKey = useMemo(() => rows.map((r) => r.id).join(","), [rows]);
 
-  useEffect(() => {
+  // Clear stale rows when the row set or window changes. Adjusted during render
+  // (not in an effect) so the old data is never painted for the new request.
+  const requestKey = `${rowKey}|${window}`;
+  const [dataKey, setDataKey] = useState(requestKey);
+  if (requestKey !== dataKey) {
+    setDataKey(requestKey);
     setData({});
+  }
+
+  useEffect(() => {
+    let active = true; // drop responses that arrive after rows/window change
     for (const row of rows) {
       api.getPriceHistory(row.asset_type, row.ticker, window, WINDOW_SPAN[window])
         .then((h) => {
-          setData((prev) => ({ ...prev, [row.id]: { aggregates: h.aggregates, error: false } }));
+          if (active) setData((prev) => ({ ...prev, [row.id]: { aggregates: h.aggregates, error: false } }));
         })
         .catch(() => {
-          setData((prev) => ({ ...prev, [row.id]: { aggregates: null, error: true } }));
+          if (active) setData((prev) => ({ ...prev, [row.id]: { aggregates: null, error: true } }));
         });
     }
+    return () => { active = false; };
   }, [rowKey, window]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleHover(id: string, fraction: number | null) {
