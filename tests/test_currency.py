@@ -87,10 +87,10 @@ class TestCurrency:
         # Check for either prefix or suffix format based on implementation
         assert "1,234.56" in str(eur) and "€" in str(eur)
 
-        # BTC formatting
+        # BTC: str() uses the configured display_decimals (2); the value keeps full precision
         btc = Currency(1.23456789, CurrencyType.BTC)
-        # Just check that the decimal value and symbol are present
-        assert "₿" in str(btc) and ("1.2346" in str(btc) or "1.23456789" in str(btc))
+        assert str(btc) == "1.23 ₿"
+        assert btc._value == Decimal("1.23456789")
 
     def test_arithmetic_operations(self):
         """Test basic arithmetic operations with Currency."""
@@ -296,12 +296,11 @@ class TestCurrency:
         assert "1,234.56" in str(usd)
         assert "$" in str(usd)
 
-        # Test BTC with higher precision
+        # BTC: default display is display_decimals (2); explicit places shows native precision
         btc = Currency(1.23456789, CurrencyType.BTC)
-        # Just verify the Bitcoin symbol is included
-        assert "₿" in str(btc)
-        # And that some form of the number is included
-        assert "1.2346" in str(btc) or "1.23456789" in str(btc) or "1.2345" in str(btc)
+        assert str(btc) == "1.23 ₿"
+        assert btc.format(places=8) == "1.23456789 ₿"
+        assert btc.format(places=4) == "1.2346 ₿"
 
         # Test EUR
         eur = Currency(1234.56, CurrencyType.EUR)

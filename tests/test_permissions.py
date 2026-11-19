@@ -1,6 +1,7 @@
 """Tests for the core permission system and its integration with Watchlist/Portfolio."""
 
 import pytest
+import pytest_asyncio
 
 from portfolio_monitor.core.permissions import PermissionMap, UserPermission
 from portfolio_monitor.portfolio.models import Portfolio
@@ -256,175 +257,145 @@ class TestPortfolioPermissions:
 # ---------------------------------------------------------------------------
 # Service-level filtering
 # ---------------------------------------------------------------------------
+#
+# Services are backed by a real temporary SQLite database (YAML loading is gone).
+# Fixture layout, per service:
+#   default-owned item   — no real owner; reachable only by admins
+#   martin's private item — owner-only
+#   martin's shared item  — alice read-only, granted via update_permissions
+
+
+def _auth(username: str, role: str = "normal"):
+    from portfolio_monitor.service.context import AuthContext
+    return AuthContext(username=username, role=role)
+
+
+ADMIN = ("admin", "admin")
+
+
+@pytest.fixture
+def db(tmp_path):
+    from portfolio_monitor.data.database import AppDatabase
+    database = AppDatabase(tmp_path / "app.db")
+    database.initialize()
+    yield database
+    database.close()
 
 
 class TestWatchlistServiceFiltering:
-    @pytest.fixture
-    def watchlist_dir(self, tmp_path):
-        """Populate a temp watchlist directory with owner-scoped YAML files."""
-        # default/ — world-readable
-        (tmp_path / "default").mkdir()
-        (tmp_path / "default" / "global.yaml").write_text(
-            "name: Global\nentries: []\n"
-        )
-        # martin/ — owner-only (no explicit permissions)
-        (tmp_path / "martin").mkdir()
-        (tmp_path / "martin" / "private.yaml").write_text(
-            "name: Private\nentries: []\n"
-        )
-        # martin/ — explicitly shared with alice (read-only)
-        (tmp_path / "martin" / "shared.yaml").write_text(
-            "name: Shared\nentries: []\npermissions:\n  alice:\n    read: true\n    write: false\n  martin:\n    read: true\n    write: true\n"
-        )
-        return tmp_path
-
-    @pytest.fixture
-    def service(self, watchlist_dir):
+    @pytest_asyncio.fixture
+    async def service(self, db):
         from portfolio_monitor.core.events import EventBus
         from portfolio_monitor.watchlist.service import WatchlistService
-        return WatchlistService(EventBus(), watchlist_dir)
+        svc = WatchlistService(EventBus(), db)
+        await svc.create_watchlist("Global", "default")
+        await svc.create_watchlist("Private", "martin")
+        shared = await svc.create_watchlist("Shared", "martin")
+        svc.update_permissions(shared.id, {"alice": {"read": True, "write": False}}, _auth("martin"))
+        return svc
 
-    def _auth(self, username: str, role: str = "normal"):
-        from portfolio_monitor.service.context import AuthContext
-        return AuthContext(username=username, role=role)
+    def _named(self, service, name):
+        return next(w for w in service.get_all_watchlists() if w.name == name)
 
-    def test_admin_sees_all(self, service):
-        wls = service.get_watchlists(self._auth("admin", "admin"))
+    @pytest.mark.asyncio
+    async def test_admin_sees_all(self, service):
+        wls = service.get_watchlists(_auth(*ADMIN))
         assert {wl.name for wl in wls} == {"Global", "Private", "Shared"}
 
-    def test_default_watchlist_visible_to_everyone(self, service):
+    @pytest.mark.asyncio
+    async def test_default_owned_hidden_from_normal_users(self, service):
         for username in ("martin", "alice", "bob"):
-            wls = service.get_watchlists(self._auth(username))
-            names = {wl.name for wl in wls}
-            assert "Global" in names, f"{username} should see Global"
+            names = {wl.name for wl in service.get_watchlists(_auth(username))}
+            assert "Global" not in names, f"{username} should not see a default-owned watchlist"
 
-    def test_owner_sees_own_watchlists(self, service):
-        wls = service.get_watchlists(self._auth("martin"))
-        names = {wl.name for wl in wls}
-        assert "Private" in names
-        assert "Shared" in names
+    @pytest.mark.asyncio
+    async def test_owner_sees_own_watchlists(self, service):
+        names = {wl.name for wl in service.get_watchlists(_auth("martin"))}
+        assert {"Private", "Shared"} <= names
 
-    def test_unrelated_user_cannot_see_private(self, service):
-        wls = service.get_watchlists(self._auth("alice"))
-        names = {wl.name for wl in wls}
+    @pytest.mark.asyncio
+    async def test_unrelated_user_cannot_see_private(self, service):
+        names = {wl.name for wl in service.get_watchlists(_auth("alice"))}
         assert "Private" not in names
 
-    def test_explicitly_shared_read_visible_to_grantee(self, service):
-        wls = service.get_watchlists(self._auth("alice"))
-        names = {wl.name for wl in wls}
+    @pytest.mark.asyncio
+    async def test_explicitly_shared_read_visible_to_grantee(self, service):
+        names = {wl.name for wl in service.get_watchlists(_auth("alice"))}
         assert "Shared" in names
 
-    def test_unlisted_user_cannot_see_explicitly_shared(self, service):
-        wls = service.get_watchlists(self._auth("bob"))
-        names = {wl.name for wl in wls}
+    @pytest.mark.asyncio
+    async def test_unlisted_user_cannot_see_explicitly_shared(self, service):
+        names = {wl.name for wl in service.get_watchlists(_auth("bob"))}
         assert "Shared" not in names
 
-    def test_can_write_owner(self, service):
-        wl = next(w for w in service.get_all_watchlists() if w.name == "Private")
-        auth = self._auth("martin")
-        assert service._can_write(wl, auth) is True
+    @pytest.mark.asyncio
+    async def test_can_write_owner(self, service):
+        assert service._can_write(self._named(service, "Private"), _auth("martin")) is True
 
-    def test_can_write_non_owner_denied(self, service):
-        wl = next(w for w in service.get_all_watchlists() if w.name == "Private")
-        assert service._can_write(wl, self._auth("alice")) is False
+    @pytest.mark.asyncio
+    async def test_can_write_non_owner_denied(self, service):
+        assert service._can_write(self._named(service, "Private"), _auth("alice")) is False
 
-    def test_can_write_explicit_grant(self, service):
-        wl = next(w for w in service.get_all_watchlists() if w.name == "Shared")
-        assert service._can_write(wl, self._auth("martin")) is True
+    @pytest.mark.asyncio
+    async def test_can_write_owner_of_shared(self, service):
+        assert service._can_write(self._named(service, "Shared"), _auth("martin")) is True
 
-    def test_can_write_explicit_deny(self, service):
-        wl = next(w for w in service.get_all_watchlists() if w.name == "Shared")
-        assert service._can_write(wl, self._auth("alice")) is False
+    @pytest.mark.asyncio
+    async def test_can_write_read_only_grantee_denied(self, service):
+        assert service._can_write(self._named(service, "Shared"), _auth("alice")) is False
 
-    def test_admin_can_write_anything(self, service):
+    @pytest.mark.asyncio
+    async def test_admin_can_write_anything(self, service):
         for wl in service.get_all_watchlists():
-            assert service._can_write(wl, self._auth("admin", "admin")) is True
+            assert service._can_write(wl, _auth(*ADMIN)) is True
 
-    def test_explicit_owner_in_yaml_overrides_folder(self, tmp_path):
-        # A file in martin/ that declares owner: alice should be owned by alice.
-        (tmp_path / "martin").mkdir()
-        (tmp_path / "martin" / "override.yaml").write_text(
-            "name: Override\nowner: alice\nentries: []\n"
-        )
+    @pytest.mark.asyncio
+    async def test_visibility_survives_reload(self, service, db):
         from portfolio_monitor.core.events import EventBus
         from portfolio_monitor.watchlist.service import WatchlistService
-        svc = WatchlistService(EventBus(), tmp_path)
-        wl = next(w for w in svc.get_all_watchlists() if w.name == "Override")
-        assert wl.owner == "alice"
-        assert wl.can("read", "alice") is True
-        assert wl.can("read", "martin") is False
+        reloaded = WatchlistService(EventBus(), db)
+        assert {wl.name for wl in reloaded.get_watchlists(_auth("alice"))} == {"Shared"}
 
 
 class TestPortfolioServiceFiltering:
     @pytest.fixture
-    def portfolio_dir(self, tmp_path):
-        # default/ — world-readable
-        (tmp_path / "default").mkdir()
-        (tmp_path / "default" / "global.yaml").write_text(
-            "name: Global Portfolio\nstocks: []\n"
-        )
-        # martin/ — owner-only
-        (tmp_path / "martin").mkdir()
-        (tmp_path / "martin" / "private.yaml").write_text(
-            "name: Martin Private\nstocks: []\n"
-        )
-        # martin/ — explicitly shared with alice (read-only)
-        (tmp_path / "martin" / "shared.yaml").write_text(
-            "name: Martin Shared\nstocks: []\npermissions:\n  alice:\n    read: true\n    write: false\n  martin:\n    read: true\n    write: true\n"
-        )
-        return tmp_path
-
-    @pytest.fixture
-    def service(self, portfolio_dir):
+    def service(self, db):
         from portfolio_monitor.core.events import EventBus
         from portfolio_monitor.portfolio.service import PortfolioService
-        return PortfolioService(EventBus(), portfolio_dir)
-
-    def _auth(self, username: str, role: str = "normal"):
-        from portfolio_monitor.service.context import AuthContext
-        return AuthContext(username=username, role=role)
+        svc = PortfolioService(EventBus(), db)
+        svc.create_portfolio("Global Portfolio", _auth("default"))
+        svc.create_portfolio("Martin Private", _auth("martin"))
+        shared = svc.create_portfolio("Martin Shared", _auth("martin"))
+        svc.update_permissions(shared.id, {"alice": {"read": True, "write": False}}, _auth("martin"))
+        return svc
 
     def test_admin_sees_all(self, service):
-        portfolios = service.get_portfolios(self._auth("admin", "admin"))
+        portfolios = service.get_portfolios(_auth(*ADMIN))
         assert {p.name for p in portfolios} == {"Global Portfolio", "Martin Private", "Martin Shared"}
 
-    def test_default_visible_to_everyone(self, service):
+    def test_default_owned_hidden_from_normal_users(self, service):
         for username in ("martin", "alice", "bob"):
-            portfolios = service.get_portfolios(self._auth(username))
-            names = {p.name for p in portfolios}
-            assert "Global Portfolio" in names
+            names = {p.name for p in service.get_portfolios(_auth(username))}
+            assert "Global Portfolio" not in names
 
     def test_owner_sees_own_portfolios(self, service):
-        portfolios = service.get_portfolios(self._auth("martin"))
-        names = {p.name for p in portfolios}
-        assert "Martin Private" in names
-        assert "Martin Shared" in names
+        names = {p.name for p in service.get_portfolios(_auth("martin"))}
+        assert {"Martin Private", "Martin Shared"} <= names
 
     def test_other_user_cannot_see_private(self, service):
-        portfolios = service.get_portfolios(self._auth("alice"))
-        names = {p.name for p in portfolios}
+        names = {p.name for p in service.get_portfolios(_auth("alice"))}
         assert "Martin Private" not in names
 
     def test_explicitly_shared_visible_to_grantee(self, service):
-        portfolios = service.get_portfolios(self._auth("alice"))
-        names = {p.name for p in portfolios}
+        names = {p.name for p in service.get_portfolios(_auth("alice"))}
         assert "Martin Shared" in names
 
     def test_unlisted_user_denied_explicit_permissions(self, service):
-        portfolios = service.get_portfolios(self._auth("bob"))
-        names = {p.name for p in portfolios}
+        names = {p.name for p in service.get_portfolios(_auth("bob"))}
         assert "Martin Shared" not in names
 
-    def test_explicit_owner_in_yaml_overrides_folder(self, tmp_path):
-        # A file in martin/ that declares owner: alice should be owned by alice.
-        (tmp_path / "martin").mkdir()
-        (tmp_path / "martin" / "override.yaml").write_text(
-            "name: Override Portfolio\nowner: alice\nstocks: []\n"
-        )
+    def test_visibility_survives_reload(self, service, db):
         from portfolio_monitor.core.events import EventBus
         from portfolio_monitor.portfolio.service import PortfolioService
-        svc = PortfolioService(EventBus(), tmp_path)
-        p = next(p for p in svc.get_all_portfolios() if p.name == "Override Portfolio")
-        assert p.owner == "alice"
-        assert p.can("read", "alice") is True
-        assert p.can("read", "martin") is False
+        reloaded = PortfolioService(EventBus(), db)
+        assert {p.name for p in reloaded.get_portfolios(_auth("alice"))} == {"Martin Shared"}
