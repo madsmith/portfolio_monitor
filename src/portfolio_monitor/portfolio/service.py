@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 from typing import TYPE_CHECKING, Any
 
 from portfolio_monitor.core import Currency
@@ -77,9 +78,18 @@ class PortfolioService:
     def _save_portfolio(self, portfolio: Portfolio) -> None:
         self._portfolios_module.upsert(portfolio)
 
+    def _new_id(self) -> str:
+        # Random rather than derived from the name: the model's fallback ID is
+        # sha256(name), so two users' same-named portfolios collided, and the
+        # upsert then reassigned the existing row (and replaced its assets).
+        while True:
+            candidate = secrets.token_hex(8)
+            if not any(p.id == candidate for p in self.get_all_portfolios()):
+                return candidate
+
     def create_portfolio(self, name: str, auth: "AuthContext") -> Portfolio:
         """Create a new empty portfolio owned by the authenticated user."""
-        portfolio = Portfolio(name=name, owner=auth.username)
+        portfolio = Portfolio(name=name, owner=auth.username, id=self._new_id())
         self._portfolios_by_owner.setdefault(auth.username, []).append(portfolio)
         self._save_portfolio(portfolio)
         return portfolio
