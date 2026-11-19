@@ -47,6 +47,13 @@ def _watchlist_detail(wl: Watchlist) -> dict:
 
 
 def watchlists_handler(watchlist_service: WatchlistService, data_provider: MarketData):
+    def access(wl: Watchlist, auth: AuthContext) -> dict:
+        """What the caller may do with *wl* — lets clients show only usable controls."""
+        return {
+            "can_rename": watchlist_service.can_rename(wl, auth),
+            "can_share": watchlist_service.can_share(wl, auth),
+        }
+
     @logfire.instrument("api.watchlists.list")
     async def list_watchlists(request: Request) -> JSONResponse:
         auth = AuthContext.from_request(request)
@@ -61,7 +68,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: Marke
             return JSONResponse({"error": "name is required"}, status_code=400)
         owner = body.get("owner", auth.username) if auth.is_admin else auth.username
         wl = await watchlist_service.create_watchlist(name, owner)
-        return JSONResponse(_watchlist_detail(wl), status_code=201)
+        return JSONResponse({**_watchlist_detail(wl), **access(wl, auth)}, status_code=201)
 
     @logfire.instrument("api.watchlists.get")
     async def get_watchlist(request: Request) -> JSONResponse:
@@ -85,7 +92,24 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: Marke
                     prices[entry.symbol.ticker] = float(entry.current_price._value)
             logfire_set_attribute("fetched_count", len(prices))
         entries = [_entry_dict(e, prices.get(e.symbol.ticker)) for e in wl.entries]
-        return JSONResponse({"id": wl.id, "name": wl.name, "owner": wl.owner, "entries": entries})
+        return JSONResponse({"id": wl.id, "name": wl.name, "owner": wl.owner, "entries": entries, **access(wl, auth)})
+
+    @logfire.instrument("api.watchlists.update")
+    async def update_watchlist(request: Request) -> JSONResponse:
+        auth = AuthContext.from_request(request)
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid body"}, status_code=400)
+        if not isinstance(body, dict) or not isinstance(body.get("name"), str):
+            return JSONResponse({"error": "name is required"}, status_code=400)
+        try:
+            wl = watchlist_service.rename_watchlist(request.path_params["id"], body["name"], auth)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        if wl is None:
+            return JSONResponse({"error": "not found or forbidden"}, status_code=404)
+        return JSONResponse(_watchlist_summary(wl))
 
     @logfire.instrument("api.watchlists.delete")
     async def delete_watchlist(request: Request) -> JSONResponse:
@@ -132,7 +156,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: Marke
             _entry_dict(e, new_entry_price if e.symbol.ticker == ticker and e.symbol.asset_type == asset_type else None)
             for e in wl.entries
         ]
-        return JSONResponse({"id": wl.id, "name": wl.name, "owner": wl.owner, "entries": entries})
+        return JSONResponse({"id": wl.id, "name": wl.name, "owner": wl.owner, "entries": entries, **access(wl, auth)})
 
     @logfire.instrument("api.watchlists.entry.remove")
     async def remove_entry(request: Request) -> JSONResponse:
@@ -144,7 +168,7 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: Marke
         )
         if wl is None:
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
-        return JSONResponse(_watchlist_detail(wl))
+        return JSONResponse({**_watchlist_detail(wl), **access(wl, auth)})
 
     @logfire.instrument("api.watchlists.entry.update")
     async def update_entry(request: Request) -> JSONResponse:
@@ -164,12 +188,13 @@ def watchlists_handler(watchlist_service: WatchlistService, data_provider: Marke
         )
         if wl is None:
             return JSONResponse({"error": "not found or forbidden"}, status_code=404)
-        return JSONResponse(_watchlist_detail(wl))
+        return JSONResponse({**_watchlist_detail(wl), **access(wl, auth)})
 
     return (
         list_watchlists,
         create_watchlist,
         get_watchlist,
+        update_watchlist,
         delete_watchlist,
         add_entry,
         remove_entry,

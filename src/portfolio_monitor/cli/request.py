@@ -52,9 +52,15 @@ class APIClient:
     # High-level — additionally exit on any non-2xx response
     # ------------------------------------------------------------------
 
-    def get_json(self, path: str) -> Any:
-        """GET request. Exits on connection error, 401, or non-2xx. Returns parsed JSON."""
+    def get_json(self, path: str, *, not_found: str | None = None) -> Any:
+        """GET request. Exits on connection error, 401, or non-2xx. Returns parsed JSON.
+
+        If *not_found* is given, a 404 prints that message instead of the generic error.
+        """
         response = self.get(path)
+        if not_found is not None and response.status_code == 404:
+            print(f"error: {not_found}", file=sys.stderr)
+            sys.exit(1)
         _require_success(response)
         return response.json()
 

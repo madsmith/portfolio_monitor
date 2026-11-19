@@ -1,4 +1,5 @@
 import logging
+import secrets
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -85,8 +86,17 @@ class WatchlistService:
     # Watchlist-level CRUD
     # ------------------------------------------------------------------
 
+    def _new_id(self) -> str:
+        # Random rather than derived from the name: name-derived IDs collide after a
+        # rename (or with duplicate names), and the INSERT OR REPLACE upsert would then
+        # cascade-delete the existing watchlist's entries and permissions.
+        while True:
+            candidate = secrets.token_hex(8)
+            if self._find_by_id(candidate) is None:
+                return candidate
+
     async def create_watchlist(self, name: str, owner: str) -> Watchlist:
-        wl = Watchlist(name=name, owner=owner)
+        wl = Watchlist(name=name, owner=owner, id=self._new_id())
         self._by_owner.setdefault(owner, []).append(wl)
         self._watchlists_module.upsert(wl)
         logger.info("Created watchlist '%s' (owner=%s, id=%s)", name, owner, wl.id)
@@ -105,6 +115,31 @@ class WatchlistService:
         self._rebuild_tracked()
         return True
 
+    def can_rename(self, wl: Watchlist, auth: "AuthContext") -> bool:
+        """Owner, admins, and users granted write access may rename."""
+        return auth.is_admin or wl.can("write", auth.username)
+
+    def can_share(self, wl: Watchlist, auth: "AuthContext") -> bool:
+        """Only the owner and admins may change who a watchlist is shared with."""
+        return auth.is_admin or wl.owner == auth.username
+
+    def rename_watchlist(self, id: str, name: str, auth: "AuthContext") -> Watchlist | None:
+        """Rename a watchlist (see ``can_rename``); the ID is unchanged.
+
+        Returns None if not found or not permitted. Raises ValueError for an empty name.
+        """
+        name = name.strip()
+        if not name:
+            raise ValueError("name is required")
+        wl = self._find_by_id(id)
+        if wl is None or not self.can_rename(wl, auth):
+            return None
+        old = wl.name
+        wl.name = name
+        self._save(wl)
+        logger.info("Renamed watchlist %s '%s' -> '%s'", wl.id, old, name)
+        return wl
+
     def update_permissions(
         self,
         id: str,
@@ -112,9 +147,7 @@ class WatchlistService:
         auth: "AuthContext",
     ) -> Watchlist | None:
         wl = self._find_by_id(id)
-        if wl is None:
-            return None
-        if not auth.is_admin and wl.owner != auth.username:
+        if wl is None or not self.can_share(wl, auth):
             return None
         wl.permissions = PermissionMap.from_yaml(permissions) if permissions else None
         self._save(wl)

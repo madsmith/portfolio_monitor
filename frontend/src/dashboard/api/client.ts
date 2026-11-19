@@ -231,6 +231,10 @@ export type WatchlistDetail = {
   name: string;
   owner: string;
   entries: WatchlistEntry[];
+  /** Server-computed: owner, admins, and write grantees may rename. */
+  can_rename?: boolean;
+  /** Server-computed: only owner and admins may change sharing. */
+  can_share?: boolean;
 };
 
 export type DetectorArgSpec = {
@@ -410,6 +414,9 @@ export const api = {
 
   createWatchlist: (name: string): Promise<WatchlistDetail> =>
     authPost("/api/v1/watchlist", { name }),
+
+  renameWatchlist: (id: string, name: string): Promise<WatchlistSummary> =>
+    authPut(`/api/v1/watchlist/${encodeURIComponent(id)}`, { name }),
 
   deleteWatchlist: (id: string): Promise<{ ok: boolean }> =>
     authDelete(`/api/v1/watchlist/${encodeURIComponent(id)}`),

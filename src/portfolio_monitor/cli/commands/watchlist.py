@@ -10,6 +10,7 @@ Subcommands:
   note   ID --ticker T TEXT    Set notes on an entry
   target ID --ticker T         Set buy/sell price targets
   meta   ID --ticker T K=V     Set metadata key(s) on an entry
+  set    ID KEY=VALUE ...      Update watchlist properties (name=NAME)
   share  show|add|remove|clear ID ...   Manage who can access the watchlist
   alert show   ID --ticker T              Show entry alert config
   alert set    ID --ticker T --kind K ... Set an alert on an entry
@@ -123,6 +124,18 @@ def add_watchlist_parser(subparsers: argparse._SubParsersAction) -> None:
     s.add_argument("--ticker", required=True, metavar="TICKER")
     s.add_argument("pairs", nargs="+", metavar="KEY=VALUE")
 
+    # set (watchlist-level properties)
+    s = sub.add_parser(
+        "set",
+        help="Update watchlist properties (KEY=VALUE ...; keys: name)",
+        usage="portfolio-manager watchlist set [-h] [--json] WATCHLIST_ID KEY=VALUE [KEY=VALUE ...]",
+        description="Update watchlist properties. The watchlist ID and KEY=VALUE pairs may be given in any order, "
+                    'e.g. `watchlist set WATCHLIST_ID name="New Name"`.',
+        parents=[_json_parent],
+    )
+    help_on_error(s)
+    s.add_argument("tokens", nargs="+", metavar="ARG", help="WATCHLIST_ID and KEY=VALUE pairs (keys: name)")
+
     # share
     add_share_parser(sub, resource="watchlist", id_metavar="WATCHLIST_ID", json_parent=_json_parent)
     p.set_defaults(func=run_watchlist)
@@ -186,6 +199,8 @@ def run_watchlist(args: argparse.Namespace) -> None:
         _cmd_target(client, args)
     elif cmd == "meta":
         _cmd_meta(client, args)
+    elif cmd == "set":
+        _cmd_set(client, args)
     elif cmd == "share":
         run_share(client, args, base_path="/api/v1/watchlist", resource="watchlist")
     else:
@@ -211,7 +226,10 @@ def _cmd_list(client: APIClient, args: argparse.Namespace) -> None:
 
 
 def _cmd_show(client: APIClient, args: argparse.Namespace) -> None:
-    data = client.get_json(f"/api/v1/watchlist/{args.id}")
+    data = client.get_json(
+        f"/api/v1/watchlist/{args.id}",
+        not_found=f"no watchlist with ID {args.id} (is it a portfolio? try `portfolio show {args.id}`)",
+    )
     assert isinstance(data, dict)
     # Backfill current_price from previous-close for entries with no live price
     for entry in data.get("entries", []):
@@ -222,6 +240,41 @@ def _cmd_show(client: APIClient, args: argparse.Namespace) -> None:
             if price_data and price_data.get("close") is not None:
                 entry["current_price"] = price_data["close"]
     _print_detail(data, args.json_out)
+
+
+_SETTABLE_KEYS = {"name"}
+
+
+def _cmd_set(client: APIClient, args: argparse.Namespace) -> None:
+    ids = [t for t in args.tokens if "=" not in t]
+    pairs = [t for t in args.tokens if "=" in t]
+    if len(ids) != 1:
+        print("error: expected exactly one WATCHLIST_ID", file=sys.stderr)
+        sys.exit(1)
+    if not pairs:
+        print("error: expected at least one KEY=VALUE (keys: name)", file=sys.stderr)
+        sys.exit(1)
+    # Keep values as strings — a name like "2026" must not become an int.
+    updates = dict(p.split("=", 1) for p in pairs)
+    unknown = sorted(set(updates) - _SETTABLE_KEYS)
+    if unknown:
+        print(f"error: unknown key(s): {', '.join(unknown)} (settable: {', '.join(sorted(_SETTABLE_KEYS))})",
+              file=sys.stderr)
+        sys.exit(1)
+
+    wl_id = ids[0]
+    resp = client.put(f"/api/v1/watchlist/{wl_id}", json=updates)
+    if resp.status_code == 404:
+        print(f"error: no watchlist with ID {wl_id}, or you are not its owner", file=sys.stderr)
+        sys.exit(1)
+    if not resp.is_success:
+        print(f"error: server returned {resp.status_code}: {resp.text}", file=sys.stderr)
+        sys.exit(1)
+    data = resp.json()
+    if args.json_out:
+        print(json.dumps(data, indent=2))
+        return
+    render_table([WatchlistSummaryRow(**data)])
 
 
 def _cmd_create(client: APIClient, args: argparse.Namespace) -> None:

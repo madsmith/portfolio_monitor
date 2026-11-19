@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   api,
-  getRole,
-  getUsername,
   type WatchlistDetail,
   type WatchlistEntry,
   type WatchlistSummary,
@@ -19,24 +17,37 @@ import { DataTable, type ColDef } from "../DataTable";
 import { type PortfolioWebSocket } from "../../api/ws";
 
 // ---------------------------------------------------------------------------
-// WatchlistUsersSection — shown in edit mode for owners and admins
+// WatchlistPropertiesSection — name (rename access) + users (share access); edit mode only
 // ---------------------------------------------------------------------------
 
-function WatchlistUsersSection({ watchlistId }: { watchlistId: string }) {
+function WatchlistPropertiesSection({ watchlistId, name, canShare, onRenamed }: {
+  watchlistId: string;
+  name: string;
+  canShare: boolean;
+  onRenamed: (name: string) => void;
+}) {
   const [data, setData] = useState<WatchlistUsers | null>(null);
   const [accounts, setAccounts] = useState<{ username: string }[]>([]);
   const [draft, setDraft] = useState<Record<string, WatchlistUserPermission>>({});
+  const [savedDraft, setSavedDraft] = useState<string>("{}");
+  const [nameDraft, setNameDraft] = useState(name);
   const [addUsername, setAddUsername] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!canShare) return;
     api.getWatchlistUsers(watchlistId).then(d => {
       setData(d);
       setDraft(d.permissions);
+      setSavedDraft(JSON.stringify(d.permissions));
     });
     api.getUsers().then(setAccounts);
-  }, [watchlistId]);
+  }, [watchlistId, canShare]);
+
+  // Follow external changes to the name (e.g. switching watchlists)
+  useEffect(() => { setNameDraft(name); }, [name]);
 
   const available = accounts.filter(a => a.username !== data?.owner && !(a.username in draft));
 
@@ -57,33 +68,64 @@ function WatchlistUsersSection({ watchlistId }: { watchlistId: string }) {
     setSaved(false);
   }, []);
 
+  const trimmedName = nameDraft.trim();
+  const nameChanged = trimmedName !== name;
+  const usersChanged = canShare && JSON.stringify(draft) !== savedDraft;
+
   const handleSave = useCallback(async () => {
+    if (!trimmedName) { setError("Name can't be empty"); return; }
     setSaving(true);
+    setError(null);
     try {
-      await api.updateWatchlistUsers(watchlistId, draft);
+      if (nameChanged) {
+        const updated = await api.renameWatchlist(watchlistId, trimmedName);
+        onRenamed(updated.name);
+      }
+      if (usersChanged) {
+        await api.updateWatchlistUsers(watchlistId, draft);
+        setSavedDraft(JSON.stringify(draft));
+      }
       setSaved(true);
+    } catch {
+      setError("Failed to save");
     } finally {
       setSaving(false);
     }
-  }, [watchlistId, draft]);
+  }, [watchlistId, trimmedName, nameChanged, usersChanged, draft, onRenamed]);
 
-  if (!data) return null;
+  if (canShare && !data) return null;
 
   const users = Object.entries(draft);
 
   return (
     <div className="mt-5 border border-[#404868] rounded-md overflow-hidden">
       <div className="px-3 py-2 bg-[#131928] border-b border-[#404868] flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wide text-slate-400 font-medium">Users</span>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="text-xs px-2 py-0.5 rounded border border-[#5060a0] bg-[#252a40] text-slate-100 hover:bg-[#2e345a] transition-colors disabled:opacity-50 cursor-pointer"
-        >
-          {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
-        </button>
+        <span className="text-xs uppercase tracking-wide text-slate-400 font-medium">Watchlist Properties</span>
+        <div className="flex items-center gap-2">
+          {error && <span className="text-xs text-red-400">{error}</span>}
+          <button
+            onClick={handleSave}
+            disabled={saving || (!nameChanged && !usersChanged)}
+            className="text-xs px-2 py-0.5 rounded border border-[#5060a0] bg-[#252a40] text-slate-100 hover:bg-[#2e345a] transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            {saving ? "Saving…" : saved && !nameChanged && !usersChanged ? "Saved ✓" : "Save"}
+          </button>
+        </div>
       </div>
 
+      <div className="px-3 py-2 flex items-center gap-3 text-xs border-b border-[#404868]">
+        <label htmlFor={`wl-name-${watchlistId}`} className="w-36 text-slate-400">Name</label>
+        <input
+          id={`wl-name-${watchlistId}`}
+          value={nameDraft}
+          onChange={e => { setNameDraft(e.target.value); setSaved(false); }}
+          onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
+          className="flex-1 min-w-0 bg-[#1a1f2e] border border-[#404868] rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-[#5060a0]"
+        />
+      </div>
+
+      {canShare && data && (<>
+      <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-slate-500 font-medium">Users</div>
       <div className="divide-y divide-[#2a2d3a]">
         <div className="px-3 py-2 flex items-center gap-3 text-xs text-slate-400">
           <span className="w-36 truncate font-medium text-slate-300">{data.owner}</span>
@@ -129,6 +171,7 @@ function WatchlistUsersSection({ watchlistId }: { watchlistId: string }) {
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }
@@ -864,6 +907,12 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
     }
   }
 
+  const handleRenamed = useCallback((id: string, name: string) => {
+    setDetail((prev) => (prev && prev.id === id ? { ...prev, name } : prev));
+    setSummaries((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
+    onMutated();
+  }, [onMutated]);
+
   async function handleDeleteWatchlist() {
     if (!selectedId) return;
     setDeletingWl(true);
@@ -1125,8 +1174,14 @@ export function WatchlistsPane({ watchlists: initialWatchlists, ws, onMutated }:
               autoFocusEntry={(() => { const v = focusEntryOnOpen.current; focusEntryOnOpen.current = false; return v; })()}
             />
           </div>
-          {editing && (getRole() === "admin" || getUsername() === detail.owner) && (
-            <WatchlistUsersSection watchlistId={detail.id} />
+          {editing && detail.can_rename && (
+            <WatchlistPropertiesSection
+              key={detail.id}
+              watchlistId={detail.id}
+              name={detail.name}
+              canShare={!!detail.can_share}
+              onRenamed={(name) => handleRenamed(detail.id, name)}
+            />
           )}
           </>
         ) : null}

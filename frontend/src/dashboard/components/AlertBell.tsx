@@ -95,13 +95,11 @@ export function AlertBell({
   alertWsEvent,
   markAlertRead,
   markAllAlertsRead,
-  deleteAlert,
   onViewAll,
 }: {
   alertWsEvent: AlertWsMessage | null;
   markAlertRead: (id: string) => void;
   markAllAlertsRead: () => void;
-  deleteAlert: (id: string) => void;
   onViewAll: () => void;
 }) {
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);

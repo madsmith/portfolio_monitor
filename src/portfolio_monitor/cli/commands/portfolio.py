@@ -218,7 +218,10 @@ def _list_all(client: APIClient, json_out: bool = False) -> None:
 
 
 def _show_one(client: APIClient, portfolio_id: str, json_out: bool = False) -> None:
-    portfolio = client.get_json(f"/api/v1/portfolio/{portfolio_id}")
+    portfolio = client.get_json(
+        f"/api/v1/portfolio/{portfolio_id}",
+        not_found=f"no portfolio with ID {portfolio_id} (is it a watchlist? try `watchlist show {portfolio_id}`)",
+    )
     assert isinstance(portfolio, dict)
 
     header = PortfolioHeader(
