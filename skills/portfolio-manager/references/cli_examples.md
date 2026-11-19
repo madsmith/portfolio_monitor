@@ -91,6 +91,14 @@ portfolio-manager watchlist remove WATCHLIST_ID --ticker AAPL
 portfolio-manager watchlist delete WATCHLIST_ID
 ```
 
+### Renaming
+
+```bash
+portfolio-manager watchlist set WATCHLIST_ID name="New Name"   # ID is unchanged; owner, admins, or users with write access
+```
+
+*Requires portfolio-manager 0.19.0+. Supports `--json`.*
+
 ### Metadata
 
 Arbitrary key/value metadata can be attached to a watchlist entry:
